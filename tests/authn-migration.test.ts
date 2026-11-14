@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
+import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { PostgresSessionReader } from "../apps/api/src/authentication/postgres-session-reader";
 import { SessionAccess } from "../apps/api/src/authentication/session-access";
 import { PostgresSessionOperations } from "../apps/api/src/authentication/postgres-session-operations";
 import { digestSessionSecret } from "../apps/api/src/authentication/session-cookie";
+import { PostgresMfaVerifier } from "../apps/api/src/authentication/postgres-mfa-verifier";
+import { encryptMfaSecret } from "../apps/api/src/authentication/mfa-secret";
 
 const url = process.env.DATABASE_TEST_URL;
 const suite = url ? describe : describe.skip;
@@ -44,6 +47,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     await client.query(
       readFileSync(
         "database/migrations/20261115_session_operations/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_totp_foundation/up.sql",
         "utf8",
       ),
     );
@@ -349,6 +358,162 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(await operations.logout(opaque)).toBe(false);
     } finally {
       await client.query("ROLLBACK TO SAVEPOINT adapter_check");
+    }
+  });
+  it("allows the restricted MFA verifier to consume a current counter once", async () => {
+    const factor = "7206b2ec-f547-47a5-8f5a-ad8c8dfd0c75";
+    await client.query("SAVEPOINT mfa_check");
+    try {
+      await client.query(
+        "INSERT INTO authn.mfa_factor (id,account_id,key_id,nonce,ciphertext,auth_tag,enrolled_at) VALUES ($1,$2,'synthetic',$3,$4,$5,now())",
+        [
+          factor,
+          account,
+          Buffer.alloc(12, 1),
+          Buffer.alloc(20, 2),
+          Buffer.alloc(16, 3),
+        ],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_mfa_verifier");
+      await expectDenied("SELECT * FROM authn.mfa_factor", [], "42501");
+      await expectDenied("SET ROLE agri_authn_function_owner", [], "42501");
+      const stored = await client.query(
+        "SELECT * FROM authn.read_mfa_factor($1)",
+        [account],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0].factor_id).toBe(factor);
+      const counter = (
+        await client.query(
+          "SELECT floor(extract(epoch from clock_timestamp()) / 30)::bigint AS counter",
+        )
+      ).rows[0].counter;
+      expect(
+        (
+          await client.query(
+            "SELECT authn.consume_mfa_counter($1,$2,$3) AS ok",
+            [account, factor, counter],
+          )
+        ).rows[0].ok,
+      ).toBe(true);
+      expect(
+        (
+          await client.query(
+            "SELECT authn.consume_mfa_counter($1,$2,$3) AS ok",
+            [account, factor, counter],
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+      expect(
+        (
+          await client.query(
+            "SELECT authn.consume_mfa_counter($1,$2,$3) AS ok",
+            [account, factor, Number(counter) + 10],
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT mfa_check");
+    }
+  });
+  it("refuses MFA verification for an inactive account or disabled factor", async () => {
+    const factor = "7206b2ec-f547-47a5-8f5a-ad8c8dfd0c75";
+    await client.query("SAVEPOINT mfa_denied_check");
+    try {
+      await client.query(
+        "INSERT INTO authn.mfa_factor (id,account_id,key_id,nonce,ciphertext,auth_tag,enrolled_at) VALUES ($1,$2,'synthetic',$3,$4,$5,now())",
+        [factor, account, Buffer.alloc(12), Buffer.alloc(20), Buffer.alloc(16)],
+      );
+      await client.query(
+        "UPDATE authn.account SET active=false, disabled_at=now() WHERE id=$1",
+        [account],
+      );
+      await client.query("SET LOCAL ROLE agri_mfa_verifier");
+      expect(
+        (
+          await client.query("SELECT * FROM authn.read_mfa_factor($1)", [
+            account,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      const counter = (
+        await client.query(
+          "SELECT floor(extract(epoch from clock_timestamp()) / 30)::bigint AS counter",
+        )
+      ).rows[0].counter;
+      expect(
+        (
+          await client.query(
+            "SELECT authn.consume_mfa_counter($1,$2,$3) AS ok",
+            [account, factor, counter],
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+      await client.query("RESET ROLE");
+      await client.query(
+        "UPDATE authn.account SET active=true, disabled_at=NULL WHERE id=$1",
+        [account],
+      );
+      await client.query(
+        "UPDATE authn.mfa_factor SET disabled_at=now() WHERE id=$1",
+        [factor],
+      );
+      await client.query("SET LOCAL ROLE agri_mfa_verifier");
+      expect(
+        (
+          await client.query("SELECT * FROM authn.read_mfa_factor($1)", [
+            account,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await client.query(
+            "SELECT authn.consume_mfa_counter($1,$2,$3) AS ok",
+            [account, factor, counter],
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT mfa_denied_check");
+    }
+  });
+  it("verifies an encrypted MFA factor and atomically prevents OTP replay", async () => {
+    const factorId = "7206b2ec-f547-47a5-8f5a-ad8c8dfd0c75";
+    const secret = Buffer.from("12345678901234567890", "ascii");
+    const key = Buffer.alloc(32, 8);
+    const encrypted = encryptMfaSecret(secret, key, account, factorId);
+    const now = Date.now();
+    const counter = Buffer.alloc(8);
+    counter.writeBigUInt64BE(BigInt(Math.floor(now / 30_000)));
+    const mac = createHmac("sha1", secret).update(counter).digest();
+    const offset = mac[mac.length - 1] & 15;
+    const code = String(
+      (mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000,
+    ).padStart(6, "0");
+    await client.query("SAVEPOINT mfa_adapter_check");
+    try {
+      await client.query(
+        "INSERT INTO authn.mfa_factor (id,account_id,key_id,nonce,ciphertext,auth_tag,enrolled_at) VALUES ($1,$2,'synthetic',$3,$4,$5,now())",
+        [
+          factorId,
+          account,
+          encrypted.nonce,
+          encrypted.ciphertext,
+          encrypted.tag,
+        ],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_mfa_verifier");
+      const verifier = new PostgresMfaVerifier(
+        client,
+        { getKey: async () => key },
+        () => now,
+      );
+      expect(await verifier.verify(account, code)).toBe(true);
+      expect(await verifier.verify(account, code)).toBe(false);
+      expect(await verifier.verify(account, "invalid")).toBe(false);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT mfa_adapter_check");
     }
   });
   it("rejects revocation events associated with another account's device", async () => {

@@ -17,3 +17,5 @@ Before pilot usage, add automated tests for idle and absolute expiration, logout
 Protected operations must validate session state and authorization transactionally, or otherwise address revocation races between a session check and the protected database action.
 
 A subsequent provisional migration adds restricted, transactional session-use and logout functions. They lock and recheck session/account/device state, and insert the logout audit event atomically. These functions and their adapter remain unwired; account/device revocation workflows, CSRF enforcement, MFA, login and session issuance are not implemented.
+
+A provisional TOTP component verifies six-digit codes with a narrow time window, protects factor secrets with AES-256-GCM and identity-bound associated data, and atomically consumes a counter in PostgreSQL to prevent replay. A dedicated NOLOGIN role can invoke only the factor functions. Tests use synthetic keys and secrets. These components are not a login flow: enrollment, key management, password/MFA orchestration, throttling, recovery and privileged-account policy enforcement remain unfinished.
