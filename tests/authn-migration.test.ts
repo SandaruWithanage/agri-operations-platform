@@ -1587,7 +1587,11 @@ suite("provisional authentication migration on PostgreSQL", () => {
       const opaque = cookieHeader.split("=")[1];
       const csrfResponse = await browser("auth/csrf");
       expect(csrfResponse.status).toBe(200);
-      const csrf = (await csrfResponse.json()) as { csrfToken: string };
+      const csrf = (await csrfResponse.json()) as {
+        csrfToken: string;
+        accountId: string;
+      };
+      expect(csrf.accountId).toBe(account);
       csrfValue = csrf.csrfToken;
       const token = await runtime.token(opaque);
       const identity = await runtime.authenticate(token.accessToken);

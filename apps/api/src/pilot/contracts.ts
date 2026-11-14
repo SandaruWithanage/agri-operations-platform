@@ -16,7 +16,7 @@ export interface PilotRuntime {
     input: z.infer<typeof pilotLoginSchema>,
     clientKey: string,
   ): Promise<{ cookie: string }>;
-  csrf(secret: string): Promise<{ csrfToken: string }>;
+  csrf(secret: string): Promise<{ csrfToken: string; accountId: string }>;
   token(secret: string): Promise<{ accessToken: string }>;
   logout(secret: string, origin: string, csrf: string): Promise<void>;
   authenticate(token: string): Promise<VerifiedActor>;

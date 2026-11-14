@@ -144,6 +144,25 @@ describe("server-only authentication BFF", () => {
         .status,
     ).toBe(503);
   });
+  it("returns only the safe account identity with a session-bound CSRF token", async () => {
+    const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+    const fetcher = vi.fn().mockResolvedValue(
+      Response.json({
+        accountId,
+        csrfToken: csrf,
+        sessionId: "private",
+        secret: opaque,
+      }),
+    );
+    const response = await createBffHandler(config, fetcher)(req("auth/csrf"));
+    expect(await response.json()).toEqual({ accountId, csrfToken: csrf });
+    const malformed = vi
+      .fn()
+      .mockResolvedValue(Response.json({ csrfToken: csrf }));
+    expect(
+      (await createBffHandler(config, malformed)(req("auth/csrf"))).status,
+    ).toBe(503);
+  });
   it("bounds browser request bodies and rejects insecure production configuration", async () => {
     const fetcher = vi.fn();
     expect(

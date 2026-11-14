@@ -174,13 +174,19 @@ export function createBffHandler(
       if (path === "auth/csrf") {
         const result = (await call("auth/csrf", "POST", secret)) as {
           csrfToken?: unknown;
+          accountId?: unknown;
         };
         if (
+          typeof result.accountId !== "string" ||
+          !uuid.test(result.accountId) ||
           typeof result.csrfToken !== "string" ||
           !/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(result.csrfToken)
         )
           throw new Failure(503);
-        return reply({ csrfToken: result.csrfToken });
+        return reply({
+          csrfToken: result.csrfToken,
+          accountId: result.accountId,
+        });
       }
       const csrf = request.headers.get("x-csrf-token") ?? "";
       if (

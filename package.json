@@ -18,7 +18,9 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:validate": "pnpm --filter @agri/database validate"
+    "db:validate": "pnpm --filter @agri/database validate",
+    "db:migrate:plan": "node scripts/native-migrations.mjs --plan",
+    "db:migrate": "node scripts/native-migrations.mjs --apply"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

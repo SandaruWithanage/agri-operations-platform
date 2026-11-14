@@ -11,6 +11,11 @@
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
+    },
+    "@agri/api#dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["API_PORT", "ENABLE_PILOT_AUTH", "PILOT_*"]
     }
   },
   "globalEnv": ["DATABASE_URL", "NEXT_TELEMETRY_DISABLED"]

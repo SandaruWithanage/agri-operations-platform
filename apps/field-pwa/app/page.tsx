@@ -1,6 +1,7 @@
 "use client";
 import { applicationName } from "@agri/ui";
 import { useEffect, useState } from "react";
+import { PilotWorkspace } from "../components/pilot-workspace";
 import { copy } from "@agri/i18n";
 export default function Home() {
   const [online, setOnline] = useState<boolean | null>(null);
@@ -62,11 +63,7 @@ export default function Home() {
       )}
       <div className="card">
         <h1>{c.title}</h1>
-        <p>{c.description}</p>
-        <p className="status" role="status">
-          {c.warning}
-        </p>
-        <p>{c.step}</p>
+        <PilotWorkspace language={language} />
       </div>
     </main>
   );

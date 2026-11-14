@@ -28,7 +28,10 @@ function fake(): PilotRuntime {
   return {
     internalKey: key,
     login: vi.fn().mockResolvedValue({ cookie: "synthetic" }),
-    csrf: vi.fn().mockResolvedValue({ csrfToken: "synthetic" }),
+    csrf: vi.fn().mockResolvedValue({
+      csrfToken: "synthetic",
+      accountId: actor.accountId,
+    }),
     token: vi.fn().mockResolvedValue({ accessToken: "synthetic" }),
     logout: vi.fn(),
     authenticate: vi.fn().mockResolvedValue(actor),

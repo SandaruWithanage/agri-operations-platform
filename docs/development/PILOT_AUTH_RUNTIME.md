@@ -4,7 +4,7 @@ Status: integration implemented and tested with synthetic data; production valid
 
 ## Database setup
 
-Apply each SQL file in one transaction, using a reviewed migration identity on a clean disposable database:
+Use the tracked runner described in [database/README.md](../../database/README.md), with a reviewed migration identity on a clean disposable database. Its manifest applies these files in order:
 
 1. `20261115_authn_foundation/up.sql`
 2. `20261115_authn_foundation/session-reader-grants.sql`
@@ -16,7 +16,7 @@ Apply each SQL file in one transaction, using a reviewed migration identity on a
 8. `20261115_zzzz_farmer_abac/up.sql`
 9. `20261115_zzzzz_registration_reference/up.sql`
 
-The farmer migration installs pgcrypto in a restricted schema and expects a clean installation. Existing installations need a reviewed migration adaptation. Automatic migration tracking, upgrade/rollback rehearsals and production ownership review are still outstanding.
+The farmer migration installs pgcrypto in a restricted schema and expects a clean installation. Existing installations need a reviewed migration adaptation. The runner tracks checksums and serializes applications; upgrade/restore rehearsals and production ownership review are still outstanding.
 
 Provision separate LOGIN identities inheriting exactly one of these groups: `agri_credential_reader`, `agri_mfa_verifier`, `agri_login_throttle`, `agri_session_issuer`, `agri_session_executor`, `agri_session_reader`, `agri_farmer_runtime`. Use interactive password assignment or a secret manager; never put passwords in SQL files or shell history. Runtime startup rejects superusers, BYPASSRLS, cross-group membership, missing group access and signing-key table access. Production connection URLs require `sslmode=verify-full`. Restrict the API at the network boundary to the BFFs and terminate HTTPS with a trusted deployment configuration.
 
@@ -38,4 +38,12 @@ NestJS exposes `/pilot/` only behind the internal BFF credential. Disabled runti
 
 The integration suite creates separate synthetic PostgreSQL LOGIN roles and drives BFF requests through a live NestJS HTTP server to the database. It verifies login, cookie protection, CSRF, authorized geography, registration and JWT rejection after logout. The HTTP test uses loopback transport; production TLS/proxy behavior is not proven by that test.
 
-Remaining: browser sign-in/enrollment screens, durable authenticated device sync, account/device administration and revocation workflows, migration tooling, MFA recovery/key rotation, sensitive optional fields, farmer review/correction, deployment/backup/restore/load/security testing, Sinhala/device acceptance and independent security review. Do not treat passing component and integration tests as production approval.
+Remaining: account/device/MFA enrollment screens, durable authenticated device sync (the field registration screen currently uses online requests only), account/device administration and revocation workflows, manual-database adoption tooling, MFA recovery/key rotation, sensitive optional fields, farmer review/correction, deployment/backup/restore/load/security testing, Sinhala/device acceptance and independent security review. Do not treat passing component and integration tests as production approval.
+
+## Field browser workflow
+
+Open the field application on its configured HTTPS origin. Sign in with an already provisioned account, password, six-digit authenticator code and approved device UUID. Both languages are available before sign-in. The server supplies only currently authorized geographical choices; an empty result disables registration. No production account, fixed organization structure or sample credentials are shipped.
+
+The field page now submits the minimal farmer registration through the BFF. It generates farmer and mutation UUIDs once, obtains fresh server-validated session/CSRF context on every attempt, and requires the original account on retry. A failed or ambiguous submission keeps the form values and freezes editing until that same request succeeds. No browser storage contains credentials, CSRF tokens, JWTs or registration records. Successful responses clear the form only after the server confirms the submitted farmer UUID. A different signed-in account cannot submit the retained request. Signing out is disabled while entries or an uncertain request remain; the page installs a browser navigation warning, which is a best-effort safeguard and cannot prevent a browser/process crash.
+
+This is explicitly an **online** screen. The encrypted Dexie outbox remains a separate tested primitive and is not mounted into this workflow. Reloading or closing the page can lose unsubmitted form entries or the IDs needed for an uncertain request. Keep it open until confirmation. Durable draft autosave, account/device partitioning, device unlock/recovery, interrupted-session restoration and authenticated background/manual sync are required before this screen can be used as the offline pilot. Do not infer secure offline support from the PWA manifest or connection indicator. Sinhala copy still requires native-speaker acceptance testing.

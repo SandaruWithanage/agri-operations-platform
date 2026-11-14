@@ -210,9 +210,13 @@ export async function createPilotRuntime(
       internalKey: c.PILOT_INTERNAL_KEY,
       login: async (input, clientKey) =>
         coordinator.login({ ...input, trustedClientKey: clientKey }),
-      csrf: async (secret) => ({
-        csrfToken: csrf.issue((await use(secret)).sessionId),
-      }),
+      csrf: async (secret) => {
+        const session = await use(secret);
+        return {
+          csrfToken: csrf.issue(session.sessionId),
+          accountId: session.accountId,
+        };
+      },
       token: async (secret) => {
         const session = await use(secret);
         return {
