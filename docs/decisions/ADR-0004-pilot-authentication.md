@@ -15,3 +15,7 @@ A provisional native SQL migration creates an isolated authentication schema, ac
 Before pilot usage, add automated tests for idle and absolute expiration, logout, revoked sessions and devices, MFA enforcement, CSRF, token signing/rotation and end-to-end offline resynchronization. Security review, session-store recovery, local unlock recovery, device encryption and device-deauthorization procedures remain required.
 
 Protected operations must validate session state and authorization transactionally, or otherwise address revocation races between a session check and the protected database action.
+
+A subsequent provisional migration adds restricted, transactional session-use and logout functions. They lock and recheck session/account/device state, and insert the logout audit event atomically. These functions and their adapter remain unwired; account/device revocation workflows, CSRF enforcement, MFA, login and session issuance are not implemented.
+
+A provisional TOTP component verifies six-digit codes with a narrow time window, protects factor secrets with AES-256-GCM and identity-bound associated data, and atomically consumes a counter in PostgreSQL to prevent replay. A dedicated NOLOGIN role can invoke only the factor functions. Tests use synthetic keys and secrets. These components are not a login flow: enrollment, key management, password/MFA orchestration, throttling, recovery and privileged-account policy enforcement remain unfinished.
