@@ -1,6 +1,9 @@
 export const copy = {
   en: {
     title: "Field officer workspace",
+    role: "Field officer",
+    networkOnline: "Device reports a network connection.",
+    networkOffline: "Device is offline.",
     description:
       "Register farmers and land after the offline prototype passes device testing.",
     warning: "This scaffold does not yet save data offline.",
@@ -8,6 +11,9 @@ export const copy = {
   },
   si: {
     title: "ක්ෂේත්‍ර නිලධාරී වැඩපොළ",
+    role: "ක්ෂේත්‍ර නිලධාරී",
+    networkOnline: "උපාංගය ජාලයකට සම්බන්ධ වී ඇත.",
+    networkOffline: "උපාංගය නොබැඳිව ඇත.",
     description: "නොබැඳි පරීක්ෂණ සාර්ථක වූ පසු ගොවි සහ ඉඩම් ලියාපදිංචිය මෙතැනින් සිදු කළ හැක.",
     warning: "මෙම මුල් සංස්කරණයේ නොබැඳි දත්ත සුරැකීම තවම ක්‍රියාත්මක නොවේ.",
     step: "ඊළඟ පියවර: ගොවි ලියාපදිංචිය හා සමමුහුර්ත කිරීම",

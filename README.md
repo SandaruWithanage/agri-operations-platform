@@ -33,6 +33,6 @@ pnpm --filter @agri/api start
 pnpm db:down
 ```
 
-Build requires DATABASE_URL (copy database/.env.example to database/.env or export a local URL). It validates Prisma configuration without connecting to a database. PostGIS is initialized only on fresh Docker volumes; verify with `docker compose --env-file .env -f infrastructure/compose.yaml exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT PostGIS_Version();"'`. `db:down` retains local data.
+Build requires DATABASE_URL (copy database/.env.example to database/.env or export a local URL). It validates Prisma configuration without connecting to a database. The PostGIS image initializes the extension on fresh Docker volumes; readiness checks both PostgreSQL and PostGIS. If an old volume was initialized without PostGIS, use a reviewed local migration or create a fresh disposable volume; verify with `docker compose --env-file .env -f infrastructure/compose.yaml exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT PostGIS_Version();"'`. `db:down` retains local data.
 
 See [architecture](docs/architecture/M0_FOUNDATION.md), [security gate](docs/security/ABAC_GATE.md), and [open decisions](docs/requirements/OPEN_DECISIONS.md). CI uses the frozen lockfile and runs structure, formatting, lint, types, tests and builds. Application build outputs and all populated environment files are ignored.

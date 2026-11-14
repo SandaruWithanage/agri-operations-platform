@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Home from "../apps/field-pwa/app/page";
 afterEach(() => {
@@ -24,4 +24,25 @@ test("officer can switch between Sinhala and English with matching document lang
   expect(
     screen.getByRole("button", { name: "සිංහල" }).getAttribute("aria-pressed"),
   ).toBe("true");
+});
+
+test("field officer sees device connection changes", () => {
+  const original = Object.getOwnPropertyDescriptor(window.navigator, "onLine");
+  try {
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
+    render(<Home />);
+    expect(screen.getByText("උපාංගය ජාලයකට සම්බන්ධ වී ඇත.")).toBeTruthy();
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    act(() => window.dispatchEvent(new Event("offline")));
+    expect(screen.getByText("උපාංගය නොබැඳිව ඇත.")).toBeTruthy();
+  } finally {
+    if (original) Object.defineProperty(window.navigator, "onLine", original);
+    else Reflect.deleteProperty(window.navigator, "onLine");
+  }
 });

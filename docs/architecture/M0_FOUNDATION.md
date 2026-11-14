@@ -6,6 +6,6 @@ Shared packages: ui owns presentation primitives and application branding; desig
 
 The field manifest and production-only service worker provide a public offline fallback. They do not cache authenticated pages, API responses or farmer information. Dexie, queued writes, conflict handling and device testing remain future milestones. Installability varies by browser; verify icons and installation on target devices before rollout.
 
-Prisma is configured without domain models. Native SQL initializes PostGIS on a fresh local volume. RLS, ABAC and authentication are intentionally absent; the API has no database connection. Docker's bootstrap account is privileged and must never become the runtime API account. See ../security/ABAC_GATE.md for future security requirements.
+Prisma is configured without domain models. The official PostGIS image initializes the extension on a fresh local volume; the readiness check verifies the extension before reporting healthy. The SQL file documents the equivalent command for future reviewed migrations. RLS, ABAC and authentication are intentionally absent; the API has no database connection. Docker's bootstrap account is privileged and must never become the runtime API account. See ../security/ABAC_GATE.md for future security requirements.
 
 Future modules should own their services, validation contracts and persistence access. Cross-domain access must use explicit contracts, not shared mutable models. Sinhala copy requires review by a fluent domain user.

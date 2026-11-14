@@ -2,7 +2,7 @@
 
 Status: provisional development decision, not a client requirement.
 
-Use Prisma 6 CLI for schema validation only. No client is generated and no domain models or API database connection exist. Reassess the Prisma major version and adapter at M1 before persistence implementation. Native SQL currently enables only PostGIS in fresh local Docker volumes.
+Use Prisma 6 CLI for schema validation only. No client is generated and no domain models or API database connection exist. Reassess the Prisma major version and adapter at M1 before persistence implementation. The PostGIS container initializes the extension on fresh local Docker volumes. A native SQL reference is retained for future reviewed migrations.
 
 The field PWA caches only a static public offline fallback. Domain data storage, authenticated offline sessions and synchronization remain M2 work. Persist only the interface language in localStorage.
 
