@@ -1,0 +1,8 @@
+// M0 intentionally contains no domain models. Native SQL owns PostGIS and future RLS.
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
