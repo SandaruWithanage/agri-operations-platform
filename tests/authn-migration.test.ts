@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
-import { createHmac, generateKeyPairSync } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createHmac, generateKeyPairSync, randomUUID, sign } from "node:crypto";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { PostgresSessionReader } from "../apps/api/src/authentication/postgres-session-reader";
 import { SessionAccess } from "../apps/api/src/authentication/session-access";
@@ -25,6 +25,36 @@ import {
   verifyPassword,
 } from "../apps/api/src/authentication/passwords";
 
+import {
+  DeviceProofs,
+  deviceSignatureText,
+} from "../apps/api/src/authentication/device-proof";
+import {
+  enrollDevice,
+  revokeDevice,
+  assertProvisioner,
+} from "../scripts/device-enrollment.mjs";
+import { createHash } from "node:crypto";
+const devicePair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const deviceJwk = devicePair.publicKey.export({ format: "jwk" });
+const keyId = "16b1bd24-775a-4da4-8bc0-f0376bd0fd22";
+const proofId = "159802f9-fcdd-4a4f-8337-cb2445c13213";
+const proofId2 = "6a602c36-47b6-493d-8ede-20b89f94c4e5";
+const origin = "https://field.example.test";
+const challengeKey = Buffer.alloc(32, 7);
+function signedProof(service: DeviceProofs) {
+  const challenge = service.issue("synthetic-a", device, origin);
+  return {
+    ...challenge,
+    signature: sign(
+      "sha256",
+      Buffer.from(
+        deviceSignatureText(origin, "synthetic-a", device, challenge),
+      ),
+      { key: devicePair.privateKey, dsaEncoding: "ieee-p1363" },
+    ).toString("base64url"),
+  };
+}
 const url = process.env.DATABASE_TEST_URL;
 const suite = url ? describe : describe.skip;
 const account = "a50456eb-af66-41f0-8c38-0bc827249cd2";
@@ -33,6 +63,7 @@ const device = "38f0dbdd-85db-4c75-bced-066e8ea54b86";
 const session = "11b492ca-bcb4-4662-91d9-88789a80a0c2";
 let client: pg.Client;
 let committedForConcurrency = false;
+let upgradeResult: { revoked: boolean; audit: number } | null = null;
 
 suite("provisional authentication migration on PostgreSQL", () => {
   beforeAll(async () => {
@@ -102,6 +133,44 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    const legacyAccount = randomUUID();
+    const legacyDevice = randomUUID();
+    const legacySession = randomUUID();
+    await client.query(
+      "INSERT INTO authn.account(id,login_name,password_hash) VALUES($1,'synthetic-upgrade','$argon2id$synthetic')",
+      [legacyAccount],
+    );
+    await client.query(
+      "INSERT INTO authn.device(id,account_id,state,approved_at) VALUES($1,$2,'approved',now())",
+      [legacyDevice, legacyAccount],
+    );
+    await client.query(
+      "INSERT INTO authn.login_session(id,account_id,device_id,device_required,cookie_secret_hash,idle_expires_at,absolute_expires_at) VALUES($1,$2,$3,true,$4,now()+interval '1 hour',now()+interval '2 hours')",
+      [legacySession, legacyAccount, legacyDevice, Buffer.alloc(32, 60)],
+    );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzz_device_proof/up.sql",
+        "utf8",
+      ),
+    );
+    upgradeResult = (
+      await client.query(
+        "SELECT revoked_at IS NOT NULL AS revoked,(SELECT count(*)::int FROM authn.revocation_event WHERE session_id=$1) AS audit FROM authn.login_session WHERE id=$1",
+        [legacySession],
+      )
+    ).rows[0];
+    await client.query(
+      "DELETE FROM authn.revocation_event WHERE session_id=$1",
+      [legacySession],
+    );
+    await client.query("DELETE FROM authn.login_session WHERE id=$1", [
+      legacySession,
+    ]);
+    await client.query("DELETE FROM authn.device WHERE id=$1", [legacyDevice]);
+    await client.query("DELETE FROM authn.account WHERE id=$1", [
+      legacyAccount,
+    ]);
     await client.query(
       "INSERT INTO authn.account (id, login_name, password_hash) VALUES ($1, 'synthetic-a', '$argon2id$test'), ($2, 'synthetic-b', '$argon2id$test')",
       [account, another],
@@ -110,6 +179,29 @@ suite("provisional authentication migration on PostgreSQL", () => {
       "INSERT INTO authn.device (id, account_id, state, approved_at) VALUES ($1, $2, 'approved', now())",
       [device, account],
     );
+    await client.query(
+      "INSERT INTO authn.device_key(id,device_id,account_id,public_jwk) VALUES($1,$2,$3,$4)",
+      [keyId, device, account, deviceJwk],
+    );
+    await client.query(
+      "INSERT INTO authn.device_assertion(id,account_id,device_id,key_id,challenge_hash,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '25 seconds'),($6,$2,$3,$4,$7,clock_timestamp()+interval '25 seconds')",
+      [
+        proofId,
+        account,
+        device,
+        keyId,
+        Buffer.alloc(32, 28),
+        proofId2,
+        Buffer.alloc(32, 29),
+      ],
+    );
+  });
+  beforeEach(async () => {
+    if (client)
+      await client.query(
+        "UPDATE authn.device_assertion SET created_at=clock_timestamp(),expires_at=clock_timestamp()+interval '25 seconds' WHERE id=ANY($1::uuid[]) AND used_at IS NULL",
+        [[proofId, proofId2]],
+      );
   });
   afterAll(async () => {
     if (client) {
@@ -119,7 +211,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
           "DROP SCHEMA farm, authz, authz_crypto, authn CASCADE",
         );
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6",
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner",
         );
       } else await client.query("ROLLBACK");
       await client.end();
@@ -137,6 +229,9 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await client.query("ROLLBACK TO SAVEPOINT invalid_write");
     }
   }
+  it("revokes and audits pre-proof sessions during the device-proof migration", () => {
+    expect(upgradeResult).toEqual({ revoked: true, audit: 1 });
+  });
   it("stores an opaque cookie digest with a bounded session and device ownership", async () => {
     await client.query(
       "INSERT INTO authn.login_session (id, account_id, device_id, cookie_secret_hash, idle_expires_at, absolute_expires_at) VALUES ($1,$2,$3,$4,now()+interval '1 hour',now()+interval '1 day')",
@@ -587,8 +682,8 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "42501",
       );
       const issued = await client.query(
-        "SELECT authn.issue_session($1,$2,$3,$4,true,$5,60,3600) AS ok",
-        [id, event, account, device, Buffer.alloc(32, 18)],
+        "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+        [id, event, account, device, Buffer.alloc(32, 18), proofId],
       );
       expect(issued.rows[0].ok).toBe(true);
       await client.query("RESET SESSION AUTHORIZATION");
@@ -623,19 +718,34 @@ suite("provisional authentication migration on PostgreSQL", () => {
         executeCommitted: (sql, parameters) => client.query(sql, parameters),
       });
       const issued = await issuer.issue(
-        { accountId: account, deviceId: device, deviceRequired: true },
+        {
+          accountId: account,
+          deviceId: device,
+          deviceRequired: true,
+          deviceAssertionId: proofId,
+        },
         { idleSeconds: 60, absoluteSeconds: 3600 },
       );
       expect(issued.cookie).toContain("Secure; HttpOnly; SameSite=Lax");
       await expect(
         issuer.issue(
-          { accountId: another, deviceId: device, deviceRequired: true },
+          {
+            accountId: another,
+            deviceId: device,
+            deviceRequired: true,
+            deviceAssertionId: proofId,
+          },
           { idleSeconds: 60, absoluteSeconds: 3600 },
         ),
       ).rejects.toThrow("denied");
       await expect(
         issuer.issue(
-          { accountId: account, deviceId: device, deviceRequired: true },
+          {
+            accountId: account,
+            deviceId: device,
+            deviceRequired: true,
+            deviceAssertionId: proofId,
+          },
           { idleSeconds: 60, absoluteSeconds: 30 },
         ),
       ).rejects.toThrow("lifetime");
@@ -667,8 +777,8 @@ suite("provisional authentication migration on PostgreSQL", () => {
         expect(
           (
             await client.query(
-              "SELECT authn.issue_session($1,$2,$3,$4,$5,$6,$7,$8) AS ok",
-              params,
+              "SELECT authn.issue_device_session($1,$2,$3,$4,$5,$6,$7,$8,$9) AS ok",
+              [...params, proofId],
             )
           ).rows[0].ok,
         ).toBe(false);
@@ -682,8 +792,8 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (
           await client.query(
-            "SELECT authn.issue_session($1,$2,$3,$4,true,$5,60,3600) AS ok",
-            [id, event, account, device, Buffer.alloc(32, 18)],
+            "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+            [id, event, account, device, Buffer.alloc(32, 18), proofId],
           )
         ).rows[0].ok,
       ).toBe(false);
@@ -701,14 +811,14 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (
           await client.query(
-            "SELECT authn.issue_session($1,$2,$3,$4,true,$5,60,3600) AS ok",
-            [first, event, account, device, Buffer.alloc(32, 18)],
+            "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+            [first, event, account, device, Buffer.alloc(32, 18), proofId],
           )
         ).rows[0].ok,
       ).toBe(true);
       await expectDenied(
-        "SELECT authn.issue_session($1,$2,$3,$4,true,$5,60,3600)",
-        [second, event, account, device, Buffer.alloc(32, 19)],
+        "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6)",
+        [second, event, account, device, Buffer.alloc(32, 19), proofId2],
         "23505",
       );
       await client.query("RESET ROLE");
@@ -785,6 +895,16 @@ suite("provisional authentication migration on PostgreSQL", () => {
         ),
         issuer,
         { idleSeconds: 60, absoluteSeconds: 3600 },
+        new DeviceProofs(
+          { query: queryAs("agri_device_verifier") },
+          challengeKey,
+          [origin],
+        ),
+      );
+      const proofs = new DeviceProofs(
+        { query: queryAs("agri_device_verifier") },
+        challengeKey,
+        [origin],
       );
       const result = await coordinator.login({
         loginName: "synthetic-a",
@@ -792,6 +912,8 @@ suite("provisional authentication migration on PostgreSQL", () => {
         otp: code,
         deviceId: device,
         trustedClientKey: "synthetic",
+        trustedOrigin: origin,
+        deviceProof: signedProof(proofs),
       });
       const raw = result.cookie.split(";")[0].split("=")[1];
       const operations = new PostgresSessionOperations({
@@ -810,10 +932,139 @@ suite("provisional authentication migration on PostgreSQL", () => {
           otp: code,
           deviceId: device,
           trustedClientKey: "synthetic",
+          trustedOrigin: origin,
+          deviceProof: signedProof(proofs),
         }),
       ).rejects.toThrow("Invalid credentials");
     } finally {
       await client.query("ROLLBACK TO SAVEPOINT integrated_login");
+    }
+  });
+  it("requires an unused current device assertion, rejects legacy issuance and audits key revocation", async () => {
+    await client.query("SAVEPOINT device_security");
+    try {
+      await client.query("SET LOCAL ROLE agri_session_issuer");
+      await expectDenied(
+        "SELECT authn.issue_session($1,$2,$3,$4,true,$5,60,3600)",
+        [randomUUID(), randomUUID(), account, device, Buffer.alloc(32, 21)],
+        "42501",
+      );
+      await expectDenied("SELECT * FROM authn.device_key", [], "42501");
+      const issue = (assertion: string | null) =>
+        client.query(
+          "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+          [
+            randomUUID(),
+            randomUUID(),
+            account,
+            device,
+            Buffer.from(randomUUID().replaceAll("-", "")),
+            assertion,
+          ],
+        );
+      expect((await issue(null)).rows[0].ok).toBe(false);
+      expect((await issue(proofId)).rows[0].ok).toBe(true);
+      expect((await issue(proofId)).rows[0].ok).toBe(false);
+      await client.query("RESET ROLE");
+      await client.query(
+        "UPDATE authn.device_assertion SET created_at=clock_timestamp()-interval '60 seconds',expires_at=clock_timestamp()-interval '40 seconds' WHERE id=$1",
+        [proofId2],
+      );
+      await client.query("SET LOCAL ROLE agri_session_issuer");
+      expect((await issue(proofId2)).rows[0].ok).toBe(false);
+      await client.query("RESET ROLE");
+      await expectDenied(
+        "UPDATE authn.device_key SET public_jwk=$1 WHERE id=$2",
+        [{ ...deviceJwk, x: "A".repeat(43) }, keyId],
+        "42501",
+      );
+      await expectDenied(
+        "DELETE FROM authn.device_key WHERE id=$1",
+        [keyId],
+        "42501",
+      );
+      await client.query(
+        "UPDATE authn.device_key SET revoked_at=clock_timestamp() WHERE id=$1",
+        [keyId],
+      );
+      expect(
+        (
+          await client.query("SELECT state FROM authn.device WHERE id=$1", [
+            device,
+          ])
+        ).rows[0].state,
+      ).toBe("revoked");
+      expect(
+        (
+          await client.query(
+            "SELECT kind FROM authn.device_key_event WHERE key_id=$1 ORDER BY created_at",
+            [keyId],
+          )
+        ).rows.map((row) => row.kind),
+      ).toEqual(["enrolled", "revoked"]);
+      await client.query("SET LOCAL ROLE agri_device_verifier");
+      expect(
+        (
+          await client.query("SELECT * FROM authn.read_device_key($1,$2)", [
+            account,
+            device,
+          ])
+        ).rows,
+      ).toEqual([]);
+      await expectDenied("SELECT * FROM authn.device_assertion", [], "42501");
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT device_security");
+    }
+  });
+  it("rejects reused challenges, wrong account/device and key revocation between verification and session issuance", async () => {
+    await client.query("SAVEPOINT device_replay");
+    try {
+      const query = async (sql: string, parameters: unknown[]) => {
+        await client.query("SET LOCAL ROLE agri_device_verifier");
+        try {
+          return await client.query(sql, parameters);
+        } finally {
+          await client.query("RESET ROLE");
+        }
+      };
+      const proofs = new DeviceProofs({ query }, challengeKey, [origin]);
+      const proof = signedProof(proofs);
+      expect(
+        await proofs.verify(another, "synthetic-a", device, origin, proof),
+      ).toBeNull();
+      const assertion = await proofs.verify(
+        account,
+        "synthetic-a",
+        device,
+        origin,
+        proof,
+      );
+      expect(assertion).not.toBeNull();
+      expect(
+        await proofs.verify(account, "synthetic-a", device, origin, proof),
+      ).toBeNull();
+      await client.query(
+        "UPDATE authn.device_key SET revoked_at=clock_timestamp() WHERE id=$1",
+        [keyId],
+      );
+      await client.query("SET LOCAL ROLE agri_session_issuer");
+      expect(
+        (
+          await client.query(
+            "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+            [
+              randomUUID(),
+              randomUUID(),
+              account,
+              device,
+              Buffer.alloc(32, 30),
+              assertion,
+            ],
+          )
+        ).rows[0].ok,
+      ).toBe(false);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT device_replay");
     }
   });
   it("restricts credential lookup to the dedicated role without direct table access", async () => {
@@ -1475,6 +1726,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       "agri_session_executor",
       "agri_session_reader",
       "agri_farmer_runtime",
+      "agri_device_verifier",
     ];
     const mappings: Record<string, string> = {};
     for (let i = 0; i < groups.length; i++) {
@@ -1516,6 +1768,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       PILOT_THROTTLE_KEY: Buffer.alloc(32, 5).toString("base64"),
       PILOT_CSRF_KEY: Buffer.alloc(32, 6).toString("base64"),
       PILOT_ACTOR_KEY: Buffer.alloc(32, 42).toString("base64"),
+      PILOT_DEVICE_CHALLENGE_KEY: challengeKey.toString("base64"),
       PILOT_JWT_PRIVATE_KEY: pair.privateKey,
       PILOT_JWT_KID: "synthetic",
       PILOT_JWT_ISSUER: "synthetic-auth",
@@ -1531,6 +1784,24 @@ suite("provisional authentication migration on PostgreSQL", () => {
         }),
       }),
     ).rejects.toThrow("least privilege");
+    await client.query(
+      "GRANT INSERT(id) ON authn.login_session TO agri_test_login_0",
+    );
+    try {
+      await expect(createPilotRuntime(env)).rejects.toThrow("least privilege");
+    } finally {
+      await client.query(
+        "REVOKE INSERT(id) ON authn.login_session FROM agri_test_login_0",
+      );
+    }
+    await client.query("GRANT agri_device_provisioner TO agri_test_login_0");
+    try {
+      await expect(createPilotRuntime(env)).rejects.toThrow("least privilege");
+    } finally {
+      await client.query(
+        "REVOKE agri_device_provisioner FROM agri_test_login_0",
+      );
+    }
     const runtime = (await createPilotRuntime(env))!;
     let app: Awaited<ReturnType<typeof NestFactory.create>> | undefined;
     try {
@@ -1575,11 +1846,28 @@ suite("provisional authentication migration on PostgreSQL", () => {
             body: data !== undefined ? JSON.stringify(data) : undefined,
           }),
         );
+      const challengeResponse = await browser("auth/device-challenge", "POST", {
+        loginName: "synthetic-a",
+        deviceId: device,
+      });
+      expect(challengeResponse.status).toBe(200);
+      const challenge = await challengeResponse.json();
+      const deviceProof = {
+        ...challenge,
+        signature: sign(
+          "sha256",
+          Buffer.from(
+            deviceSignatureText(origin, "synthetic-a", device, challenge),
+          ),
+          { key: devicePair.privateKey, dsaEncoding: "ieee-p1363" },
+        ).toString("base64url"),
+      };
       const login = await browser("auth/login", "POST", {
         loginName: "synthetic-a",
         password: "synthetic-password",
         otp: code,
         deviceId: device,
+        deviceProof,
       });
       expect(login.status).toBe(200);
       expect(await login.json()).toEqual({ signedIn: true });
@@ -1650,4 +1938,249 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await runtime.close();
     }
   }, 30000);
+
+  it("enrolls only the operator-selected account/device and never replaces an enrolled key", async () => {
+    const deviceId = randomUUID();
+    const pendingDevice = randomUUID();
+    await client.query(
+      "INSERT INTO authn.device(id,account_id,state) VALUES($1,$2,'pending')",
+      [pendingDevice, account],
+    );
+    await client.query(
+      "INSERT INTO authn.device(id,account_id,state,approved_at) VALUES($1,$2,'approved',clock_timestamp())",
+      [deviceId, account],
+    );
+    const publicKey = deviceJwk;
+    const fingerprint = createHash("sha256")
+      .update(
+        JSON.stringify({
+          crv: publicKey.crv,
+          kty: publicKey.kty,
+          x: publicKey.x,
+          y: publicKey.y,
+        }),
+      )
+      .digest("hex");
+    const request = { version: 1, origin, deviceId, publicKey, fingerprint };
+    await expect(assertProvisioner(client)).rejects.toThrow("least-privilege");
+    await client.query("SET SESSION AUTHORIZATION agri_device_provisioner");
+    try {
+      await assertProvisioner(client);
+      await expect(
+        client.query(
+          "INSERT INTO authn.device_key(id,device_id,account_id,public_jwk) VALUES($1,$2,$3,$4)",
+          [randomUUID(), pendingDevice, account, deviceJwk],
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        client.query("SELECT password_hash FROM authn.account"),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        enrollDevice(client, request, {
+          accountId: another,
+          origin,
+          fingerprint,
+        }),
+      ).rejects.toThrow("approved device");
+      await expect(
+        enrollDevice(client, request, {
+          accountId: account,
+          origin,
+          fingerprint: "0".repeat(64),
+        }),
+      ).rejects.toThrow("fingerprint");
+      expect(
+        await enrollDevice(client, request, {
+          accountId: account,
+          origin,
+          fingerprint,
+        }),
+      ).toBe("enrolled");
+      expect(
+        await enrollDevice(client, request, {
+          accountId: account,
+          origin,
+          fingerprint,
+        }),
+      ).toBe("already-enrolled");
+      const other = generateKeyPairSync("ec", {
+        namedCurve: "prime256v1",
+      }).publicKey.export({ format: "jwk" });
+      const otherFingerprint = createHash("sha256")
+        .update(
+          JSON.stringify({
+            crv: other.crv,
+            kty: other.kty,
+            x: other.x,
+            y: other.y,
+          }),
+        )
+        .digest("hex");
+      await expect(
+        enrollDevice(
+          client,
+          { ...request, publicKey: other, fingerprint: otherFingerprint },
+          { accountId: account, origin, fingerprint: otherFingerprint },
+        ),
+      ).rejects.toThrow("cannot be replaced");
+      expect(await revokeDevice(client, { accountId: account, deviceId })).toBe(
+        "revoked",
+      );
+      expect(await revokeDevice(client, { accountId: account, deviceId })).toBe(
+        "already-revoked",
+      );
+    } finally {
+      await client.query("RESET SESSION AUTHORIZATION");
+    }
+    expect(
+      (
+        await client.query(
+          "SELECT kind FROM authn.device_key_event e JOIN authn.device_key k ON k.id=e.key_id WHERE k.device_id=$1 ORDER BY e.created_at",
+          [deviceId],
+        )
+      ).rows.map((row) => row.kind),
+    ).toEqual(["enrolled", "revoked"]);
+  });
+  it("expires device assertions after an account-lock wait and rolls back session plus audit", async () => {
+    const assertion = randomUUID();
+    const sessionId = randomUUID();
+    const event = randomUUID();
+    await client.query(
+      "INSERT INTO authn.device_assertion(id,account_id,device_id,key_id,challenge_hash,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 second')",
+      [assertion, account, device, keyId, Buffer.alloc(32, 33)],
+    );
+    const worker = new pg.Client({ connectionString: url });
+    await worker.connect();
+    let pending:
+      | Promise<{ error?: { code?: string }; value?: pg.QueryResult }>
+      | undefined;
+    try {
+      const pid = (await worker.query("SELECT pg_backend_pid() AS pid")).rows[0]
+        .pid;
+      await worker.query("SET SESSION AUTHORIZATION agri_session_issuer");
+      await client.query("BEGIN");
+      await client.query(
+        "SELECT id FROM authn.account WHERE id=$1 FOR UPDATE",
+        [account],
+      );
+      pending = worker
+        .query(
+          "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+          [sessionId, event, account, device, Buffer.alloc(32, 34), assertion],
+        )
+        .then(
+          (value) => ({ value }),
+          (error) => ({ error }),
+        );
+      let blocked = false;
+      for (let i = 0; i < 40; i++) {
+        if (
+          (
+            await client.query(
+              "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+              [pid],
+            )
+          ).rows[0]?.wait_event_type === "Lock"
+        ) {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(blocked).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await client.query("COMMIT");
+      expect((await pending).error?.code).toBe("42501");
+      expect(
+        (
+          await client.query("SELECT id FROM authn.login_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await client.query(
+            "SELECT id FROM authn.session_issuance_event WHERE id=$1",
+            [event],
+          )
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await client.query(
+            "SELECT used_at FROM authn.device_assertion WHERE id=$1",
+            [assertion],
+          )
+        ).rows[0].used_at,
+      ).toBeNull();
+    } finally {
+      await client.query("ROLLBACK");
+      if (pending) await pending;
+      await worker.end();
+    }
+  }, 15000);
+  it("consumes one assertion once under concurrency and device key revocation blocks existing sessions and RLS", async () => {
+    const assertion = randomUUID();
+    await client.query(
+      "INSERT INTO authn.device_assertion(id,account_id,device_id,key_id,challenge_hash,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '25 seconds')",
+      [assertion, account, device, keyId, Buffer.alloc(32, 35)],
+    );
+    const first = new pg.Client({ connectionString: url });
+    const second = new pg.Client({ connectionString: url });
+    await Promise.all([first.connect(), second.connect()]);
+    const sessions = [randomUUID(), randomUUID()];
+    const hashes = [Buffer.alloc(32, 36), Buffer.alloc(32, 37)];
+    try {
+      await Promise.all([
+        first.query("SET SESSION AUTHORIZATION agri_session_issuer"),
+        second.query("SET SESSION AUTHORIZATION agri_session_issuer"),
+      ]);
+      const results = await Promise.all(
+        [first, second].map((worker, i) =>
+          worker.query(
+            "SELECT authn.issue_device_session($1,$2,$3,$4,true,$5,60,3600,$6) AS ok",
+            [sessions[i], randomUUID(), account, device, hashes[i], assertion],
+          ),
+        ),
+      );
+      expect(results.map((result) => result.rows[0].ok).sort()).toEqual([
+        false,
+        true,
+      ]);
+      const winner = results.findIndex((result) => result.rows[0].ok);
+      await first.query("RESET SESSION AUTHORIZATION");
+      await first.query("SET SESSION AUTHORIZATION agri_session_executor");
+      expect(
+        (
+          await first.query("SELECT * FROM authn.use_session($1,60)", [
+            hashes[winner],
+          ])
+        ).rowCount,
+      ).toBe(1);
+      await client.query(
+        "UPDATE authn.device_key SET revoked_at=clock_timestamp() WHERE id=$1",
+        [keyId],
+      );
+      expect(
+        (
+          await first.query("SELECT * FROM authn.use_session($1,60)", [
+            hashes[winner],
+          ])
+        ).rowCount,
+      ).toBe(0);
+      await first.query("RESET SESSION AUTHORIZATION");
+      await first.query("SET SESSION AUTHORIZATION agri_farmer_runtime");
+      const context = new TransactionActorContext(Buffer.alloc(32, 42));
+      const actor = await context.run(
+        first,
+        { accountId: account, sessionId: sessions[winner] },
+        async (db) =>
+          (await db.query("SELECT authz.actor() AS actor", [])).rows[0].actor,
+      );
+      expect(actor).toBeNull();
+    } finally {
+      await Promise.all([first.end(), second.end()]);
+    }
+  }, 15000);
 });

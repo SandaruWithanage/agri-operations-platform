@@ -9,6 +9,7 @@ import {
 } from "jose";
 import pg from "pg";
 import { z } from "zod";
+import { DeviceProofs } from "../authentication/device-proof";
 import { LoginCoordinator } from "../authentication/login-coordinator";
 import { verifyPassword } from "../authentication/passwords";
 import { PostgresCredentialReader } from "../authentication/postgres-credential-reader";
@@ -32,6 +33,7 @@ const roles = [
   "agri_session_executor",
   "agri_session_reader",
   "agri_farmer_runtime",
+  "agri_device_verifier",
 ] as const;
 const configSchema = z.object({
   PILOT_INTERNAL_KEY: z.string().min(43).max(200),
@@ -40,6 +42,7 @@ const configSchema = z.object({
   PILOT_THROTTLE_KEY: z.string(),
   PILOT_CSRF_KEY: z.string(),
   PILOT_ACTOR_KEY: z.string(),
+  PILOT_DEVICE_CHALLENGE_KEY: z.string(),
   PILOT_JWT_PRIVATE_KEY: z.string(),
   PILOT_JWT_KID: z.string().min(1).max(100),
   PILOT_JWT_ISSUER: z.string().min(1),
@@ -142,7 +145,7 @@ export async function createPilotRuntime(
       );
       pools.set(role, pool);
       const check = await pool.query(
-        "SELECT r.rolsuper,r.rolbypassrls,pg_has_role(current_user,$1,'USAGE') AS permitted,has_table_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
+        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,pg_has_role(current_user,$1,'USAGE') AS permitted,has_table_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
         [role],
       );
       const row = check.rows[0];
@@ -150,6 +153,11 @@ export async function createPilotRuntime(
         !row ||
         row.rolsuper ||
         row.rolbypassrls ||
+        row.rolcreaterole ||
+        row.rolcreatedb ||
+        row.owner_member ||
+        row.legacy_issue !== false ||
+        row.direct_session_write !== false ||
         !row.permitted ||
         row.key_access !== false
       )
@@ -175,6 +183,11 @@ export async function createPilotRuntime(
       verifier,
       new PostgresSessionReader(pool("agri_session_reader")),
     );
+    const devices = new DeviceProofs(
+      pool("agri_device_verifier"),
+      key(c.PILOT_DEVICE_CHALLENGE_KEY),
+      c.PILOT_ORIGINS.split(","),
+    );
     const coordinator = await LoginCoordinator.create(
       new PostgresCredentialReader(pool("agri_credential_reader")),
       { verify: verifyPassword },
@@ -198,6 +211,7 @@ export async function createPilotRuntime(
         idleSeconds: c.PILOT_IDLE_SECONDS,
         absoluteSeconds: c.PILOT_ABSOLUTE_SECONDS,
       },
+      devices,
     );
     const context = new TransactionActorContext(key(c.PILOT_ACTOR_KEY));
     const registration = new FarmerRegistrationService(context);
@@ -208,8 +222,14 @@ export async function createPilotRuntime(
     };
     return {
       internalKey: c.PILOT_INTERNAL_KEY,
-      login: async (input, clientKey) =>
-        coordinator.login({ ...input, trustedClientKey: clientKey }),
+      deviceChallenge: (input, origin) =>
+        devices.issue(input.loginName, input.deviceId, origin),
+      login: async (input, clientKey, origin) =>
+        coordinator.login({
+          ...input,
+          trustedClientKey: clientKey,
+          trustedOrigin: origin,
+        }),
       csrf: async (secret) => {
         const session = await use(secret);
         return {

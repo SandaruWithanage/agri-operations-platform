@@ -43,6 +43,10 @@ Follow [database operations](database/README.md) for `pnpm db:migrate:plan` and 
 
 Follow [the pilot runtime guide](docs/development/PILOT_AUTH_RUNTIME.md) to provision restricted database connections, independent signing/encryption keys, accounts, MFA, approved devices and scoped grants. Set `ENABLE_PILOT_AUTH=true` only after completing that configuration. Missing configuration fails closed. Use HTTPS origins for the field/admin BFFs and secure session cookies. Do not put server keys into `NEXT_PUBLIC_` variables. The unconfigured local shell remains usable for layout/language development; sign-in returns service unavailable until the runtime is configured.
 
+The field screen prepares public device enrollment requests and signs login challenges using its non-exportable browser key. Follow [device enrollment and revocation](docs/development/DEVICE_ENROLLMENT.md) for independent administrator approval; a device UUID alone cannot sign in. The device-proof migration revokes existing sessions and requires an eighth runtime connection plus a separate challenge-signing key.
+
 The field screen supports online sign-in, authorized geography selection and minimal farmer registration with same-account/idempotent retries. It currently preserves entries only in the open page. The encrypted Dexie primitive is tested separately; device persistence, offline unlock/recovery and authenticated outbox synchronization are still being integrated. Do not use the online form as an offline pilot.
+
+For the Chromium device-key/retry smoke check, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
 
 For database integration tests, supply `DATABASE_TEST_URL` pointing only to a fresh isolated PostgreSQL 17 database named `agri_test`, then run `pnpm test`. The suite refuses an existing authentication schema and cleans up its synthetic fixtures/roles. Without that variable, database tests are skipped; CI supplies a disposable service. Never use a shared/production database for tests.

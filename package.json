@@ -20,7 +20,10 @@
     "format:check": "prettier --check .",
     "db:validate": "pnpm --filter @agri/database validate",
     "db:migrate:plan": "node scripts/native-migrations.mjs --plan",
-    "db:migrate": "node scripts/native-migrations.mjs --apply"
+    "db:migrate": "node scripts/native-migrations.mjs --apply",
+    "device:enroll": "node scripts/device-enrollment.mjs enroll",
+    "device:revoke": "node scripts/device-enrollment.mjs revoke",
+    "test:browser": "node tests/browser/device-proof.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
@@ -34,6 +37,7 @@
     "fake-indexeddb": "6.2.4",
     "jsdom": "^26.1.0",
     "pg": "8.16.3",
+    "playwright": "1.62.1",
     "prettier": "^3.6.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

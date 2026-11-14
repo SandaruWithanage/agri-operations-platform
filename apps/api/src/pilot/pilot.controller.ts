@@ -19,6 +19,7 @@ import { ZodError } from "zod";
 import {
   PILOT_RUNTIME,
   pilotLoginSchema,
+  deviceChallengeRequestSchema,
   type PilotRuntime,
 } from "./contracts";
 
@@ -76,11 +77,33 @@ export class PilotController {
       throw new ServiceUnavailableException("Request could not be completed");
     }
   }
+  @Post("auth/device-challenge")
+  @HttpCode(200)
+  deviceChallenge(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      try {
+        return runtime.deviceChallenge(
+          deviceChallengeRequestSchema.parse(input),
+          origin ?? "",
+        );
+      } catch (error) {
+        if ((error as Error)?.message === "Invalid credentials")
+          throw new UnauthorizedException();
+        throw error;
+      }
+    });
+  }
   @Post("auth/login")
   @HttpCode(200)
   login(
     @Headers("x-agri-bff-key") key: string | undefined,
     @Body() input: unknown,
+    @Headers("x-agri-origin") origin: string | undefined,
     @Req() req: Request,
   ) {
     const runtime = this.trusted(key);
@@ -90,6 +113,7 @@ export class PilotController {
         return await runtime.login(
           data,
           req.socket.remoteAddress ?? "unknown-bff",
+          origin ?? "",
         );
       } catch (error) {
         if ((error as Error)?.message === "Invalid credentials")

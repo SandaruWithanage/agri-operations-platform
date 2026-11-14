@@ -18,6 +18,10 @@ import {
 const words = {
   en: {
     signIn: "Sign in",
+    fingerprint: "Device verification code",
+    prepare: "Download device enrollment request",
+    prepared:
+      "Send this public enrollment request to your administrator through the approved channel. It contains no private key. Approval is required before sign-in.",
     login: "Account name",
     password: "Password",
     otp: "Authenticator code",
@@ -46,6 +50,10 @@ const words = {
   },
   si: {
     signIn: "පුරන්න",
+    fingerprint: "උපාංග තහවුරු කිරීමේ කේතය",
+    prepare: "උපාංග ලියාපදිංචි ඉල්ලීම බාගන්න",
+    prepared:
+      "මෙම පොදු ලියාපදිංචි ඉල්ලීම අනුමත මාර්ගයෙන් පරිපාලක වෙත යවන්න. එහි පෞද්ගලික යතුර නොමැත. පුරනය වීමට පෙර අනුමැතිය අවශ්‍යයි.",
     login: "ගිණුම් නාමය",
     password: "මුරපදය",
     otp: "සත්‍යාපක කේතය",
@@ -74,7 +82,13 @@ const words = {
 } as const;
 type Context = Awaited<ReturnType<PilotClient["context"]>>;
 type Message =
-  "saved" | "auth" | "denied" | "conflict" | "failure" | "loginFailure";
+  | "prepared"
+  | "saved"
+  | "auth"
+  | "denied"
+  | "conflict"
+  | "failure"
+  | "loginFailure";
 
 export function PilotWorkspace({
   language,
@@ -84,6 +98,8 @@ export function PilotWorkspace({
   client?: PilotClient;
 }) {
   const [client] = useState(() => supplied ?? new PilotClient());
+  const loginForm = useRef<HTMLFormElement>(null);
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [context, setContext] = useState<Context | null>(null);
   const owner = useRef<string | null>(null);
   const pending = useRef<RegistrationRequest | null>(null);
@@ -203,10 +219,28 @@ export function PilotWorkspace({
       ) : (
         <>
           {message && (
-            <p role={message === "saved" ? "status" : "alert"}>{c[message]}</p>
+            <p
+              role={
+                message === "saved" || message === "prepared"
+                  ? "status"
+                  : "alert"
+              }
+            >
+              {c[message]}
+            </p>
+          )}
+          {fingerprint && (
+            <p>
+              {c.fingerprint}:{" "}
+              <code style={{ overflowWrap: "anywhere" }}>{fingerprint}</code>
+            </p>
           )}
           {!signedIn && (
-            <form className="registration-form" onSubmit={login}>
+            <form
+              className="registration-form"
+              onSubmit={login}
+              ref={loginForm}
+            >
               <h2>{c.signIn}</h2>
               <p>{c.setup}</p>
               <label htmlFor="pilot-login">{c.login}</label>
@@ -248,6 +282,38 @@ export function PilotWorkspace({
                 required
                 disabled={busy}
               />
+              <button
+                disabled={busy}
+                type="button"
+                onClick={async () => {
+                  const field = loginForm.current?.elements.namedItem(
+                    "deviceId",
+                  ) as HTMLInputElement | null;
+                  if (!field || !field.reportValidity()) return;
+                  setBusy(true);
+                  try {
+                    const request = await client.prepareDevice(field.value);
+                    setFingerprint(request.fingerprint);
+                    const url = URL.createObjectURL(
+                      new Blob([JSON.stringify(request, null, 2)], {
+                        type: "application/json",
+                      }),
+                    );
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "agri-device-enrollment.json";
+                    link.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    setMessage("prepared");
+                  } catch {
+                    setMessage("failure");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {c.prepare}
+              </button>
               <button disabled={busy} type="submit">
                 {busy ? c.working : c.signIn}
               </button>

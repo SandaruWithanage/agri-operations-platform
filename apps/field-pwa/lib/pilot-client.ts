@@ -1,3 +1,4 @@
+import { DeviceKeys, deviceKeyFingerprint } from "@agri/sync-client";
 import type { FarmerRegistration } from "@agri/validation";
 
 export class PilotRequestError extends Error {
@@ -14,9 +15,29 @@ const uuid =
 
 /** Browser transport: cookies are HttpOnly; JWTs are never returned by the BFF. */
 export class PilotClient {
+  private devices?: DeviceKeys;
+  private readonly deviceFactory: () => DeviceKeys;
+  private readonly origin: () => string;
   constructor(
     private readonly fetcher: typeof fetch = (...args) => fetch(...args),
-  ) {}
+    options: { devices?: () => DeviceKeys; origin?: () => string } = {},
+  ) {
+    this.deviceFactory = options.devices ?? (() => new DeviceKeys());
+    this.origin = options.origin ?? (() => window.location.origin);
+  }
+  private keys() {
+    return (this.devices ??= this.deviceFactory());
+  }
+  async prepareDevice(deviceId: string) {
+    const publicKey = await this.keys().prepare(deviceId);
+    return {
+      version: 1,
+      origin: this.origin(),
+      deviceId: deviceId.toLowerCase(),
+      publicKey,
+      fingerprint: await deviceKeyFingerprint(publicKey),
+    };
+  }
   private async request(
     path: string,
     input?: unknown,
@@ -69,7 +90,40 @@ export class PilotClient {
     otp: string;
     deviceId: string;
   }) {
-    await this.request("auth/login", input);
+    const challenge = (await this.request("auth/device-challenge", {
+      loginName: input.loginName,
+      deviceId: input.deviceId,
+    })) as { nonce?: unknown; expiresAt?: unknown; mac?: unknown };
+    if (
+      typeof challenge?.nonce !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(challenge.nonce) ||
+      typeof challenge.mac !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(challenge.mac) ||
+      typeof challenge.expiresAt !== "number" ||
+      !Number.isSafeInteger(challenge.expiresAt)
+    )
+      throw new PilotRequestError(503);
+    const text = JSON.stringify([
+      "agri-device-login-v1",
+      this.origin(),
+      input.loginName.trim(),
+      input.deviceId.toLowerCase(),
+      challenge.nonce,
+      challenge.expiresAt,
+    ]);
+    let signature: string;
+    try {
+      signature = await this.keys().sign(
+        input.deviceId,
+        JSON.stringify([text, challenge.mac]),
+      );
+    } catch {
+      throw new PilotRequestError(401);
+    }
+    await this.request("auth/login", {
+      ...input,
+      deviceProof: { ...challenge, signature },
+    });
   }
   async context() {
     const session = await this.session();

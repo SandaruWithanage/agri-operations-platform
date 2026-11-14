@@ -25,6 +25,7 @@ function client() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 async function fill() {
@@ -135,4 +136,46 @@ it("shows Sinhala sign-in and clears password and OTP after a failed attempt", a
     (screen.getByLabelText("සත්‍යාපක කේතය") as HTMLInputElement).value,
   ).toBe("");
   expect(screen.queryByLabelText("සම්පූර්ණ නම")).toBeNull();
+});
+
+it("prepares a public device request before sign-in and displays its independent verification code", async () => {
+  const api = client();
+  vi.mocked(api.context).mockRejectedValue(new PilotRequestError(401));
+  const fingerprint = "a".repeat(64);
+  vi.spyOn(api, "prepareDevice").mockResolvedValue({
+    version: 1,
+    origin: "https://field.example.test",
+    deviceId: geography.id,
+    publicKey: {
+      kty: "EC",
+      crv: "P-256",
+      x: "A".repeat(43),
+      y: "B".repeat(43),
+    },
+    fingerprint,
+  });
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  const original = URL;
+  vi.stubGlobal(
+    "URL",
+    class extends original {
+      static createObjectURL = vi.fn(() => "blob:synthetic");
+      static revokeObjectURL = vi.fn();
+    },
+  );
+  render(<PilotWorkspace language="en" client={api} />);
+  const user = userEvent.setup();
+  await user.type(
+    await screen.findByLabelText("Approved device ID"),
+    geography.id,
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Download device enrollment request" }),
+  );
+  expect(await screen.findByText(fingerprint)).toBeTruthy();
+  expect(api.prepareDevice).toHaveBeenCalledWith(geography.id);
+  expect(api.login).not.toHaveBeenCalled();
+  expect(click).toHaveBeenCalledOnce();
 });
