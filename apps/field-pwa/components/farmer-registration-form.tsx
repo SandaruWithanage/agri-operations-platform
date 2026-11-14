@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   farmerRegistrationSchema,
   type FarmerRegistration,
@@ -14,6 +14,9 @@ type Props = {
   geographies: readonly GeographyOption[];
   /** Must atomically save locally and make retries with the same farmer UUID safe. */
   onSave: (record: FarmerRegistration) => Promise<void>;
+  enabled?: boolean;
+  freezeAfterAttempt?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 const messages = {
   en: {
@@ -28,6 +31,8 @@ const messages = {
     failure: "Could not save the registration. Please try again.",
     saving: "Saving…",
     unavailable: "No authorized locations are available.",
+    retry:
+      "Retry the same registration before starting another. Keep this page open until the result is confirmed.",
   },
   si: {
     heading: "ගොවි ලියාපදිංචිය",
@@ -40,6 +45,8 @@ const messages = {
     failure: "ලියාපදිංචිය සුරැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
     saving: "සුරකිමින්…",
     unavailable: "අවසර ලත් ස්ථාන නොමැත.",
+    retry:
+      "වෙනත් ලියාපදිංචියක් ආරම්භ කිරීමට පෙර මෙම ලියාපදිංචිය නැවත උත්සාහ කරන්න. ප්‍රතිඵලය තහවුරු වන තුරු මෙම පිටුව විවෘතව තබන්න.",
   },
 } as const;
 
@@ -47,6 +54,9 @@ export function FarmerRegistrationForm({
   language,
   geographies,
   onSave,
+  enabled = true,
+  freezeAfterAttempt = false,
+  onDirtyChange,
 }: Props) {
   const copy = messages[language];
   const [fullName, setFullName] = useState("");
@@ -54,10 +64,14 @@ export function FarmerRegistrationForm({
   const [notice, setNotice] = useState(false);
   const [error, setError] = useState<"validation" | "save" | null>(null);
   const [saving, setSaving] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  useEffect(() => {
+    onDirtyChange?.(Boolean(fullName || geographyId || notice || frozen));
+  }, [fullName, geographyId, notice, frozen, onDirtyChange]);
   const pendingFarmerId = useRef<string | null>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || !enabled) return;
     pendingFarmerId.current ??= crypto.randomUUID();
     const parsed = farmerRegistrationSchema.safeParse({
       farmerId: pendingFarmerId.current,
@@ -74,12 +88,14 @@ export function FarmerRegistrationForm({
     }
     setError(null);
     setSaving(true);
+    if (freezeAfterAttempt) setFrozen(true);
     try {
       await onSave(parsed.data);
       pendingFarmerId.current = null;
       setFullName("");
       setGeographyId("");
       setNotice(false);
+      setFrozen(false);
     } catch {
       setError("save");
     } finally {
@@ -99,11 +115,12 @@ export function FarmerRegistrationForm({
           {error === "validation" ? copy.errors : copy.failure}
         </p>
       )}
+      {frozen && <p role="status">{copy.retry}</p>}
       {geographies.length === 0 && <p role="status">{copy.unavailable}</p>}
       <label htmlFor="farmer-full-name">{copy.name}</label>
       <input
         id="farmer-full-name"
-        disabled={saving}
+        disabled={saving || frozen || !enabled}
         value={fullName}
         onChange={(event) => setFullName(event.target.value)}
         autoComplete="name"
@@ -113,7 +130,7 @@ export function FarmerRegistrationForm({
       <label htmlFor="farmer-geography">{copy.geography}</label>
       <select
         id="farmer-geography"
-        disabled={saving}
+        disabled={saving || frozen || !enabled}
         value={geographyId}
         onChange={(event) => setGeographyId(event.target.value)}
         required
@@ -128,14 +145,17 @@ export function FarmerRegistrationForm({
       <label>
         <input
           type="checkbox"
-          disabled={saving}
+          disabled={saving || frozen || !enabled}
           checked={notice}
           onChange={(event) => setNotice(event.target.checked)}
           required
         />{" "}
         {copy.notice}
       </label>
-      <button type="submit" disabled={saving || geographies.length === 0}>
+      <button
+        type="submit"
+        disabled={saving || !enabled || geographies.length === 0}
+      >
         {saving ? copy.saving : copy.submit}
       </button>
     </form>

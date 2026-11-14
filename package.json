@@ -18,10 +18,14 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:validate": "pnpm --filter @agri/database validate"
+    "db:validate": "pnpm --filter @agri/database validate",
+    "db:migrate:plan": "node scripts/native-migrations.mjs --plan",
+    "db:migrate": "node scripts/native-migrations.mjs --apply"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
+    "@nestjs/common": "^11.2.10",
+    "@nestjs/core": "^11.2.10",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/pg": "8.15.5",

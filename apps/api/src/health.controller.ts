@@ -3,6 +3,6 @@ import { Controller, Get } from "@nestjs/common";
 export class HealthController {
   @Get()
   status(): { status: string; db: string; auth: string } {
-    return { status: "ok", db: "not-connected", auth: "not-implemented" };
+    return { status: "ok", db: "not-checked", auth: "not-checked" };
   }
 }

@@ -10,10 +10,15 @@ test("GET /health exposes liveness without claiming database or auth readiness",
     await app.init();
     const response = await request(app.getHttpServer()).get("/health");
     expect(response.status).toBe(200);
+    const disabled = await request(app.getHttpServer())
+      .post("/pilot/auth/login")
+      .send({});
+    expect(disabled.status).toBe(503);
+    expect(disabled.headers["cache-control"]).toBe("no-store");
     expect(response.body).toEqual({
       status: "ok",
-      db: "not-connected",
-      auth: "not-implemented",
+      db: "not-checked",
+      auth: "not-checked",
     });
   } finally {
     await app.close();
