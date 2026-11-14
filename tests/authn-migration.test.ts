@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { PostgresSessionReader } from "../apps/api/src/authentication/postgres-session-reader";
 import { SessionAccess } from "../apps/api/src/authentication/session-access";
+import { TransactionActorContext } from "../apps/api/src/authorization/transaction-context";
+import { FarmerRegistrationService } from "../apps/api/src/farmer/registration-service";
 import { PostgresSessionOperations } from "../apps/api/src/authentication/postgres-session-operations";
 import { PostgresSessionIssuer } from "../apps/api/src/authentication/postgres-session-issuer";
 import { digestSessionSecret } from "../apps/api/src/authentication/session-cookie";
@@ -84,6 +86,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ),
     );
     await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzz_farmer_abac/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
       "INSERT INTO authn.account (id, login_name, password_hash) VALUES ($1, 'synthetic-a', '$argon2id$test'), ($2, 'synthetic-b', '$argon2id$test')",
       [account, another],
     );
@@ -96,9 +104,11 @@ suite("provisional authentication migration on PostgreSQL", () => {
     if (client) {
       if (committedForConcurrency) {
         await client.query("ROLLBACK");
-        await client.query("DROP SCHEMA authn CASCADE");
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_authn_function_owner",
+          "DROP SCHEMA farm, authz, authz_crypto, authn CASCADE",
+        );
+        await client.query(
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner",
         );
       } else await client.query("ROLLBACK");
       await client.end();
@@ -854,6 +864,222 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await client.query("ROLLBACK TO SAVEPOINT throttle_check");
     }
   });
+  it("enforces signed actor context, create coverage, separate read permissions and audit", async () => {
+    const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
+    const parent = "5eae9367-9fc0-409c-9fb7-9da145d6261b";
+    const child = "e6f93f91-39ea-4f47-a71e-38436eedb217";
+    const otherUnit = "a52a419a-4de2-40f9-8aba-a1238f5b9c1d";
+    const geoA = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
+    const geoB = "6c6a87de-b5c4-4ffe-acf0-7ebdb09d421f";
+    const farmer = "1d1ebede-c4a3-4d34-a6f5-5962cc403d0b";
+    const secret = Buffer.alloc(32, 42);
+    await client.query("SAVEPOINT farmer_policy_check");
+    try {
+      await client.query("INSERT INTO authz.context_key (key) VALUES ($1)", [
+        secret,
+      ]);
+      await client.query(
+        "INSERT INTO farm.organization (id,name) VALUES ($1,'Synthetic organization')",
+        [org],
+      );
+      await client.query(
+        "INSERT INTO farm.organizational_unit (id,organization_id,name) VALUES ($1,$2,'Parent')",
+        [parent, org],
+      );
+      await client.query(
+        "INSERT INTO farm.organizational_unit (id,organization_id,parent_id,name) VALUES ($1,$2,$3,'Child')",
+        [child, org, parent],
+      );
+      await client.query(
+        "INSERT INTO farm.organizational_unit (id,organization_id,name) VALUES ($1,$2,'Other unit')",
+        [otherUnit, org],
+      );
+      await client.query(
+        "INSERT INTO farm.geography (id,organization_id,unit_id,name) VALUES ($1,$3,$4,'Village A'),($2,$3,$4,'Village B')",
+        [geoA, geoB, org, child],
+      );
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,geography_id,unit_id,registration_source,starts_at) VALUES (gen_random_uuid(),$1,$2,'farmer.create','assigned',$3,$4,'field_officer',now()-interval '1 hour')",
+        [account, org, geoA, parent],
+      );
+      await client.query(
+        "INSERT INTO authz.assignment (id,account_id,organization_id,geography_id,unit_id,starts_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,now()-interval '1 hour')",
+        [account, org, geoA, parent],
+      );
+      const context = new TransactionActorContext(secret);
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      expect((await client.query("SELECT * FROM farm.farmer")).rowCount).toBe(
+        0,
+      );
+      await expectDenied(
+        "INSERT INTO farm.farmer (id,geography_id,full_name,privacy_notice_provided,registration_source) VALUES ($1,$2,'Synthetic',true,'field_officer')",
+        [farmer, geoA],
+        "42501",
+      );
+      await context.bind(client, { accountId: account, sessionId: session });
+      await client.query("SELECT set_config('agri.signature',$1,true)", [
+        "0".repeat(64),
+      ]);
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'field_officer')",
+        [geoA],
+        "42501",
+      );
+      await context.bind(client, { accountId: account, sessionId: session });
+      await client.query("SELECT set_config('agri.actor',$1,true)", [another]);
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'field_officer')",
+        [geoA],
+        "42501",
+      );
+      await context.bind(client, { accountId: account, sessionId: session });
+      await expectDenied("SELECT key FROM authz.context_key", [], "42501");
+      await expectDenied("SET ROLE agri_policy_owner", [], "42501");
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'field_officer')",
+        [geoB],
+        "42501",
+      );
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'administrator')",
+        [geoA],
+        "42501",
+      );
+      await expectDenied(
+        "INSERT INTO farm.farmer (id,geography_id,full_name,privacy_notice_provided,registration_source,created_by) VALUES (gen_random_uuid(),$1,'Synthetic',true,'field_officer',$2)",
+        [geoA, another],
+        "42501",
+      );
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',false,'field_officer')",
+        [geoA],
+        "42501",
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      await client.query(
+        "UPDATE authz.permission_grant SET unit_id=$1 WHERE permission='farmer.create' AND account_id=$2",
+        [otherUnit, account],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'field_officer')",
+        [geoA],
+        "42501",
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      await client.query(
+        "UPDATE authz.permission_grant SET unit_id=$1 WHERE permission='farmer.create' AND account_id=$2",
+        [parent, account],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      const mutation = "66e8c5d4-96a2-4351-b7a2-011e692959e2";
+      const registration =
+        "SELECT * FROM farm.register_farmer($1,$2,$3,$4,true,'field_officer')";
+      expect(
+        (
+          await client.query(registration, [
+            mutation,
+            farmer,
+            geoA,
+            "Synthetic farmer",
+          ])
+        ).rows,
+      ).toEqual([{ farmer_id: farmer, replayed: false }]);
+      expect(
+        (
+          await client.query(registration, [
+            mutation,
+            farmer,
+            geoA,
+            "Synthetic farmer",
+          ])
+        ).rows,
+      ).toEqual([{ farmer_id: farmer, replayed: true }]);
+      await expectDenied(
+        registration,
+        [mutation, farmer, geoA, "Changed name"],
+        "23505",
+      );
+      const duplicateMutation = "53aad38e-a6b2-481b-b9f9-1814d9fd0cb7";
+      const duplicateFarmer = "ac01b3e0-835f-46d0-882e-08f8f2e895d6";
+      expect(
+        (
+          await client.query(registration, [
+            duplicateMutation,
+            duplicateFarmer,
+            geoA,
+            "Synthetic farmer",
+          ])
+        ).rows,
+      ).toEqual([{ farmer_id: duplicateFarmer, replayed: false }]);
+      await expectDenied("SELECT * FROM farm.registration_risk", [], "42501");
+      expect((await client.query("SELECT * FROM farm.farmer")).rowCount).toBe(
+        0,
+      );
+      await expectDenied(
+        "UPDATE farm.farmer SET status='verified'",
+        [],
+        "42501",
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      expect(
+        (
+          await client.query(
+            "SELECT reason FROM farm.registration_risk WHERE mutation_id=$1",
+            [duplicateMutation],
+          )
+        ).rows,
+      ).toEqual([{ reason: "name_and_geography" }]);
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::int AS count FROM farm.farmer_audit WHERE farmer_id=$1 AND actor_id=$2",
+            [farmer, account],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,geography_id,unit_id,starts_at) VALUES (gen_random_uuid(),$1,$2,'farmer.read','assigned',$3,$4,now()-interval '1 hour')",
+        [account, org, geoA, parent],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      expect(
+        (await client.query("SELECT id FROM farm.farmer ORDER BY id")).rows,
+      ).toEqual([{ id: farmer }, { id: duplicateFarmer }]);
+      await client.query("RESET SESSION AUTHORIZATION");
+      await client.query(
+        "UPDATE authz.assignment SET active=false WHERE account_id=$1",
+        [account],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      expect((await client.query("SELECT id FROM farm.farmer")).rowCount).toBe(
+        0,
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at) VALUES (gen_random_uuid(),$1,$2,'farmer.create','organization','administrator',now()-interval '1 hour')",
+        [account, org],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      await client.query(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic admin registration',true,'administrator')",
+        [geoB],
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      await client.query(
+        "UPDATE farm.organizational_unit SET parent_id=$1 WHERE id=$2",
+        [child, parent],
+      );
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
+      await expectDenied(
+        "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic',true,'administrator')",
+        [geoB],
+        "42501",
+      );
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT farmer_policy_check");
+    }
+  });
   it("rejects revocation events associated with another account's device", async () => {
     await expectDenied(
       "INSERT INTO authn.revocation_event (id,target_account_id,device_id,kind) VALUES (gen_random_uuid(),$1,$2,'device')",
@@ -968,6 +1194,265 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ]);
     } finally {
       await Promise.all([first.end(), second.end()]);
+    }
+  }, 15000);
+  it("holds assignment authorization through a transaction and denies the next transaction after revocation", async () => {
+    const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
+    const unit = "5eae9367-9fc0-409c-9fb7-9da145d6261b";
+    const geo = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
+    const farmer = "1d1ebede-c4a3-4d34-a6f5-5962cc403d0b";
+    const assignment = "3d4ebf75-28cb-40e2-bb0d-4196564a96d4";
+    const secret = Buffer.alloc(32, 42);
+    await client.query(
+      "UPDATE authn.account SET active=true, disabled_at=NULL WHERE id=$1",
+      [account],
+    );
+    await client.query(
+      "UPDATE authn.login_session SET idle_expires_at=clock_timestamp()+interval '1 hour' WHERE id=$1",
+      [session],
+    );
+    await client.query("INSERT INTO authz.context_key (key) VALUES ($1)", [
+      secret,
+    ]);
+    await client.query(
+      "INSERT INTO farm.organization (id,name) VALUES ($1,'Synthetic organization')",
+      [org],
+    );
+    await client.query(
+      "INSERT INTO farm.organizational_unit (id,organization_id,name) VALUES ($1,$2,'Synthetic unit')",
+      [unit, org],
+    );
+    await client.query(
+      "INSERT INTO farm.geography (id,organization_id,unit_id,name) VALUES ($1,$2,$3,'Synthetic village')",
+      [geo, org, unit],
+    );
+    await client.query(
+      "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,geography_id,starts_at) VALUES (gen_random_uuid(),$1,$2,'farmer.read','assigned',$3,now()-interval '1 hour')",
+      [account, org, geo],
+    );
+    await client.query(
+      "INSERT INTO authz.assignment (id,account_id,organization_id,geography_id,starts_at) VALUES ($1,$2,$3,$4,now()-interval '1 hour')",
+      [assignment, account, org, geo],
+    );
+    await client.query(
+      "INSERT INTO farm.farmer (id,geography_id,full_name,privacy_notice_provided,registration_source,created_by) VALUES ($1,$2,'Synthetic',true,'field_officer',$3)",
+      [farmer, geo, account],
+    );
+    const worker = new pg.Client({ connectionString: url });
+    const revoker = new pg.Client({ connectionString: url });
+    await Promise.all([worker.connect(), revoker.connect()]);
+    let pending: Promise<pg.QueryResult> | undefined;
+    try {
+      await worker.query("SET SESSION AUTHORIZATION agri_farmer_runtime");
+      await worker.query("BEGIN");
+      const context = new TransactionActorContext(secret);
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect((await worker.query("SELECT id FROM farm.farmer")).rows).toEqual([
+        { id: farmer },
+      ]);
+      const previous = (
+        await worker.query(
+          "SELECT current_setting('agri.signature') AS signature",
+        )
+      ).rows[0].signature;
+      await worker.query("COMMIT");
+      await worker.query("BEGIN");
+      await worker.query(
+        "SELECT set_config('agri.actor',$1,true),set_config('agri.session',$2,true),set_config('agri.signature',$3,true)",
+        [account, session, previous],
+      );
+      expect((await worker.query("SELECT id FROM farm.farmer")).rowCount).toBe(
+        0,
+      );
+      await worker.query("COMMIT");
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect((await worker.query("SELECT id FROM farm.farmer")).rows).toEqual([
+        { id: farmer },
+      ]);
+      const pid = (await revoker.query("SELECT pg_backend_pid() AS pid"))
+        .rows[0].pid;
+      pending = revoker.query(
+        "UPDATE authz.assignment SET active=false WHERE id=$1",
+        [assignment],
+      );
+      let blocked = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const state = await client.query(
+          "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+          [pid],
+        );
+        if (state.rows[0]?.wait_event_type === "Lock") {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(blocked).toBe(true);
+      await worker.query("COMMIT");
+      await pending;
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect((await worker.query("SELECT id FROM farm.farmer")).rowCount).toBe(
+        0,
+      );
+      await worker.query("COMMIT");
+    } finally {
+      await worker.query("ROLLBACK");
+      if (pending) await pending.catch(() => undefined);
+      await Promise.all([worker.end(), revoker.end()]);
+    }
+  }, 15000);
+  it("serializes concurrent retries and duplicate-risk checks in PostgreSQL", async () => {
+    const geo = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
+    const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
+    const assignment = "3d4ebf75-28cb-40e2-bb0d-4196564a96d4";
+    const first = new pg.Client({ connectionString: url });
+    const second = new pg.Client({ connectionString: url });
+    await Promise.all([first.connect(), second.connect()]);
+    let pending: Promise<pg.QueryResult> | undefined;
+    const context = new TransactionActorContext(Buffer.alloc(32, 42));
+    const register =
+      "SELECT * FROM farm.register_farmer($1,$2,$3,$4,true,'field_officer')";
+    const begin = async (connection: pg.Client) => {
+      await connection.query("BEGIN");
+      await context.bind(connection, {
+        accountId: account,
+        sessionId: session,
+      });
+    };
+    try {
+      await client.query(
+        "UPDATE authz.assignment SET active=true WHERE id=$1",
+        [assignment],
+      );
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,geography_id,registration_source,starts_at) VALUES (gen_random_uuid(),$1,$2,'farmer.create','assigned',$3,'field_officer',now()-interval '1 hour')",
+        [account, org, geo],
+      );
+      await Promise.all([
+        first.query("SET SESSION AUTHORIZATION agri_farmer_runtime"),
+        second.query("SET SESSION AUTHORIZATION agri_farmer_runtime"),
+      ]);
+      await begin(first);
+      await begin(second);
+      const mutation = "296a00be-4265-40f2-bb28-0e15a391fd16";
+      const farmerId = "26710056-4b42-4558-a47f-1f533dd50a97";
+      const args = [mutation, farmerId, geo, "Concurrent synthetic name"];
+      expect((await first.query(register, args)).rows).toEqual([
+        { farmer_id: farmerId, replayed: false },
+      ]);
+      pending = second.query(register, args);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await first.query("COMMIT");
+      expect((await pending).rows).toEqual([
+        { farmer_id: farmerId, replayed: true },
+      ]);
+      pending = undefined;
+      await second.query("COMMIT");
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::int AS count FROM farm.farmer_audit WHERE farmer_id=$1",
+            [farmerId],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+      await begin(first);
+      await begin(second);
+      const firstMutation = "a4e3fd42-76c8-4c42-8fa5-2b9174c0649f";
+      const secondMutation = "5bafc91a-8cf5-4097-b43d-2798d0c628d6";
+      const firstFarmer = "8626b371-6eb1-41b5-b6bf-95008f83e8ff";
+      const secondFarmer = "c93eb8f3-ff96-42b7-a1dc-c7403efcf02c";
+      await first.query(register, [
+        firstMutation,
+        firstFarmer,
+        geo,
+        "Concurrent duplicate synthetic",
+      ]);
+      pending = second.query(register, [
+        secondMutation,
+        secondFarmer,
+        geo,
+        "Concurrent duplicate synthetic",
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await first.query("COMMIT");
+      await pending;
+      pending = undefined;
+      await second.query("COMMIT");
+      expect(
+        (
+          await client.query(
+            "SELECT reason FROM farm.registration_risk WHERE mutation_id=$1",
+            [secondMutation],
+          )
+        ).rows,
+      ).toEqual([{ reason: "name_and_geography" }]);
+    } finally {
+      await first.query("ROLLBACK");
+      await second.query("ROLLBACK");
+      if (pending) await pending.catch(() => undefined);
+      await Promise.all([first.end(), second.end()]);
+    }
+  }, 15000);
+  it("registers and safely replays a farmer through the server service and restricted database role", async () => {
+    const geo = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
+    const assignment = "3d4ebf75-28cb-40e2-bb0d-4196564a96d4";
+    const farmerId = "06149451-4004-4a23-a5a2-64a24e485a82";
+    const mutationId = "f7e0c8bc-3dcb-4be7-ab63-d80f4099220a";
+    const connection = new pg.Client({ connectionString: url });
+    await connection.connect();
+    try {
+      await connection.query("SET SESSION AUTHORIZATION agri_farmer_runtime");
+      const service = new FarmerRegistrationService(
+        new TransactionActorContext(Buffer.alloc(32, 42)),
+      );
+      const actor = { accountId: account, sessionId: session };
+      const input = {
+        mutationId,
+        farmer: {
+          farmerId,
+          geographyId: geo,
+          fullName: "Synthetic through service",
+          privacyNoticeProvided: true,
+        },
+      };
+      expect(
+        await service.register(connection, actor, "field_officer", input),
+      ).toEqual({ farmerId, replayed: false });
+      expect(
+        await service.register(connection, actor, "field_officer", input),
+      ).toEqual({ farmerId, replayed: true });
+      await expect(
+        service.register(connection, actor, "field_officer", {
+          ...input,
+          accountId: another,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        service.register(connection, actor, "field_officer", {
+          ...input,
+          farmer: { ...input.farmer, fullName: "Changed" },
+        }),
+      ).rejects.toMatchObject({ code: "23505" });
+      await client.query(
+        "UPDATE authz.assignment SET active=false WHERE id=$1",
+        [assignment],
+      );
+      await expect(
+        service.register(connection, actor, "field_officer", input),
+      ).rejects.toThrow("Registration denied");
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::int AS count FROM farm.farmer_audit WHERE farmer_id=$1",
+            [farmerId],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+    } finally {
+      await connection.end();
     }
   }, 15000);
 });
