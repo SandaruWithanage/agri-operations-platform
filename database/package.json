@@ -1,0 +1,12 @@
+{
+  "name": "@agri/database",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "validate": "prisma validate",
+    "build": "prisma validate"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.0"
+  }
+}

@@ -1,0 +1,22 @@
+node_modules/
+.pnpm-store/
+.next/
+dist/
+.turbo/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vscode/
+.idea/
+# Local data and generated clients
+database/data/
+apps/**/generated/
+
+*.tsbuildinfo
+*.pem
+*.key
+*.p12
+*.sql.gz
