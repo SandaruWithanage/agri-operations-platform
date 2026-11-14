@@ -10,9 +10,11 @@ M0 provides application shells, a health endpoint, a language preference, local 
 
 ## Dependent decisions before pilot workflows
 
-- Confirm which fields are required and how missing identifiers and duplicate matching are handled.
-- Approve officer-create authority and the coordinator, CBO, project and geographic permission matrix. Treat undefined access as denied; combined constraints must intersect.
-- Decide device ownership, offline retention, lost-device response, and limits on sensitive local data.
+The project owner has since supplied provisional registration fields, scope and offline rules. See [ADR-0003](../decisions/ADR-0003-provisional-farmer-registration.md); client sign-off remains outstanding.
+
+- Validate provisional core fields with the client and decide duplicate matching and disclosure thresholds.
+- Validate the provisional officer-create authority and approve detailed coordinator, CBO, project and geographic permission matrices. Treat undefined access as denied; combined constraints must intersect.
+- Specify approved-device enrollment, offline retention, lost-device response and key recovery; initially limit offline data to the provisional minimum.
 - Confirm GPS accuracy and consent, land relationships, and pilot acceptance criteria.
 - Confirm hosting, backup, retention, support and security review before real-data use.
 

@@ -11,5 +11,9 @@
   },
   "devDependencies": {
     "typescript": "~5.9.0"
+  },
+  "dependencies": {
+    "@agri/validation": "workspace:*",
+    "dexie": "4.2.1"
   }
 }
