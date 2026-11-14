@@ -8,4 +8,4 @@ There is intentionally no destructive `down.sql`: do not drop identity or sessio
 
 ## Run integration tests
 
-Start an isolated PostgreSQL 17 database named `agri_test` with a synthetic superuser, then run `DATABASE_TEST_URL=postgresql://USER:PASSWORD@localhost:PORT/agri_test pnpm test`. The test opens a transaction, refuses to run if `authn` already exists, and rolls back its schema and fixtures. These tests are skipped when `DATABASE_TEST_URL` is unset; GitHub Actions supplies a disposable PostgreSQL service. Do not point the variable at any shared or production database.
+Start an isolated PostgreSQL 17 database named `agri_test` with a synthetic superuser, then run `DATABASE_TEST_URL=postgresql://USER:PASSWORD@localhost:PORT/agri_test pnpm test`. The test refuses to run if `authn` already exists. Most checks roll back; concurrency checks commit synthetic fixtures, then drop the schema and roles created by the test. These tests are skipped when `DATABASE_TEST_URL` is unset; GitHub Actions supplies a disposable PostgreSQL service. Do not point the variable at any shared or production database.

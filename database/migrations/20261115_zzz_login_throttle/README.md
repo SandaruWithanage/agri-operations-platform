@@ -1,0 +1,5 @@
+# Shared login throttle (provisional)
+
+Apply transactionally after the authentication migrations in a disposable development database. The trusted service HMACs normalized login and trusted client identifiers using distinct domains and a deployment-managed key; PostgreSQL stores only the resulting fixed-size digests. A NOLOGIN throttle role can invoke a restricted function but cannot read or alter buckets directly.
+
+The function locks both buckets in deterministic order, limits attempts per account and client within a window, and temporarily blocks excess attempts. It counts successful and failed attempts alike to avoid exposing account validity. This policy can cause denial of service against an account or shared network and requires operational tuning, monitoring, expiry/cleanup and recovery planning. The trusted client identifier must come from a correctly configured proxy, never an arbitrary forwarded header. HMAC key rotation, distributed attack response and production security review remain required. No login endpoint is enabled by this migration.
