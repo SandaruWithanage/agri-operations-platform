@@ -61,6 +61,50 @@ describe("encrypted registration outbox prototype", () => {
     await next.unlock(passphrase);
     expect(await next.readDraft(id)).toEqual(sample);
   });
+  it("safely retries the same local farmer UUID and rejects a changed payload", async () => {
+    const { box } = create();
+    await box.initialize(passphrase);
+    const [first, second] = await Promise.all([
+      box.saveDraft(sample),
+      box.saveDraft(sample),
+    ]);
+    expect(first).toBe(second);
+    expect(await box.list()).toHaveLength(1);
+    await expect(
+      box.saveDraft({ ...sample, fullName: "Different synthetic name" }),
+    ).rejects.toThrow("different saved draft");
+    expect(await box.readDraft(first)).toEqual(sample);
+  });
+  it("preserves legacy entries until their encrypted indexes are recovered", async () => {
+    const { box, name } = create();
+    await box.initialize(passphrase);
+    const id = await box.saveDraft(sample);
+    const raw = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = raw.transaction("mutations", "readwrite");
+      const store = tx.objectStore("mutations");
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const row = request.result;
+        delete row.fingerprint;
+        store.put(row);
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    raw.close();
+    await expect(box.saveDraft(sample)).rejects.toThrow(
+      "Legacy drafts require recovery",
+    );
+    expect(await box.readDraft(id)).toEqual(sample);
+    await box.recoverLegacyIndexes();
+    expect(await box.saveDraft(sample)).toBe(id);
+    expect(await box.list()).toHaveLength(1);
+  });
   it("does not silently discard optional offline data or allow unsafe deletion", async () => {
     const { box } = create();
     await box.initialize(passphrase);
