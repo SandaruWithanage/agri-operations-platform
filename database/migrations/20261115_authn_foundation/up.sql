@@ -30,6 +30,7 @@ CREATE TABLE authn.login_session (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL REFERENCES authn.account(id),
   device_id uuid,
+  device_required boolean NOT NULL DEFAULT false,
   -- SHA-256 of a random cookie secret; never store the cookie value itself.
   cookie_secret_hash bytea NOT NULL UNIQUE CHECK (octet_length(cookie_secret_hash) = 32),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -38,6 +39,7 @@ CREATE TABLE authn.login_session (
   revoked_at timestamptz,
   UNIQUE (id, account_id),
   FOREIGN KEY (device_id, account_id) REFERENCES authn.device(id, account_id),
+  CHECK (NOT device_required OR device_id IS NOT NULL),
   CHECK (created_at < idle_expires_at AND idle_expires_at <= absolute_expires_at),
   CHECK (revoked_at IS NULL OR revoked_at >= created_at)
 );
