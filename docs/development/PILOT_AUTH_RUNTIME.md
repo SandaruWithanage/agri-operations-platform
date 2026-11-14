@@ -1,0 +1,41 @@
+# Pilot API and BFF runtime
+
+Status: integration implemented and tested with synthetic data; production validation remains incomplete. The default runtime is disabled (`ENABLE_PILOT_AUTH=false`). Missing enabled configuration fails startup. Do not use a migration/owner/superuser connection in the API.
+
+## Database setup
+
+Apply each SQL file in one transaction, using a reviewed migration identity on a clean disposable database:
+
+1. `20261115_authn_foundation/up.sql`
+2. `20261115_authn_foundation/session-reader-grants.sql`
+3. `20261115_session_operations/up.sql`
+4. `20261115_totp_foundation/up.sql`
+5. `20261115_z_session_issuance/up.sql`
+6. `20261115_zz_credential_lookup/up.sql`
+7. `20261115_zzz_login_throttle/up.sql`
+8. `20261115_zzzz_farmer_abac/up.sql`
+9. `20261115_zzzzz_registration_reference/up.sql`
+
+The farmer migration installs pgcrypto in a restricted schema and expects a clean installation. Existing installations need a reviewed migration adaptation. Automatic migration tracking, upgrade/rollback rehearsals and production ownership review are still outstanding.
+
+Provision separate LOGIN identities inheriting exactly one of these groups: `agri_credential_reader`, `agri_mfa_verifier`, `agri_login_throttle`, `agri_session_issuer`, `agri_session_executor`, `agri_session_reader`, `agri_farmer_runtime`. Use interactive password assignment or a secret manager; never put passwords in SQL files or shell history. Runtime startup rejects superusers, BYPASSRLS, cross-group membership, missing group access and signing-key table access. Production connection URLs require `sslmode=verify-full`. Restrict the API at the network boundary to the BFFs and terminate HTTPS with a trusted deployment configuration.
+
+Provision the context signing key into `authz.context_key` through a privileged secret-provisioning process. It must match `PILOT_ACTOR_KEY`. No API role can read that table. Create accounts with genuine Argon2id hashes, encrypted/enrolled MFA factors, approved account-bound devices and scoped permissions using a controlled bootstrap process. A self-service bootstrap/admin UI is not implemented. Do not use the synthetic fixture hashes from tests.
+
+## Secret/configuration mapping
+
+`PILOT_DATABASE_URLS` is a JSON object keyed by the seven group names above, each pointing to its dedicated LOGIN URL. `PILOT_MFA_KEYS` maps factor key IDs to canonical base64 AES-256 keys. `PILOT_THROTTLE_KEY`, `PILOT_CSRF_KEY` and `PILOT_ACTOR_KEY` are distinct canonical base64 32-byte keys. The JWT private key is RSA PKCS8 PEM with at least 2048 bits; issuer, audience and key ID are explicit. JWT lifetime is 300–600 seconds. Idle expiration cannot exceed absolute expiration. Deployment-managed keys, rotation and recovery must be implemented and tested before production.
+
+Each Next.js app uses server-only `PILOT_API_ORIGIN`, `PILOT_PUBLIC_ORIGIN` and `PILOT_INTERNAL_KEY`. The public origin must be an exact HTTPS origin. The API origin must be HTTPS; development can use HTTP only for localhost. Internal credentials must never use `NEXT_PUBLIC_` variables. The BFF's source is fixed by the app: field officer for field-pwa, administrator for admin-web; the database still checks the explicit source grant.
+
+## Request flow
+
+Browser routes under `/api/pilot/` support POST `auth/login`, GET `auth/csrf`, POST `auth/logout`, GET `registration/geographies` and POST `farmers/register`. No browser route exposes access-token minting. The BFF checks origin and request size, sends its internal credential to NestJS, keeps JWTs server-side, and sets only the opaque Secure/HttpOnly/SameSite host cookie. State-changing authenticated calls require a session-bound CSRF header. Responses use no-store caching and sanitized errors.
+
+NestJS exposes `/pilot/` only behind the internal BFF credential. Disabled runtime returns 503. Sign-in currently requires MFA and an approved device for every account. The throttle uses the API socket's client address, never an untrusted forwarding header; therefore BFF requests share a network bucket. Production per-client propagation needs a signed/trusted proxy design and rate-limit tuning. Internal endpoints must not be publicly reachable, and request-body/header logging must exclude passwords, OTPs, session cookies and internal credentials.
+
+## Verification and remaining work
+
+The integration suite creates separate synthetic PostgreSQL LOGIN roles and drives BFF requests through a live NestJS HTTP server to the database. It verifies login, cookie protection, CSRF, authorized geography, registration and JWT rejection after logout. The HTTP test uses loopback transport; production TLS/proxy behavior is not proven by that test.
+
+Remaining: browser sign-in/enrollment screens, durable authenticated device sync, account/device administration and revocation workflows, migration tooling, MFA recovery/key rotation, sensitive optional fields, farmer review/correction, deployment/backup/restore/load/security testing, Sinhala/device acceptance and independent security review. Do not treat passing component and integration tests as production approval.

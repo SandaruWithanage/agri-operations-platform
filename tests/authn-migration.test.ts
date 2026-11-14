@@ -1,11 +1,16 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
-import { createHmac } from "node:crypto";
+import { createHmac, generateKeyPairSync } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { PostgresSessionReader } from "../apps/api/src/authentication/postgres-session-reader";
 import { SessionAccess } from "../apps/api/src/authentication/session-access";
 import { TransactionActorContext } from "../apps/api/src/authorization/transaction-context";
+import { createPilotRuntime } from "../apps/api/src/pilot/runtime";
+import { NestFactory } from "@nestjs/core";
+import { PilotController } from "../apps/api/src/pilot/pilot.controller";
+import { PILOT_RUNTIME } from "../apps/api/src/pilot/contracts";
+import { createBffHandler } from "../packages/auth-bff/src";
 import { FarmerRegistrationService } from "../apps/api/src/farmer/registration-service";
 import { PostgresSessionOperations } from "../apps/api/src/authentication/postgres-session-operations";
 import { PostgresSessionIssuer } from "../apps/api/src/authentication/postgres-session-issuer";
@@ -92,6 +97,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ),
     );
     await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzz_registration_reference/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
       "INSERT INTO authn.account (id, login_name, password_hash) VALUES ($1, 'synthetic-a', '$argon2id$test'), ($2, 'synthetic-b', '$argon2id$test')",
       [account, another],
     );
@@ -108,7 +119,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
           "DROP SCHEMA farm, authz, authz_crypto, authn CASCADE",
         );
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner",
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6",
         );
       } else await client.query("ROLLBACK");
       await client.end();
@@ -1455,4 +1466,184 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await connection.end();
     }
   }, 15000);
+  it("composes the real pilot runtime with separated LOGIN roles and revokes issued JWT access on logout", async () => {
+    const groups = [
+      "agri_credential_reader",
+      "agri_mfa_verifier",
+      "agri_login_throttle",
+      "agri_session_issuer",
+      "agri_session_executor",
+      "agri_session_reader",
+      "agri_farmer_runtime",
+    ];
+    const mappings: Record<string, string> = {};
+    for (let i = 0; i < groups.length; i++) {
+      await client.query(
+        `CREATE ROLE agri_test_login_${i} LOGIN INHERIT PASSWORD 'synthetic-local-password' IN ROLE ${groups[i]}`,
+      );
+      const mapped = new URL(url!);
+      mapped.username = `agri_test_login_${i}`;
+      mapped.password = "synthetic-local-password";
+      mappings[groups[i]] = mapped.toString();
+    }
+    const key = Buffer.alloc(32, 8);
+    const secret = Buffer.from("12345678901234567890", "ascii");
+    const factor = "7206b2ec-f547-47a5-8f5a-ad8c8dfd0c75";
+    const encrypted = encryptMfaSecret(secret, key, account, factor);
+    await client.query(
+      "UPDATE authn.account SET active=true,disabled_at=NULL,password_hash=$1 WHERE id=$2",
+      [await hashPassword("synthetic-password"), account],
+    );
+    await client.query(
+      "UPDATE authz.assignment SET active=true WHERE account_id=$1",
+      [account],
+    );
+    await client.query(
+      "INSERT INTO authn.mfa_factor (id,account_id,key_id,nonce,ciphertext,auth_tag,enrolled_at) VALUES ($1,$2,'synthetic',$3,$4,$5,now())",
+      [factor, account, encrypted.nonce, encrypted.ciphertext, encrypted.tag],
+    );
+    const pair = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    const env = {
+      NODE_ENV: "test",
+      ENABLE_PILOT_AUTH: "true",
+      PILOT_INTERNAL_KEY: "synthetic-internal-key-with-at-least-43-characters",
+      PILOT_DATABASE_URLS: JSON.stringify(mappings),
+      PILOT_MFA_KEYS: JSON.stringify({ synthetic: key.toString("base64") }),
+      PILOT_THROTTLE_KEY: Buffer.alloc(32, 5).toString("base64"),
+      PILOT_CSRF_KEY: Buffer.alloc(32, 6).toString("base64"),
+      PILOT_ACTOR_KEY: Buffer.alloc(32, 42).toString("base64"),
+      PILOT_JWT_PRIVATE_KEY: pair.privateKey,
+      PILOT_JWT_KID: "synthetic",
+      PILOT_JWT_ISSUER: "synthetic-auth",
+      PILOT_JWT_AUDIENCE: "synthetic-api",
+      PILOT_ORIGINS: "https://field.example.test",
+    };
+    await expect(
+      createPilotRuntime({
+        ...env,
+        PILOT_DATABASE_URLS: JSON.stringify({
+          ...mappings,
+          agri_credential_reader: url,
+        }),
+      }),
+    ).rejects.toThrow("least privilege");
+    const runtime = (await createPilotRuntime(env))!;
+    let app: Awaited<ReturnType<typeof NestFactory.create>> | undefined;
+    try {
+      const now = Date.now();
+      const counter = Buffer.alloc(8);
+      counter.writeBigUInt64BE(BigInt(Math.floor(now / 30000)));
+      const mac = createHmac("sha1", secret).update(counter).digest();
+      const offset = mac[mac.length - 1] & 15;
+      const code = String(
+        (mac.readUInt32BE(offset) & 0x7fffffff) % 1000000,
+      ).padStart(6, "0");
+      app = await NestFactory.create(
+        {
+          module: class RuntimeTestModule {},
+          controllers: [PilotController],
+          providers: [{ provide: PILOT_RUNTIME, useValue: runtime }],
+        },
+        { logger: false },
+      );
+      await app.listen(0, "127.0.0.1");
+      const handler = createBffHandler({
+        apiOrigin: await app.getUrl(),
+        publicOrigin: "https://field.example.test",
+        internalKey: env.PILOT_INTERNAL_KEY,
+        source: "field_officer",
+        allowInsecureLocal: true,
+      });
+      let cookieHeader = "";
+      let csrfValue = "";
+      const browser = (path: string, method = "GET", data?: unknown) =>
+        handler(
+          new Request(`https://field.example.test/api/pilot/${path}`, {
+            method,
+            headers: {
+              origin: "https://field.example.test",
+              ...(cookieHeader ? { cookie: cookieHeader } : {}),
+              ...(csrfValue ? { "x-csrf-token": csrfValue } : {}),
+              ...(data !== undefined
+                ? { "content-type": "application/json" }
+                : {}),
+            },
+            body: data !== undefined ? JSON.stringify(data) : undefined,
+          }),
+        );
+      const login = await browser("auth/login", "POST", {
+        loginName: "synthetic-a",
+        password: "synthetic-password",
+        otp: code,
+        deviceId: device,
+      });
+      expect(login.status).toBe(200);
+      expect(await login.json()).toEqual({ signedIn: true });
+      cookieHeader = login.headers.get("set-cookie")!.split(";")[0];
+      const opaque = cookieHeader.split("=")[1];
+      const csrfResponse = await browser("auth/csrf");
+      expect(csrfResponse.status).toBe(200);
+      const csrf = (await csrfResponse.json()) as { csrfToken: string };
+      csrfValue = csrf.csrfToken;
+      const token = await runtime.token(opaque);
+      const identity = await runtime.authenticate(token.accessToken);
+      expect(identity.accountId).toBe(account);
+      runtime.assertCsrf(
+        identity,
+        "https://field.example.test",
+        csrf.csrfToken,
+      );
+      expect(() =>
+        runtime.assertCsrf(
+          identity,
+          "https://attacker.example.test",
+          csrf.csrfToken,
+        ),
+      ).toThrow();
+      const locationsResponse = await browser("registration/geographies");
+      expect(locationsResponse.status).toBe(200);
+      const locations = (await locationsResponse.json()) as Array<{
+        id: string;
+        name: string;
+      }>;
+      expect(
+        locations.some(
+          (value) => value.id === "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9",
+        ),
+      ).toBe(true);
+      const farmerId = "fd3151bd-8736-4540-bb6e-a083019906bc";
+      const registration = {
+        mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+        farmer: {
+          farmerId,
+          geographyId: locations[0].id,
+          fullName: "Synthetic runtime registration",
+          privacyNoticeProvided: true,
+        },
+      };
+      const registered = await browser(
+        "farmers/register",
+        "POST",
+        registration,
+      );
+      expect(registered.status).toBe(200);
+      expect(await registered.json()).toEqual({
+        status: "synced",
+        farmerId,
+        replayed: false,
+      });
+      const logout = await browser("auth/logout", "POST");
+      expect(logout.status).toBe(200);
+      expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+      await expect(runtime.authenticate(token.accessToken)).rejects.toThrow();
+      await expect(runtime.token(opaque)).rejects.toThrow();
+    } finally {
+      await app?.close();
+      await runtime.close();
+    }
+  }, 30000);
 });

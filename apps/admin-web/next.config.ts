@@ -1,4 +1,4 @@
 export default {
-  transpilePackages: ["@agri/ui", "@agri/i18n"],
+  transpilePackages: ["@agri/auth-bff", "@agri/ui", "@agri/i18n"],
   experimental: { cpus: 2 },
 };
