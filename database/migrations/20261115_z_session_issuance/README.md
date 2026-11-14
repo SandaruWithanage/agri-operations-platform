@@ -1,0 +1,7 @@
+# Transactional session issuance (provisional)
+
+Apply this migration transactionally after the authn foundation and session-operation migrations. It creates a NOLOGIN session-issuer role and an issuance event table. The issuer may call only the narrowly scoped function; it cannot read credential hashes or write the tables directly. A dedicated authentication service must verify the password and required MFA, rate limit attempts, and derive the account from trusted credential lookup before calling this function. Never expose it to clients or accept the account ID directly from a browser.
+
+The function locks and rechecks account and device status, creates the session and issuance audit event atomically, and stores only a cookie-secret digest. Idle and absolute lifetimes are bounded to at most 30 days as a defensive development maximum; deployment policy should be shorter. Return a cookie to the browser only after successful commit. This migration alone does not implement login, enforce MFA, prevent user enumeration, or provide a production authentication endpoint.
+
+The issuer locks account then device; session use and logout lock session before account/device. Future account or device revocation workflows must use consistent lock ordering and retry deadlocked transactions. Credentials and deployment roles are not created. Use a reviewed forward fix or recovery procedure instead of destructive routine rollback.
