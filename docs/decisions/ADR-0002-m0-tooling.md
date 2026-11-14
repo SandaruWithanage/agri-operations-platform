@@ -6,4 +6,4 @@ Use Prisma 6 CLI for schema validation only. No client is generated and no domai
 
 The field PWA caches only a static public offline fallback. Domain data storage, authenticated offline sessions and synchronization remain M2 work. Persist only the interface language in localStorage.
 
-Remote repository inspection is blocked by GitHub permissions. The prepared foundation is an isolated local commit from the supplied archive, not a verified diff against main. Inspect main and reconcile all existing files before publishing it.
+Initial GitHub access was blocked. After the repository became public, inspection confirmed that it contained no commits or branches. The prepared foundation was placed above an empty local baseline commit so the full M0 change can be reviewed in a pull request against main.

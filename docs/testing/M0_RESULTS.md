@@ -18,7 +18,7 @@ Verified 15 November 2026 (Asia/Colombo) in an isolated workspace from the suppl
 - CI workflow is configured for Node 22; local verification ran on Node 24. GitHub Actions has not run.
 - PWA device installation/service worker lifecycle and offline fallback need browser/device verification. Offline domain storage and sync are intentionally absent.
 - Sinhala copy needs fluent domain review.
-- GitHub connector reports 404 for the specified repository; git clone reports 403. Existing remote files and history could not be inspected. No remote branch or PR was created.
-- The local chore/m0-foundation commit starts independent history from the provided scaffold. It must be reconciled against actual main before pushing. In particular, preserve existing README, AGENTS and project documentation if they differ.
+- Initial GitHub access failed (connector 404; clone 403). After visibility changed to public, both access methods succeeded; the repository was empty, with no existing files or history to reconcile.
+- The feature branch now contains the verified scaffold above an empty baseline commit prepared for main. Publishing the baseline requires approval because AGENTS.md prohibits direct pushes to main.
 
 No authentication, RLS policies, domain database schema, farmer portal or real personal data were added.
