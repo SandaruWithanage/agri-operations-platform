@@ -18,6 +18,7 @@ type Mutation = {
   status: LocalStatus;
   iv: Uint8Array;
   ciphertext: ArrayBuffer;
+  fingerprint?: string;
 };
 export type SyncResult = { status: "synced" | "conflict" | "rejected" };
 export type RegistrationSender = (
@@ -34,6 +35,10 @@ class OutboxDatabase extends Dexie {
   constructor(name: string) {
     super(name);
     this.version(1).stores({ config: "id", mutations: "id,status" });
+    this.version(2).stores({
+      config: "id",
+      mutations: "id,status,&fingerprint",
+    });
   }
 }
 
@@ -158,6 +163,21 @@ export class RegistrationOutbox {
       geographyId: parsed.geographyId,
       privacyNoticeProvided: parsed.privacyNoticeProvided,
     };
+    const config = await this.db.config.get("vault");
+    if (!config) throw new Error("Vault not initialized");
+    // Older records are retained for recovery; never bypass them when deduplicating.
+    if (
+      (await this.db.mutations
+        .filter((row) => row.fingerprint === undefined)
+        .count()) > 0
+    )
+      throw new Error("Legacy drafts require recovery before saving");
+    const fingerprint = await this.fingerprint(data.farmerId, config.salt);
+    const existing = await this.db.mutations
+      .where("fingerprint")
+      .equals(fingerprint)
+      .first();
+    if (existing) return this.verifyRetry(existing.id, data);
     const id = this.crypto.randomUUID();
     const iv = this.crypto.getRandomValues(new Uint8Array(12));
     const ciphertext = await this.crypto.subtle.encrypt(
@@ -166,14 +186,63 @@ export class RegistrationOutbox {
       encoder.encode(JSON.stringify(data)),
     );
     if (this.key !== key) throw new Error("Vault locked");
-    await this.db.mutations.add({
-      id,
-      status: "saved-on-device",
-      iv,
-      ciphertext,
-    });
+    try {
+      await this.db.mutations.add({
+        id,
+        status: "saved-on-device",
+        iv,
+        ciphertext,
+        fingerprint,
+      });
+    } catch (error) {
+      if (!(error instanceof Dexie.ConstraintError)) throw error;
+      const winner = await this.db.mutations
+        .where("fingerprint")
+        .equals(fingerprint)
+        .first();
+      if (!winner) throw error;
+      return this.verifyRetry(winner.id, data);
+    }
     return id;
   }
+  private async fingerprint(
+    farmerId: string,
+    salt: Uint8Array,
+  ): Promise<string> {
+    const bytes = new Uint8Array(salt.length + encoder.encode(farmerId).length);
+    bytes.set(salt);
+    bytes.set(encoder.encode(farmerId), salt.length);
+    const digest = await this.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }
+  private async verifyRetry(
+    id: string,
+    data: FarmerRegistration,
+  ): Promise<string> {
+    const existing = await this.readDraft(id);
+    if (JSON.stringify(existing) !== JSON.stringify(data))
+      throw new Error("Farmer UUID already has a different saved draft");
+    return id;
+  }
+  /** Upgrade old encrypted entries after unlocking; never delete or replace existing data. */
+  async recoverLegacyIndexes(): Promise<void> {
+    const key = this.unlocked();
+    const config = await this.db.config.get("vault");
+    if (!config) throw new Error("Vault not initialized");
+    const legacy = await this.db.mutations
+      .filter((row) => row.fingerprint === undefined)
+      .toArray();
+    for (const row of legacy) {
+      const draft = await this.readDraft(row.id);
+      const fingerprint = await this.fingerprint(draft.farmerId, config.salt);
+      if (this.key !== key) throw new Error("Vault locked");
+      // A duplicate legacy UUID raises a constraint error and preserves both rows for review.
+      await this.db.mutations.update(row.id, { fingerprint });
+    }
+  }
+
   async readDraft(id: string): Promise<FarmerRegistration> {
     const key = this.unlocked();
     const row = await this.db.mutations.get(id);

@@ -60,3 +60,31 @@ button:focus-visible {
   outline: 3px solid #172b28;
   outline-offset: 3px;
 }
+
+.registration-form {
+  display: grid;
+  gap: 12px;
+  max-width: 36rem;
+}
+.registration-form input:not([type="checkbox"]),
+.registration-form select {
+  min-height: 48px;
+  padding: 10px;
+  font: inherit;
+  color: #172b28;
+  background: white;
+  border: 2px solid #355b4f;
+  border-radius: 6px;
+}
+.registration-form input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+}
+.registration-form [role="alert"] {
+  color: #7f1d1d;
+}
+.registration-form :focus-visible {
+  outline: 3px solid #172b28;
+  outline-offset: 3px;
+}
