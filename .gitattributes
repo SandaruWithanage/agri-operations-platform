@@ -1,0 +1,2 @@
+# Native migration checksums must be identical on Windows and Linux checkouts.
+*.sql text eol=lf
