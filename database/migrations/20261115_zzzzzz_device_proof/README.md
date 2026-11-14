@@ -1,0 +1,7 @@
+# Approved-device possession gate
+
+Append-only migration, after registration reference. Apply with the native tracked runner in one transaction. It adds public-key enrollment/audit, short-lived single-use assertions, verifier/provisioner groups, and proof-gated session issuance. All active pre-upgrade sessions are revoked with audit events. The runtime must add its separate verifier connection and challenge-signing secret; existing device UUIDs alone no longer permit login.
+
+Public keys cannot be replaced/deleted through runtime or provisioning identities. Key revocation also revokes its device. The session issuer has no direct key/assertion access and cannot execute the legacy issuer; it consumes a current assertion atomically with session/audit creation. Assertions expire after lock waits as well as at initial inspection. Enrollment/revocation audit rows cannot be altered by runtime/provisioning roles. No application credentials are created by this migration.
+
+See [operator instructions](../../../docs/development/DEVICE_ENROLLMENT.md) and [ADR-0006](../../../docs/decisions/ADR-0006-approved-device-possession.md). Rehearse backup/restore and an operator-controlled maintenance rollout. Do not undo the migration by restoring proof-free issuance privileges. Use forward fixes; no destructive down migration is provided. Real-device and deployment security validation remain outstanding.

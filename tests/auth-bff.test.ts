@@ -163,6 +163,43 @@ describe("server-only authentication BFF", () => {
       (await createBffHandler(config, malformed)(req("auth/csrf"))).status,
     ).toBe(503);
   });
+  it("exposes only public device challenges with origin checks and no cookie requirement", async () => {
+    const value = {
+      nonce: "A".repeat(43),
+      mac: "B".repeat(43),
+      expiresAt: Math.floor(Date.now() / 1000) + 120,
+    };
+    const network = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ...value, privateKey: "never expose" }),
+      );
+    const handler = createBffHandler(config, network);
+    const response = await handler(
+      req(
+        "auth/device-challenge",
+        "POST",
+        { loginName: "synthetic", deviceId: "synthetic" },
+        { cookie: "" },
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(value);
+    expect(network.mock.calls[0][1].headers["x-agri-origin"]).toBe(origin);
+    expect(
+      (
+        await handler(
+          req(
+            "auth/device-challenge",
+            "POST",
+            {},
+            { origin: "https://attacker.example.test" },
+          ),
+        )
+      ).status,
+    ).toBe(403);
+    expect(network).toHaveBeenCalledOnce();
+  });
   it("bounds browser request bodies and rejects insecure production configuration", async () => {
     const fetcher = vi.fn();
     expect(

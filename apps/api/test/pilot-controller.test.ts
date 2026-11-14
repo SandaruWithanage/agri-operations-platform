@@ -27,6 +27,11 @@ let app: INestApplication;
 function fake(): PilotRuntime {
   return {
     internalKey: key,
+    deviceChallenge: vi.fn().mockReturnValue({
+      nonce: "A".repeat(43),
+      expiresAt: 1,
+      mac: "B".repeat(43),
+    }),
     login: vi.fn().mockResolvedValue({ cookie: "synthetic" }),
     csrf: vi.fn().mockResolvedValue({
       csrfToken: "synthetic",
@@ -94,6 +99,12 @@ describe("pilot internal routes", () => {
         password: "synthetic-password",
         otp: "123456",
         deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+        deviceProof: {
+          nonce: "A".repeat(43),
+          expiresAt: 1,
+          mac: "B".repeat(43),
+          signature: "C".repeat(86),
+        },
       });
     expect(response.status).toBe(200);
     expect(vi.mocked(runtime.login).mock.calls[0][1]).not.toBe("attacker");

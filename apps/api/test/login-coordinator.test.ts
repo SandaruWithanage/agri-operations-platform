@@ -13,6 +13,8 @@ const input = {
   otp: "123456",
   deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
   trustedClientKey: "synthetic-ip-key",
+  trustedOrigin: "https://field.example.test",
+  deviceProof: {},
 };
 async function setup() {
   const credentials = { find: vi.fn().mockResolvedValue(account) };
@@ -24,6 +26,7 @@ async function setup() {
       .fn()
       .mockResolvedValue({ sessionId: "synthetic", cookie: "synthetic" }),
   };
+  const devices = { verify: vi.fn().mockResolvedValue("synthetic-assertion") };
   const coordinator = await LoginCoordinator.create(
     credentials,
     passwords,
@@ -31,8 +34,9 @@ async function setup() {
     limiter,
     issuer,
     { idleSeconds: 300, absoluteSeconds: 3600 },
+    devices,
   );
-  return { coordinator, credentials, passwords, mfa, limiter, issuer };
+  return { coordinator, credentials, passwords, mfa, limiter, issuer, devices };
 }
 describe("unwired login coordinator", () => {
   it("uses only the account returned by credential lookup after password and MFA checks", async () => {
@@ -50,6 +54,7 @@ describe("unwired login coordinator", () => {
         accountId: account.accountId,
         deviceId: input.deviceId,
         deviceRequired: true,
+        deviceAssertionId: "synthetic-assertion",
       },
       { idleSeconds: 300, absoluteSeconds: 3600 },
     );
@@ -90,6 +95,15 @@ describe("unwired login coordinator", () => {
     await expect(coordinator.login(input)).rejects.toThrow(
       "Invalid credentials",
     );
+  });
+  it("requires device proof before consuming MFA or issuing a session", async () => {
+    const { coordinator, devices, mfa, issuer } = await setup();
+    devices.verify.mockResolvedValue(null);
+    await expect(coordinator.login(input)).rejects.toThrow(
+      "Invalid credentials",
+    );
+    expect(mfa.verify).not.toHaveBeenCalled();
+    expect(issuer.issue).not.toHaveBeenCalled();
   });
   it("denies attempts when the shared throttle rejects them", async () => {
     const { coordinator, limiter, credentials } = await setup();

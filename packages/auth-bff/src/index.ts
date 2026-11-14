@@ -142,7 +142,12 @@ export function createBffHandler(
       const path = new URL(request.url).pathname.replace(/^\/api\/pilot\//, "");
       const allowed =
         (request.method === "POST" &&
-          ["auth/login", "auth/logout", "farmers/register"].includes(path)) ||
+          [
+            "auth/login",
+            "auth/device-challenge",
+            "auth/logout",
+            "farmers/register",
+          ].includes(path)) ||
         (request.method === "GET" &&
           ["auth/csrf", "registration/geographies"].includes(path));
       if (!allowed) return reply({ error: "Not found" }, 404);
@@ -153,6 +158,29 @@ export function createBffHandler(
         request.headers.get("sec-fetch-site") === "cross-site"
       )
         throw new Failure(403);
+      if (path === "auth/device-challenge") {
+        const result = (await call(
+          path,
+          "POST",
+          undefined,
+          undefined,
+          await body(request),
+        )) as { nonce?: unknown; expiresAt?: unknown; mac?: unknown };
+        if (
+          typeof result?.nonce !== "string" ||
+          !/^[A-Za-z0-9_-]{43}$/.test(result.nonce) ||
+          typeof result.mac !== "string" ||
+          !/^[A-Za-z0-9_-]{43}$/.test(result.mac) ||
+          typeof result.expiresAt !== "number" ||
+          !Number.isSafeInteger(result.expiresAt)
+        )
+          throw new Failure(503);
+        return reply({
+          nonce: result.nonce,
+          expiresAt: result.expiresAt,
+          mac: result.mac,
+        });
+      }
       if (path === "auth/login") {
         const result = (await call(
           "auth/login",

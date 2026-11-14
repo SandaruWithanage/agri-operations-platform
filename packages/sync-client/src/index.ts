@@ -313,3 +313,9 @@ export class RegistrationOutbox {
     });
   }
 }
+
+export {
+  DeviceKeys,
+  deviceKeyFingerprint,
+  type DevicePublicKey,
+} from "./device-keys";

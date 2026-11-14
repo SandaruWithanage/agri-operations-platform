@@ -7,6 +7,15 @@ import type {
   SessionLifetime,
 } from "./postgres-session-issuer";
 
+type Devices = {
+  verify(
+    accountId: string,
+    loginName: string,
+    deviceId: string | null,
+    origin: string,
+    proof: unknown,
+  ): Promise<string | null>;
+};
 type Credentials = { find(loginName: string): Promise<Credential | null> };
 type Passwords = { verify(password: string, hash: string): Promise<boolean> };
 type Mfa = { verify(accountId: string, code: string): Promise<boolean> };
@@ -30,6 +39,7 @@ export class LoginCoordinator {
     private readonly issuer: Issuer,
     private readonly dummyHash: string,
     private readonly lifetime: SessionLifetime,
+    private readonly devices: Devices,
   ) {}
   /** Generate a real dummy hash once at startup so unknown-account attempts use Argon2id work. */
   static async create(
@@ -39,6 +49,7 @@ export class LoginCoordinator {
     limiter: Limiter,
     issuer: Issuer,
     lifetime: SessionLifetime,
+    devices: Devices,
   ): Promise<LoginCoordinator> {
     const dummyHash = await hashPassword(randomBytes(32).toString("base64url"));
     return new LoginCoordinator(
@@ -49,6 +60,7 @@ export class LoginCoordinator {
       issuer,
       dummyHash,
       lifetime,
+      devices,
     );
   }
   /** Client key must be derived by trusted proxy configuration; account ID is never supplied by the browser. */
@@ -58,6 +70,8 @@ export class LoginCoordinator {
     otp: string;
     deviceId: string | null;
     trustedClientKey: string;
+    trustedOrigin: string;
+    deviceProof: unknown;
   }): Promise<{ sessionId: string; cookie: string }> {
     const loginName = input.loginName.trim();
     if (
@@ -76,6 +90,14 @@ export class LoginCoordinator {
     );
     if (!credential || !credential.active || !validPassword)
       throw new Error("Invalid credentials");
+    const deviceAssertionId = await this.devices.verify(
+      credential.accountId,
+      loginName,
+      input.deviceId,
+      input.trustedOrigin,
+      input.deviceProof,
+    );
+    if (!deviceAssertionId) throw new Error("Invalid credentials");
     // Until privileged-role policy is implemented, require MFA for every account.
     if (!(await this.mfa.verify(credential.accountId, input.otp)))
       throw new Error("Invalid credentials");
@@ -86,6 +108,7 @@ export class LoginCoordinator {
           accountId: credential.accountId,
           deviceId: input.deviceId,
           deviceRequired: true,
+          deviceAssertionId,
         },
         this.lifetime,
       );
