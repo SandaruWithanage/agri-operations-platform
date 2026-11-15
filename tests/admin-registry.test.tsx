@@ -58,6 +58,7 @@ it("renders configured records in both languages without persisting farmer data 
   await user.click(screen.getByRole("button", { name: "සිංහල" }));
   expect(screen.getByRole("heading", { name: "ගොවි ලේඛනය" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "English" }));
+  expect(api.farmers).toHaveBeenCalledOnce();
   await user.click(
     screen.getByRole("button", { name: `View record: ${farmer.fullName}` }),
   );

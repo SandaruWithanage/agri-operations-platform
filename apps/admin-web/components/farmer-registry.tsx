@@ -1,4 +1,5 @@
 "use client";
+import { LocaleProvider, useLocale } from "@agri/i18n/react";
 import {
   QueryClientProvider,
   useQuery,
@@ -101,7 +102,14 @@ type ReadRequest = { epoch: number; domain: Domain } & (
   { kind: "list"; cursor?: string } | { kind: "detail"; id: string }
 );
 let nextRegistryBoundary = 0;
-export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
+export function FarmerRegistry(props: { client?: PilotClient }) {
+  return (
+    <LocaleProvider initial="en">
+      <AdminWorkspace {...props} />
+    </LocaleProvider>
+  );
+}
+function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [fallback] = useState(() => new PilotClient());
   const client = supplied ?? fallback;
   const boundary = useMemo(
@@ -118,7 +126,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
   );
 }
 function RegistryView({ client }: { client: PilotClient }) {
-  const [language, setLanguage] = useState<"en" | "si">("en");
+  const [language, setLanguage] = useLocale();
   const copy = words[language];
   const landCopy = landWords[language];
   const [domain, setDomain] = useState<Domain>("farmers");
@@ -247,12 +255,6 @@ function RegistryView({ client }: { client: PilotClient }) {
   }
   useEffect(() => {
     active.current = true;
-    try {
-      const value = localStorage.getItem("agri-language");
-      if (value === "en" || value === "si") setLanguage(value);
-    } catch {
-      /* Optional locale only. */
-    }
     void load();
     const hidden = () => {
       if (document.visibilityState === "hidden") {
@@ -270,9 +272,6 @@ function RegistryView({ client }: { client: PilotClient }) {
       document.removeEventListener("visibilitychange", hidden);
     };
   }, [client]);
-  useEffect(() => {
-    document.documentElement.lang = language;
-  }, [language]);
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -321,14 +320,7 @@ function RegistryView({ client }: { client: PilotClient }) {
           <button
             key={value}
             aria-pressed={language === value}
-            onClick={() => {
-              setLanguage(value);
-              try {
-                localStorage.setItem("agri-language", value);
-              } catch {
-                /* Optional locale only. */
-              }
-            }}
+            onClick={() => setLanguage(value)}
           >
             {value === "en" ? "English" : "සිංහල"}
           </button>
