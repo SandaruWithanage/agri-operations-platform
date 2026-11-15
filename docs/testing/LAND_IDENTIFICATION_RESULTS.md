@@ -1,0 +1,15 @@
+# Reported land identification verification — 15 November 2026
+
+All fixtures are synthetic. This verifies the online backend foundation, not legal surveying, client acceptance or production readiness.
+
+- Frozen-lockfile installation, ESLint, workspace type checks and production builds passed. The complete unit/integration suite passed: **176 tests in 32 files**.
+- Native migration entry 14 and the live NestJS/BFF tests ran against disposable PostgreSQL 17.11/PostGIS 3.5.7. Existing farmer and audit records survive migration. CI and Compose now use the pinned official PostGIS image rather than a PostgreSQL image without the extension.
+- Independent scoped `land.create` and `land.read` permissions are required. Farmer permissions confer neither. Tests cover source restrictions, active configured coverage, missing actor context, cross-organization foreign keys, read revocation and create revocation before replay.
+- RLS hides unauthorized IDs, labels and GPS coordinates from lists/detail. Hidden and nonexistent detail requests return the same status. Lists use bounded UUID cursors and reveal no hidden/global counts. Transport tests reject untrusted scope inputs and bind detail/registration acknowledgements to the requested identity.
+- Optional GPS/label/area, zero coordinates/accuracy/area, longitude/latitude order, SRID 4326, finite coordinate/accuracy ranges and area precision are checked at transport and native SQL boundaries. Callers cannot supply creator, organization, farmer/owner/project associations or legal survey claims.
+- Exact retries and simultaneous identical submissions produce one land record and one registration audit event. Changed mutation content conflicts. Forced audit failure rolls back the record and mutation acknowledgement; a later retry succeeds. The audit actor/session derive from trusted authenticated context.
+- Dedicated runtime identities cannot update land directly or read private audit/mutation journals. Startup rejects function-owner membership or accidental direct journal grants. No land write uses a table-owner/bypass-RLS connection.
+
+The existing field/admin Chromium journeys passed: encrypted offline restart/recovery/safe retry and compiled admin pagination/detail/history, bilingual controls, denial cleanup and no farmer browser persistence. The browser assertion now scopes application alerts to the main content, excluding Next.js’s accessibility route announcer. These synthetic adapters verify frontend regressions; authoritative land permission tests run separately against the live database.
+
+Land capture/map screens, farmer/land relationships, correction and offline GPS storage/reconciliation remain unfinished. No additional data is placed in Dexie, browser storage or an HTTP cache. The accepted data/state ADR governs subsequent TanStack Query integration. Reported points and areas are identification metadata, not ownership, verified boundaries or verified acreage. See [setup and operational limits](../development/LAND_IDENTIFICATION.md) and [ADR-0011](../decisions/ADR-0011-reported-land-identification.md).

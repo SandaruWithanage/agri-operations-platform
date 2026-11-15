@@ -133,7 +133,7 @@ export async function runMigrations(
   {
     apply = false,
     metadataSchema = "agri_migrations",
-    protectedSchemas = ["authn", "authz", "farm"],
+    protectedSchemas = ["authn", "authz", "farm", "land"],
   } = {},
 ) {
   if (!/^[a-z][a-z0-9_]{0,62}$/.test(metadataSchema))

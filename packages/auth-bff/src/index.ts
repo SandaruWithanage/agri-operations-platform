@@ -1,4 +1,13 @@
 import {
+  landRegistrationSchema,
+  landRegistrationResultSchema,
+  landQuerySchema,
+  landDetailQuerySchema,
+  landDetailSchema,
+  landPageSchema,
+  landGeographiesSchema,
+} from "@agri/validation";
+import {
   farmerHistoryQuerySchema,
   farmerHistoryPageSchema,
 } from "@agri/validation";
@@ -160,6 +169,7 @@ export function createBffHandler(
             "auth/logout",
             "farmers/register",
             "farmers/change",
+            "land/register",
           ].includes(path)) ||
         (request.method === "GET" &&
           [
@@ -167,6 +177,9 @@ export function createBffHandler(
             "farmers",
             "farmers/detail",
             "farmers/history",
+            "land",
+            "land/detail",
+            "land/geographies",
             "registration/geographies",
             "registration/context",
           ].includes(path));
@@ -262,6 +275,65 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "land/register") {
+        const parsed = landRegistrationSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = landRegistrationResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (!result.success || result.data.landId !== parsed.data.landId)
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "land/geographies") {
+        if (new URL(request.url).search) throw new Failure(400);
+        const result = landGeographiesSchema.safeParse(
+          await call(path, "GET", undefined, signed.accessToken),
+        );
+        if (!result.success) throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "land" || path === "land/detail") {
+        const params = new URL(request.url).searchParams;
+        if (new Set(params.keys()).size !== Array.from(params.keys()).length)
+          throw new Failure(400);
+        const query = (
+          path === "land" ? landQuerySchema : landDetailQuerySchema
+        ).safeParse(Object.fromEntries(params));
+        if (!query.success) throw new Failure(400);
+        const safeParams = new URLSearchParams(
+          Object.entries(query.data).map(([key, value]) => [
+            key,
+            String(value),
+          ]),
+        );
+        const result = (
+          path === "land" ? landPageSchema : landDetailSchema
+        ).safeParse(
+          await call(
+            `${path}?${safeParams}`,
+            "GET",
+            undefined,
+            signed.accessToken,
+          ),
+        );
+        if (!result.success) throw new Failure(503);
+        if (
+          path === "land/detail" &&
+          (!("land" in result.data) ||
+            !("id" in query.data) ||
+            result.data.land.id !== query.data.id)
+        )
+          throw new Failure(503);
+        return reply(result.data);
+      }
       if (path === "farmers/change") {
         const parsed = farmerChangeSchema.safeParse(await body(request));
         if (!parsed.success) throw new Failure(400);

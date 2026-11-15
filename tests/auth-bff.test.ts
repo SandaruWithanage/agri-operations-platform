@@ -456,3 +456,97 @@ it("rejects a history response for another farmer before it reaches the browser"
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({ error: "Service unavailable" });
 });
+
+it("uses strict land requests with CSRF and sanitizes the server acknowledgment", async () => {
+  const landId = "06149451-4004-4a23-a5a2-64a24e485a82";
+  const input = {
+    mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+    landId,
+    geographyId: "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9",
+  };
+  const missing = vi.fn();
+  expect(
+    (
+      await createBffHandler(
+        config,
+        missing,
+      )(req("land/register", "POST", input, { "x-csrf-token": "" }))
+    ).status,
+  ).toBe(403);
+  expect(missing).not.toHaveBeenCalled();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        status: "synced",
+        landId,
+        replayed: false,
+        creatorSecret: "synthetic-extra",
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req("land/register", "POST", input));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    status: "synced",
+    landId,
+    replayed: false,
+  });
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({
+    ...input,
+    label: null,
+    point: null,
+    reportedAreaHectares: null,
+  });
+  expect(fetcher.mock.calls[1][1].headers["x-agri-source"]).toBe(
+    "field_officer",
+  );
+});
+it("filters land reads without forwarding untrusted scopes or private extra fields", async () => {
+  const id = "06149451-4004-4a23-a5a2-64a24e485a82",
+    accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const land = {
+    id,
+    geographyId: "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9",
+    geographyName: "Synthetic village",
+    label: null,
+    point: { longitude: 80.25, latitude: 8.3, accuracyM: null },
+    reportedAreaHectares: 0.125,
+    version: 1,
+    createdAt: "2026-11-15T00:00:00.000Z",
+    identificationOnly: true,
+  };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        items: [{ ...land, ownerId: "synthetic-private-extra" }],
+        nextCursor: null,
+        hiddenCount: 99,
+      }),
+    );
+  const response = await createBffHandler(config, fetcher)(req("land?limit=1"));
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(await response.json()).toEqual({
+    accountId,
+    items: [land],
+    nextCursor: null,
+  });
+  for (const path of [
+    `land?organizationId=${accountId}`,
+    "land?limit=101",
+    `land?limit=1&limit=2`,
+    `land/geographies?scope=${accountId}`,
+  ]) {
+    const calls = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect((await createBffHandler(config, calls)(req(path))).status).toBe(400);
+    expect(calls).toHaveBeenCalledTimes(1);
+  }
+});

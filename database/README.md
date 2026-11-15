@@ -22,8 +22,12 @@ The private `agri_migrations.history` schema records file IDs, SHA-256 checksums
 
 ## Existing manually migrated databases
 
-Automatic adoption is refused when `authn`, `authz` or `farm` exists without tracked history. Do not delete data or insert fabricated history to bypass this check. Compare the deployed schema, roles and function ownership with the exact reviewed revision, rehearse backup/restore, and prepare a separately reviewed baseline/adoption migration. Disposable local/test databases can be recreated deliberately using their documented lifecycle. This command never resets a database.
+Automatic adoption is refused when `authn`, `authz`, `farm` or `land` exists without tracked history. Do not delete data or insert fabricated history to bypass this check. Compare the deployed schema, roles and function ownership with the exact reviewed revision, rehearse backup/restore, and prepare a separately reviewed baseline/adoption migration. Disposable local/test databases can be recreated deliberately using their documented lifecycle. This command never resets a database.
 
 ## Recovery and release gates
 
 Do not run draft reference SQL from uploaded documents. Do not add destructive down migrations for identity/farmer records. After a partial migration failure, inspect state under the controlled operator process and use a forward fix. The CLI suppresses PostgreSQL errors because SQL details can include sensitive data. Production release still requires ownership review, backup/restore and upgrade rehearsals, secret provisioning/rotation, deployment network/TLS checks and independent security review. Passing disposable database tests does not certify those operations.
+
+## PostGIS land identification
+
+Manifest entry 14 requires PostGIS available in the `public` schema and provisions independent `agri_land_function_owner`/`agri_land_runtime` groups. The API requires a ninth restricted LOGIN URL for that runtime; never assign the owner group to an application login. Apply migrations and provision the URL before deploying the new API. Existing registration/read behavior is retained. The Compose/CI PostGIS image is pinned to a verified digest; review and retest digest changes. See [land setup](../docs/development/LAND_IDENTIFICATION.md).

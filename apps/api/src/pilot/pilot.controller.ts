@@ -195,6 +195,59 @@ export class PilotController {
       return runtime.changeFarmer(actor, input);
     });
   }
+  @Post("land/register")
+  @HttpCode(200)
+  registerLand(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.registerLand(actor, this.source(source), input);
+    });
+  }
+  @Get("land")
+  listLand(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.listLand(await runtime.authenticate(this.bearer(token)), query),
+    );
+  }
+  @Get("land/detail")
+  landDetail(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.landDetail(await runtime.authenticate(this.bearer(token)), query),
+    );
+  }
+  @Get("land/geographies")
+  landGeographies(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.landGeographies(
+        await runtime.authenticate(this.bearer(token)),
+        this.source(source),
+      ),
+    );
+  }
   @Get("farmers")
   listFarmers(
     @Headers("x-agri-bff-key") key: string | undefined,

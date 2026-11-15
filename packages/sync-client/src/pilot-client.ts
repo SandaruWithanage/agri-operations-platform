@@ -1,4 +1,12 @@
 import {
+  landRegistrationSchema,
+  landRegistrationResultSchema,
+  landPageSchema,
+  landDetailSchema,
+  landGeographiesSchema,
+  type LandRegistration,
+} from "@agri/validation";
+import {
   farmerHistoryQuerySchema,
   farmerHistoryPageSchema,
   type FarmerHistoryCursor,
@@ -178,6 +186,45 @@ export class PilotClient {
     });
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
+  }
+  async registerLand(accountId: string, input: LandRegistration) {
+    const value = landRegistrationSchema.parse(input);
+    const session = await this.session();
+    if (session.accountId !== accountId) throw new PilotRequestError(401);
+    const result = landRegistrationResultSchema.safeParse(
+      await this.request("land/register", value, session.csrfToken),
+    );
+    if (!result.success || result.data.landId !== value.landId)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async land(after?: string) {
+    if (after && !uuid.test(after)) throw new PilotRequestError(400);
+    const params = new URLSearchParams({
+      limit: "25",
+      ...(after ? { after } : {}),
+    });
+    const result = landPageSchema.safeParse(
+      await this.request(`land?${params}`),
+    );
+    if (!result.success) throw new PilotRequestError(503);
+    return result.data;
+  }
+  async landIdentification(id: string) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = landDetailSchema.safeParse(
+      await this.request(`land/detail?id=${encodeURIComponent(id)}`),
+    );
+    if (!result.success || result.data.land.id !== id)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async landGeographies() {
+    const result = landGeographiesSchema.safeParse(
+      await this.request("land/geographies"),
+    );
+    if (!result.success) throw new PilotRequestError(503);
+    return result.data;
   }
   async farmerHistory(id: string, cursor?: FarmerHistoryCursor) {
     const parsed = farmerHistoryQuerySchema.safeParse({
