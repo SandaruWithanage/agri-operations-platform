@@ -1,6 +1,6 @@
 # Protected online query integration
 
-Read the [accepted data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md). This is the incremental TanStack Query integration for admin farmer registry, detail and audit-history reads. Field online operations and future domain mutations still require migration. PostgreSQL remains authoritative, and cached capabilities never confer permission.
+Read the [accepted data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md). This is the incremental TanStack Query integration for admin farmer registry, detail, audit-history and land directory reads. Field online operations and future domain mutations still require migration. PostgreSQL remains authoritative, and cached capabilities never confer permission.
 
 ## Implemented boundary
 
@@ -10,7 +10,7 @@ Keys include the protected domain, account and relevant device, local authorizat
 
 Queries have zero stale time and zero inactive retention, no automatic retries, and no focus/reconnect refetch. Online reads use `networkMode: always`: unavailable connectivity returns a visible failure rather than pausing a hidden request for later. This deliberately favors a fresh authorized read over page-cache reuse while a server-issued permission-context version is unavailable. These settings are not a blanket policy for future public/reference queries.
 
-TanStack Query owns registry/detail/history records and their loading/error state. Component state contains view/cursor choices, history visibility and non-sensitive authentication lifecycle metadata (account/device IDs only); authorized geography arrays and farmer records are not copied into it. Session discovery remains an explicit cancellable authentication bootstrap. Login credentials remain in the form/request, and a late login or session response after view clearing cannot restart a private read. The typed BFF transport combines query cancellation with its existing 15-second timeout. The query function consumes the cancellation signal and checks it again before returning; an adapter that resolves late cannot restore cleared data. The browser receives no JWT or session secret.
+TanStack Query owns farmer/land registry/detail and farmer history records and their loading/error state. Component state contains view/cursor choices, history visibility and non-sensitive authentication lifecycle metadata (account/device IDs only); authorized geography arrays and farmer records are not copied into it. Session discovery remains an explicit cancellable authentication bootstrap. Login credentials remain in the form/request, and a late login or session response after view clearing cannot restart a private read. The typed BFF transport combines query cancellation with its existing 15-second timeout. The query function consumes the cancellation signal and checks it again before returning; an adapter that resolves late cannot restore cleared data. The browser receives no JWT or session secret.
 
 ## Incremental migration and limits
 

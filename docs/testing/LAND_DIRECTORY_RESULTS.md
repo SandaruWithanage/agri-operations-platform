@@ -1,0 +1,11 @@
+# Scoped land directory verification — 15 November 2026
+
+Synthetic fixtures only. This verifies the online viewing workflow, not the full land workflow or production acceptance.
+
+- Frozen dependency installation, formatting, ESLint, workspace type checks, repository structure and production builds passed.
+- **203 tests in 33 files** passed with the disposable PostgreSQL 17.11/PostGIS 3.5.7 integration service. Existing native tests prove independent land read/create permissions, scoped coordinates/IDs, hidden-versus-unknown detail behavior, current revocation and no hidden/global totals.
+- Nine new directory component tests cover explicit domain selection, English/Sinhala labels, valid zero coordinates/accuracy/area, absent optional metadata, cursor pagination, wrong-account list/detail replies, rejected detail cache clearing, cancellation and late responses when returning to farmers, hiding/refresh and logout. Transport tests verify list/detail cancellation reaches fetch.
+- The compiled admin Chromium journey covers farmer and land page/detail navigation, absent GPS, displayed longitude, bilingual land controls and revoked land-detail cleanup. It confirms no land labels/coordinates remain after denial, and browser storage contains only the language preference with no IndexedDB records. The test waits for the preceding list request to finish before changing the synthetic permission fixture, avoiding a race between list revocation and the intended detail revocation check.
+- The field Chromium journey still verifies approved-key preparation, encrypted offline restart/recovery, reauthentication, stable retry, local cleanup and no private HTTP caching. Existing Dexie formats/data policy are unchanged.
+
+The online directory adds no migrations, permission grants, external map requests or persistent location cache. PostgreSQL/NestJS remain authoritative. Capture, mapping, farmer/land relationships, correction and offline GPS are unfinished. Native-speaker, real-device, accessibility and deployment/security/operating acceptance remain outstanding. See [setup and limits](../development/LAND_DIRECTORY.md), [the delivery estimate](../development/DELIVERY_ESTIMATE.md) and [the accepted state architecture](../architecture/decisions/ADR-data-state-cache.md).

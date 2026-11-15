@@ -206,22 +206,27 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async land(after?: string) {
+  async land(after?: string, signal?: AbortSignal) {
     if (after && !uuid.test(after)) throw new PilotRequestError(400);
     const params = new URLSearchParams({
       limit: "25",
       ...(after ? { after } : {}),
     });
     const result = landPageSchema.safeParse(
-      await this.request(`land?${params}`),
+      await this.request(`land?${params}`, undefined, undefined, signal),
     );
     if (!result.success) throw new PilotRequestError(503);
     return result.data;
   }
-  async landIdentification(id: string) {
+  async landIdentification(id: string, signal?: AbortSignal) {
     if (!uuid.test(id)) throw new PilotRequestError(400);
     const result = landDetailSchema.safeParse(
-      await this.request(`land/detail?id=${encodeURIComponent(id)}`),
+      await this.request(
+        `land/detail?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
     );
     if (!result.success || result.data.land.id !== id)
       throw new PilotRequestError(503);
