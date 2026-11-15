@@ -262,6 +262,20 @@ export class PilotController {
       ),
     );
   }
+  @Get("farmers/correction-geographies")
+  farmerCorrectionGeographies(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.farmerCorrectionGeographies(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
   @Get("farmers/verification-receipt")
   farmerVerificationReceipt(
     @Headers("x-agri-bff-key") key: string | undefined,

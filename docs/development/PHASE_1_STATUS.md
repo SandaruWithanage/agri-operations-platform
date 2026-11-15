@@ -2,7 +2,7 @@
 
 This is an implementation inventory, not client approval or production certification. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
 
-The current [rough engineering delivery estimate](DELIVERY_ESTIMATE.md) is about 45% complete / 55% remaining for Phase 1, not production certification.
+The current [rough engineering delivery estimate](DELIVERY_ESTIMATE.md) is about 50% complete / 50% remaining for Phase 1, not production certification.
 
 ## Accepted architecture versus implementation
 
@@ -22,6 +22,7 @@ The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is
 - Approved browser-key enrollment requests and independent-fingerprint operator provisioning/revocation; signed challenges and PostgreSQL single-use proof-gated sessions. A browser key is not hardware attestation or proof of secure pilot devices.
 - [Scoped bilingual review queue](FARMER_REVIEW_QUEUE.md) with status/current verification-eligibility filters, filter-bound cursor pages, URL restoration and cancelled stale reads. No hidden totals or additional authority.
 - [Bilingual bounded staff verification](FARMER_VERIFICATION.md) with explicit review, versioned/idempotent online mutation, server-owned receipt recovery and protected query/mutation clearing. No offline verification queue or editable correction drafts.
+- [Bounded authorized correction-location choices](FARMER_CORRECTION_OPTIONS.md), with source/destination read-plus-correct checks, current-version snapshots, cursor pagination and sanitized cancellable transport. The correction editor remains unfinished.
 - Online versioned farmer correction/record-verification API with separate permissions, original/destination coverage, idempotency, duplicate-risk flagging and atomic audit. Bounded staff verification is exposed; correction editing and full lifecycle/reassignment remain unfinished.
 - [TanStack Query admin read integration](PROTECTED_ONLINE_QUERIES.md) with account/lifecycle-bound keys, cancellation, no persistence, denied-read cleanup and late-response/cache-isolation tests. Future online domain operations remain to be integrated.
 - Separately authorized bilingual audit history with snapshot geography checks, exact microsecond cursors, no hidden-event totals and stale-response cleanup. Retention and privileged audit administration remain unfinished.

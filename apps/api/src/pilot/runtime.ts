@@ -376,6 +376,14 @@ export async function createPilotRuntime(
           connection.release();
         }
       },
+      farmerCorrectionGeographies: async (actor, input) => {
+        const connection = await pool("agri_farmer_runtime").connect();
+        try {
+          return await changes.correctionGeographies(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
       farmerVerificationReceipt: async (actor, input) => {
         const connection = await pool("agri_farmer_runtime").connect();
         try {
