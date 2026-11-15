@@ -175,8 +175,13 @@ export class PilotClient {
     }
   }
 
-  async context() {
-    const result = (await this.request("registration/context")) as {
+  async context(signal?: AbortSignal) {
+    const result = (await this.request(
+      "registration/context",
+      undefined,
+      undefined,
+      signal,
+    )) as {
       geographies?: unknown;
     };
     if (!Array.isArray(result?.geographies)) throw new PilotRequestError(503);
@@ -270,23 +275,29 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async farmers(after?: string) {
+  async farmers(after?: string, signal?: AbortSignal) {
     const query = new URLSearchParams({
       limit: "25",
       ...(after ? { after } : {}),
     });
     const value = farmerPageSchema.safeParse(
-      await this.request(`farmers?${query}`),
+      await this.request(`farmers?${query}`, undefined, undefined, signal),
     );
     if (!value.success) throw new PilotRequestError(503);
     return value.data;
   }
-  async farmer(id: string) {
+  async farmer(id: string, signal?: AbortSignal) {
     if (!uuid.test(id)) throw new PilotRequestError(400);
     const value = farmerDetailSchema.safeParse(
-      await this.request(`farmers/detail?id=${encodeURIComponent(id)}`),
+      await this.request(
+        `farmers/detail?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
     );
-    if (!value.success) throw new PilotRequestError(503);
+    if (!value.success || value.data.farmer.id !== id)
+      throw new PilotRequestError(503);
     return value.data;
   }
   async register(
