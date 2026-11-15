@@ -1,10 +1,35 @@
 import { z } from "zod";
+import { farmerStatusSchema } from "./farmer";
+const filterFields = {
+  status: farmerStatusSchema.optional(),
+  reviewable: z.literal("true").optional(),
+};
+const compatibleReview = (value: { status?: string; reviewable?: string }) =>
+  value.reviewable !== "true" ||
+  value.status === undefined ||
+  value.status === "pending-review";
+export const farmerListFiltersSchema = z
+  .object(filterFields)
+  .strict()
+  .refine(compatibleReview, "Reviewable records must be Pending Review");
+export type FarmerListFilters = z.infer<typeof farmerListFiltersSchema>;
+export function sameFarmerFilters(
+  expected: FarmerListFilters,
+  actual: FarmerListFilters = {},
+) {
+  return (
+    expected.status === actual.status &&
+    expected.reviewable === actual.reviewable
+  );
+}
 export const farmerListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
     after: z.string().uuid().optional(),
+    ...filterFields,
   })
-  .strict();
+  .strict()
+  .refine(compatibleReview, "Reviewable records must be Pending Review");
 export const farmerDetailQuerySchema = z
   .object({ id: z.string().uuid() })
   .strict();
@@ -16,14 +41,31 @@ export const farmerSummarySchema = z.object({
   fullName: z.string().min(1).max(200),
   geographyId: z.string().uuid(),
   geographyName: z.string().min(1).max(1000),
-  status: z.enum(["draft", "pending-review", "verified", "inactive"]),
+  status: farmerStatusSchema,
   createdAt: z.string().datetime(),
 });
-export const farmerPageSchema = z.object({
-  accountId: z.string().uuid(),
-  items: z.array(farmerSummarySchema).max(100),
-  nextCursor: z.string().uuid().nullable(),
-});
+export const farmerPageSchema = z
+  .object({
+    filters: farmerListFiltersSchema.optional(),
+    accountId: z.string().uuid(),
+    items: z.array(farmerSummarySchema).max(100),
+    nextCursor: z.string().uuid().nullable(),
+  })
+  .superRefine((page, context) => {
+    if (
+      page.items.some(
+        (item) =>
+          (page.filters?.status && item.status !== page.filters.status) ||
+          (page.filters?.reviewable === "true" &&
+            item.status !== "pending-review"),
+      )
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Page does not match its filters",
+        path: ["items"],
+      });
+  });
 export type FarmerSummary = z.infer<typeof farmerSummarySchema>;
 export type FarmerPage = z.infer<typeof farmerPageSchema>;
 

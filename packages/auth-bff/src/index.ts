@@ -17,6 +17,7 @@ import {
   farmerListQuerySchema,
   farmerDetailQuerySchema,
   farmerPageSchema,
+  sameFarmerFilters,
   farmerDetailSchema,
   farmerVerificationReceiptSchema,
 } from "@agri/validation";
@@ -393,6 +394,12 @@ export function createBffHandler(
                 : farmerDetailSchema
         ).safeParse(result);
         if (!parsed.success) throw new Failure(503);
+        if (path === "farmers") {
+          const expected = farmerListQuerySchema.parse(query.data);
+          const page = farmerPageSchema.parse(parsed.data);
+          if (!sameFarmerFilters(expected, page.filters))
+            throw new Failure(503);
+        }
         if (
           ["farmers/history", "farmers/verification-receipt"].includes(path) &&
           (!("farmerId" in parsed.data) ||

@@ -35,3 +35,7 @@ Manifest entry 14 requires PostGIS available in the `public` schema and provisio
 ## Staff verification receipts
 
 Manifest entry 15 adds an index and restricted own-verification receipt function, preserving existing farmer/audit records and role connections. Apply it before the updated verification API/UI. No business grants or new roles are seeded. See [staff verification setup](../docs/development/FARMER_VERIFICATION.md).
+
+## Farmer review queue
+
+Manifest entry 16 adds the status/UUID cursor index without changing rows, RLS or role grants. Apply it through the controlled runner, rehearsing index creation for the deployed volume. Existing runtime connections remain unchanged. See [queue setup](../docs/development/FARMER_REVIEW_QUEUE.md).

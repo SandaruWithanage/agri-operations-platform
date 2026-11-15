@@ -606,3 +606,57 @@ it("sanitizes account-bound verification receipts and rejects scoped or mismatch
     ).status,
   ).toBe(503);
 });
+
+it("binds review queue filters to sanitized responses and rejects silently unfiltered pages", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const filters = { status: "pending-review", reviewable: "true" };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        filters,
+        items: [],
+        nextCursor: null,
+        hiddenCount: 100,
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req("farmers?status=pending-review&reviewable=true"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(await response.json()).toEqual({
+    accountId,
+    filters,
+    items: [],
+    nextCursor: null,
+  });
+  expect(String(fetcher.mock.calls[1][0])).toContain("reviewable=true");
+  const mismatch = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({ accountId, items: [], nextCursor: null }),
+    );
+  expect(
+    (await createBffHandler(config, mismatch)(req("farmers?status=verified")))
+      .status,
+  ).toBe(503);
+  for (const query of [
+    "status=verified&reviewable=true",
+    "reviewable=false",
+    "status=draft&status=verified",
+    `status=draft&accountId=${accountId}`,
+  ]) {
+    const call = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only" }));
+    expect(
+      (await createBffHandler(config, call)(req(`farmers?${query}`))).status,
+    ).toBe(400);
+    expect(call).toHaveBeenCalledTimes(1);
+  }
+});

@@ -1,0 +1,12 @@
+# Review queue verification — 15 November 2026
+
+Synthetic fixtures only. This verifies scoped read filtering, not client approval of verification criteria or production acceptance.
+
+- Frozen installation, format, lint, workspace types, structure and production builds passed. **245 tests in 37 files** passed, including live PostgreSQL 17.11/PostGIS 3.5.7 checks.
+- Migration 16 preserves existing farmer/audit snapshots and adds only a status/cursor index. Existing RLS policies, business permissions and runtime connections are unchanged.
+- Live NestJS/BFF/database tests cover all four statuses, read-only accounts getting no verification-eligible rows, scoped one-row cursor pages, exclusion of out-of-coverage IDs/names, verification removing a record from pending results, current verification-grant revocation and invalid/scoped/duplicate/contradictory parameters. Test-only status fixtures are removed with their generated audit fixtures in the disposable database.
+- Six admin queue component tests cover bookmarks, pagination reset, retained filters across pages, Sinhala controls without a language-triggered request, cancelled late pages, invalid links loading no records until reset, browser history restoration and rejected unfiltered responses.
+- Six filter/SDK tests cover strict status/eligibility contracts, enum-only URL round trips, contradictory/untrusted inputs, request/response filter binding, mismatched row status and omitted undefined options. BFF tests also reject malformed filters and missing response identity while stripping extra counts.
+- Both compiled Chromium journeys passed. Admin coverage restores a bookmarked pending/eligibility queue, resets it and its pagination, then exercises verification/lost-response recovery, farmer/land/audit denial cleanup, bilingual controls and cross-tab locale. Field coverage retains encrypted restart/draft recovery, bilingual Syncing, safe retry/cleanup and authenticated archive recovery. Browser storage assertions still permit no farmer-record cache.
+
+No counts, role/ownership assumptions, automatic verification or enrollment are added. TanStack Query owns online results; component state/URLs hold view selections only. Dexie and the shared locale-only Zustand store keep their responsibilities. See [setup/protocol/limits](../development/FARMER_REVIEW_QUEUE.md) and [the accepted architecture](../architecture/decisions/ADR-data-state-cache.md).

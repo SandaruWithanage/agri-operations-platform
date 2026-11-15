@@ -202,16 +202,33 @@ try {
         receipt: verificationReceipt,
       });
     }
-    if (path === "farmers")
+    if (path === "farmers") {
+      const status = url.searchParams.get("status"),
+        reviewable = url.searchParams.get("reviewable");
+      const filters = {
+        ...(status ? { status } : {}),
+        ...(reviewable ? { reviewable } : {}),
+      };
+      const visible = readable
+        ? rows.filter(
+            (row) =>
+              (!status || row.status === status) &&
+              (!reviewable ||
+                (verifyAllowed && row.status === "pending-review")),
+          )
+        : [];
       return reply({
         accountId,
-        items: !readable
-          ? []
-          : url.searchParams.has("after")
-            ? rows.slice(2)
-            : rows.slice(0, 2),
-        nextCursor: readable && !url.searchParams.has("after") ? ids[1] : null,
+        ...(Object.keys(filters).length ? { filters } : {}),
+        items: url.searchParams.has("after")
+          ? visible.slice(2)
+          : visible.slice(0, 2),
+        nextCursor:
+          visible.length > 2 && !url.searchParams.has("after")
+            ? visible[1].id
+            : null,
       });
+    }
     if (path === "farmers/detail")
       return reply({
         accountId,
@@ -265,6 +282,45 @@ try {
   const page = await context.newPage();
   await page.goto(origin);
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  await page
+    .getByRole("combobox", { name: "Registration status", exact: true })
+    .selectOption("pending-review");
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  await page
+    .getByRole("checkbox", {
+      name: "Only pending records I may verify",
+      exact: true,
+    })
+    .check();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  assert.equal(
+    new URL(page.url()).searchParams.get("farmerStatus"),
+    "pending-review",
+  );
+  assert.equal(new URL(page.url()).searchParams.get("reviewable"), "true");
+  await page.reload();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("checkbox", {
+        name: "Only pending records I may verify",
+        exact: true,
+      })
+      .isChecked(),
+    true,
+  );
+  await page
+    .getByRole("combobox", { name: "Registration status", exact: true })
+    .selectOption("all");
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.has("reviewable"), false);
+  assert.equal(new URL(page.url()).searchParams.has("farmerStatus"), false);
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Previous page", exact: true })
+      .isDisabled(),
+    true,
+  );
   assert.equal(
     await page.getByText(rows[2].fullName, { exact: true }).count(),
     0,
@@ -523,7 +579,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin verification/lost-acknowledgement recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, verification/lost-acknowledgement recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();
