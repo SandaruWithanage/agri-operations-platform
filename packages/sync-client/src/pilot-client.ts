@@ -12,6 +12,8 @@ import {
   type FarmerHistoryCursor,
 } from "@agri/validation";
 import {
+  farmerCorrectionGeographiesSchema,
+  farmerCorrectionGeographiesQuerySchema,
   farmerChangeSchema,
   farmerChangeResultSchema,
   type FarmerChange,
@@ -269,6 +271,36 @@ export class PilotClient {
     if (!result.success || result.data.farmerId !== id)
       throw new PilotRequestError(503);
     return result.data;
+  }
+  async farmerCorrectionGeographies(
+    id: string,
+    after?: string,
+    signal?: AbortSignal,
+  ) {
+    const query = farmerCorrectionGeographiesQuerySchema.safeParse({
+      id,
+      ...(after ? { after } : {}),
+      limit: 50,
+    });
+    if (!query.success) throw new PilotRequestError(400);
+    const params = new URLSearchParams(
+      Object.entries(query.data).map(([key, value]) => [key, String(value)]),
+    );
+    const page = farmerCorrectionGeographiesSchema.safeParse(
+      await this.request(
+        `farmers/correction-geographies?${params}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (
+      !page.success ||
+      page.data.farmerId.toLowerCase() !== id.toLowerCase() ||
+      page.data.geographies.length > 50
+    )
+      throw new PilotRequestError(503);
+    return page.data;
   }
   async farmerVerificationReceipt(id: string, signal?: AbortSignal) {
     if (!uuid.test(id)) throw new PilotRequestError(400);

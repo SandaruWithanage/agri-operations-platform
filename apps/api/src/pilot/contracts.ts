@@ -7,6 +7,7 @@ import type {
   FarmerPage,
   FarmerDetail,
   FarmerChangeResult,
+  FarmerCorrectionGeographies,
   FarmerVerificationReceipt,
 } from "@agri/validation";
 import {
@@ -80,6 +81,10 @@ export interface PilotRuntime {
     input: unknown,
   ): Promise<FarmerHistoryPage>;
   listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
+  farmerCorrectionGeographies(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<FarmerCorrectionGeographies>;
   farmerVerificationReceipt(
     actor: VerifiedActor,
     input: unknown,

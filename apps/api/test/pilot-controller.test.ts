@@ -55,6 +55,7 @@ function fake(): PilotRuntime {
     landDetail: vi.fn(),
     landGeographies: vi.fn(),
     farmerHistory: vi.fn().mockResolvedValue({}),
+    farmerCorrectionGeographies: vi.fn().mockResolvedValue({}),
     farmerVerificationReceipt: vi.fn().mockResolvedValue({}),
     farmerDetail: vi.fn().mockResolvedValue({}),
     close: vi.fn(),

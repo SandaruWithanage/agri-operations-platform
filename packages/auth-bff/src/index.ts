@@ -12,6 +12,8 @@ import {
   farmerHistoryPageSchema,
 } from "@agri/validation";
 import {
+  farmerCorrectionGeographiesQuerySchema,
+  farmerCorrectionGeographiesSchema,
   farmerChangeSchema,
   farmerChangeResultSchema,
   farmerListQuerySchema,
@@ -180,6 +182,7 @@ export function createBffHandler(
             "farmers/detail",
             "farmers/history",
             "farmers/verification-receipt",
+            "farmers/correction-geographies",
             "land",
             "land/detail",
             "land/geographies",
@@ -336,6 +339,36 @@ export function createBffHandler(
         )
           throw new Failure(503);
         return reply(result.data);
+      }
+      if (path === "farmers/correction-geographies") {
+        const params = new URL(request.url).searchParams;
+        const keys = Array.from(params.keys());
+        if (keys.length !== new Set(keys).size) throw new Failure(400);
+        const query = farmerCorrectionGeographiesQuerySchema.safeParse(
+          Object.fromEntries(params),
+        );
+        if (!query.success) throw new Failure(400);
+        const safeParams = new URLSearchParams(
+          Object.entries(query.data).map(([key, value]) => [
+            key,
+            String(value),
+          ]),
+        );
+        const page = farmerCorrectionGeographiesSchema.safeParse(
+          await call(
+            `${path}?${safeParams}`,
+            "GET",
+            undefined,
+            signed.accessToken,
+          ),
+        );
+        if (
+          !page.success ||
+          page.data.farmerId.toLowerCase() !== query.data.id.toLowerCase() ||
+          page.data.geographies.length > query.data.limit
+        )
+          throw new Failure(503);
+        return reply(page.data);
       }
       if (path === "farmers/change") {
         const parsed = farmerChangeSchema.safeParse(await body(request));

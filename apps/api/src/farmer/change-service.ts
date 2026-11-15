@@ -1,5 +1,7 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import {
+  farmerCorrectionGeographiesQuerySchema,
+  farmerCorrectionGeographiesSchema,
   farmerChangeSchema,
   farmerChangeResultSchema,
   farmerDetailQuerySchema,
@@ -12,6 +14,51 @@ import {
 } from "../authorization/transaction-context";
 export class FarmerChangeService {
   constructor(private readonly context: TransactionActorContext) {}
+  async correctionGeographies(
+    connection: ActorQuery,
+    actor: VerifiedActor,
+    input: unknown,
+  ) {
+    const query = farmerCorrectionGeographiesQuerySchema.parse(input);
+    return this.context.run(connection, actor, async (db) => {
+      const source = (
+        await db.query(
+          "SELECT geography_id FROM farm.farmer WHERE id=$1 AND authz.allowed(geography_id,'farmer.read',NULL)",
+          [query.id],
+        )
+      ).rows[0] as { geography_id?: unknown } | undefined;
+      if (typeof source?.geography_id !== "string")
+        throw new NotFoundException("Farmer not available");
+      const permission = await db.query(
+        "SELECT authz.allowed($1,'farmer.correct',NULL) AS permitted",
+        [source.geography_id],
+      );
+      if ((permission.rows[0] as { permitted?: unknown })?.permitted !== true)
+        throw new ForbiddenException("Correction choices denied");
+      const row = (
+        await db.query("SELECT * FROM farm.correction_geographies($1,$2,$3)", [
+          query.id,
+          query.after ?? null,
+          query.limit,
+        ])
+      ).rows[0] as
+        | {
+            current_version?: unknown;
+            source_geography?: unknown;
+            geographies?: unknown;
+            next_cursor?: unknown;
+          }
+        | undefined;
+      return farmerCorrectionGeographiesSchema.parse({
+        accountId: actor.accountId,
+        farmerId: query.id.toLowerCase(),
+        farmerVersion: row?.current_version,
+        sourceGeographyId: row?.source_geography,
+        geographies: row?.geographies,
+        nextCursor: row?.next_cursor,
+      });
+    });
+  }
   async verificationReceipt(
     connection: ActorQuery,
     actor: VerifiedActor,

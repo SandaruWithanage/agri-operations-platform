@@ -71,7 +71,11 @@ export type FarmerPage = z.infer<typeof farmerPageSchema>;
 
 export const farmerDetailSchema = z.object({
   access: z
-    .object({ viewAudit: z.boolean(), verify: z.boolean().optional() })
+    .object({
+      viewAudit: z.boolean(),
+      verify: z.boolean().optional(),
+      correct: z.boolean().optional(),
+    })
     .optional(),
   accountId: z.string().uuid(),
   farmer: farmerSummarySchema,
@@ -122,4 +126,40 @@ export const farmerVerificationReceiptSchema = z.object({
 });
 export type FarmerVerificationReceipt = z.infer<
   typeof farmerVerificationReceiptSchema
+>;
+
+export const farmerCorrectionGeographiesQuerySchema = z
+  .object({
+    id: z.string().uuid(),
+    after: z.string().uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+export const farmerCorrectionGeographiesSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    farmerId: z.string().uuid(),
+    farmerVersion: z.number().int().positive().max(2147483647),
+    sourceGeographyId: z.string().uuid(),
+    geographies: z
+      .array(
+        z.object({ id: z.string().uuid(), name: z.string().min(1).max(1000) }),
+      )
+      .max(100),
+    nextCursor: z.string().uuid().nullable(),
+  })
+  .superRefine((page, context) => {
+    if (
+      new Set(page.geographies.map((item) => item.id)).size !==
+        page.geographies.length ||
+      (page.nextCursor !== null &&
+        page.geographies[page.geographies.length - 1]?.id !== page.nextCursor)
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid correction choices page",
+      });
+  });
+export type FarmerCorrectionGeographies = z.infer<
+  typeof farmerCorrectionGeographiesSchema
 >;

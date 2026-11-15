@@ -1,6 +1,7 @@
 import { verifyLandIdentification } from "./support/land-integration";
 // @vitest-environment node
 import "fake-indexeddb/auto";
+import { verifyCorrectionOptions } from "./support/correction-options-integration";
 import { RegistrationOutbox, vaultName } from "../packages/sync-client/src";
 import { PilotClient } from "../apps/field-pwa/lib/pilot-client";
 import { readFileSync } from "node:fs";
@@ -235,6 +236,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     await client.query(
       readFileSync(
         "database/migrations/20261115_zzzzzzzzzzzz_farmer_review_queue/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzzzzzzzz_correction_geographies/up.sql",
         "utf8",
       ),
     );
@@ -2348,6 +2355,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "status=draft&status=verified",
       ])
         expect((await browser(`farmers?${query}`, "GET")).status).toBe(400);
+      expect(
+        (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       const verifyGrant = randomUUID(),
         correctGrant = randomUUID();
       await client.query(
@@ -2393,6 +2404,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
           .some((row) => row.id === farmerId),
       ).toBe(true);
       expect(JSON.stringify(reviewPages)).not.toContain(hiddenId);
+      expect(
+        (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       const verified = await browser("farmers/change", "POST", verification);
       expect(verified.status).toBe(200);
       expect(await verified.json()).toEqual({
@@ -2507,6 +2522,47 @@ suite("provisional authentication migration on PostgreSQL", () => {
         SELECT $1,$2,organization_id,'farmer.correct','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
         [correctGrant, account, locations[0].id],
       );
+      expect(
+        (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
+          .access.correct,
+      ).toBe(true);
+      await verifyCorrectionOptions({
+        owner: client,
+        browser,
+        accountId: account,
+        farmerId,
+        sourceGeographyId: locations[0].id,
+        sourceCorrectGrant: correctGrant,
+        actor: identity,
+        runtimeUrl: mappings.agri_farmer_runtime,
+      });
+      for (const query of [
+        "limit=101",
+        "limit=0",
+        `accountId=${another}`,
+        `id=${farmerId}`,
+        "source=administrator",
+      ])
+        expect(
+          (
+            await browser(
+              `farmers/correction-geographies?id=${farmerId}&${query}`,
+              "GET",
+            )
+          ).status,
+        ).toBe(400);
+      expect(
+        (await browser(`farmers/correction-geographies?id=${hiddenId}`, "GET"))
+          .status,
+      ).toBe(404);
+      expect(
+        (
+          await browser(
+            `farmers/correction-geographies?id=${randomUUID()}`,
+            "GET",
+          )
+        ).status,
+      ).toBe(404);
       const rawUpdate = new pg.Client({
         connectionString: mappings.agri_farmer_runtime,
       });
@@ -2572,6 +2628,16 @@ suite("provisional authentication migration on PostgreSQL", () => {
           await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
         ).json(),
       ).toEqual(ownReceipt);
+      expect(
+        (
+          await (
+            await browser(
+              `farmers/correction-geographies?id=${farmerId}`,
+              "GET",
+            )
+          ).json()
+        ).farmerVersion,
+      ).toBe(3);
       const changeAudit = await client.query(
         "SELECT actor_id,session_id,action,previous_version,result_version,previous_status,result_status FROM farm.farmer_change WHERE farmer_id=$1 ORDER BY result_version",
         [farmerId],
@@ -2754,6 +2820,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
         items: [],
         nextCursor: null,
       });
+      expect(
+        (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       const rawReceipt = new pg.Client({
         connectionString: mappings.agri_farmer_runtime,
       });
@@ -2784,7 +2854,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
           .access,
-      ).toEqual({ viewAudit: true, verify: false });
+      ).toEqual({ viewAudit: true, verify: false, correct: false });
       const auditOnly = new pg.Client({ connectionString: url });
       await auditOnly.connect();
       try {
@@ -2955,6 +3025,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ).toBe(404);
       expect(
         (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(404);
+      expect(
+        (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
           .status,
       ).toBe(404);
       const logout = await browser("auth/logout", "POST");
