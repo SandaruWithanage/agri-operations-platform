@@ -1,4 +1,7 @@
 // @vitest-environment node
+import "fake-indexeddb/auto";
+import { RegistrationOutbox } from "../packages/sync-client/src";
+import { PilotClient } from "../apps/field-pwa/lib/pilot-client";
 import { readFileSync } from "node:fs";
 import { createHmac, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -1896,6 +1899,14 @@ suite("provisional authentication migration on PostgreSQL", () => {
           csrf.csrfToken,
         ),
       ).toThrow();
+      const contextResponse = await browser("registration/context");
+      expect(contextResponse.status).toBe(200);
+      const drafting = await contextResponse.json();
+      expect(drafting.accountId).toBe(account);
+      expect(drafting.deviceId).toBe(device);
+      expect(drafting.offlineUntil - drafting.verifiedAt).toBe(3600000);
+      expect(drafting.deviceKeyFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(drafting)).not.toContain("accessToken");
       const locationsResponse = await browser("registration/geographies");
       expect(locationsResponse.status).toBe(200);
       const locations = (await locationsResponse.json()) as Array<{
@@ -1928,6 +1939,98 @@ suite("provisional authentication migration on PostgreSQL", () => {
         farmerId,
         replayed: false,
       });
+      const dbName = `synthetic-offline-integration-${randomUUID()}`;
+      const outbox = new RegistrationOutbox(dbName);
+      const fetcher: typeof fetch = async (path, init) =>
+        handler(
+          new Request(`https://field.example.test${String(path)}`, {
+            ...init,
+            headers: {
+              ...Object.fromEntries(new Headers(init?.headers)),
+              origin,
+              cookie: cookieHeader,
+            },
+          }),
+        );
+      const transport = new PilotClient(fetcher);
+      const draft = {
+        ...registration.farmer,
+        farmerId: randomUUID(),
+        fullName: "Synthetic offline retry",
+      };
+      try {
+        await outbox.initialize("synthetic-offline-integration-passphrase");
+        const mutation = await outbox.saveDraft(draft);
+        await outbox.queue(mutation);
+        let lost = true;
+        const dropped: typeof fetch = async (path, init) => {
+          const response = await fetcher(path, init);
+          if (
+            String(path).endsWith("farmers/register") &&
+            response.ok &&
+            lost
+          ) {
+            lost = false;
+            throw new Error("Lost response after commit");
+          }
+          return response;
+        };
+        const retryClient = new PilotClient(dropped);
+        await expect(
+          outbox.syncPending((id, value) =>
+            retryClient.sendRegistration(account, device, id, value),
+          ),
+        ).rejects.toMatchObject({ status: 503 });
+        expect((await outbox.list())[0].status).toBe("pending-sync");
+        await outbox.syncPending((id, value) =>
+          transport.sendRegistration(account, device, id, value),
+        );
+        expect((await outbox.list())[0].status).toBe("synced");
+        expect(
+          (
+            await client.query(
+              "SELECT count(*)::int AS count FROM farm.farmer WHERE id=$1",
+              [draft.farmerId],
+            )
+          ).rows[0].count,
+        ).toBe(1);
+        const denied = {
+          ...draft,
+          farmerId: randomUUID(),
+          fullName: "Synthetic revoked coverage",
+        };
+        const deniedId = await outbox.saveDraft(denied);
+        await outbox.queue(deniedId);
+        await client.query(
+          "UPDATE authz.assignment SET active=false WHERE account_id=$1",
+          [account],
+        );
+        await outbox.syncPending((id, value) =>
+          transport.sendRegistration(account, device, id, value),
+        );
+        expect(
+          (await outbox.list()).find((row) => row.id === deniedId)?.status,
+        ).toBe("rejected");
+        expect(
+          (
+            await client.query(
+              "SELECT count(*)::int AS count FROM farm.farmer WHERE id=$1",
+              [denied.farmerId],
+            )
+          ).rows[0].count,
+        ).toBe(0);
+        await client.query(
+          "UPDATE authz.assignment SET active=true WHERE account_id=$1",
+          [account],
+        );
+      } finally {
+        outbox.close();
+        await new Promise<void>((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(dbName);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
       const logout = await browser("auth/logout", "POST");
       expect(logout.status).toBe(200);
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");

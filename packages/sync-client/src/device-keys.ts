@@ -75,6 +75,10 @@ export class DeviceKeys {
     publicPart(record.publicKey);
     return record;
   }
+  async publicKey(deviceId: string): Promise<DevicePublicKey | null> {
+    const row = await this.db.keys.get(this.id(deviceId));
+    return row ? this.validate(row).publicKey : null;
+  }
   async sign(deviceId: string, message: string): Promise<string> {
     const record = await this.db.keys.get(this.id(deviceId));
     if (!record) throw new Error("Device key not enrolled on this browser");

@@ -21,6 +21,14 @@ export const pilotLoginSchema = z
     deviceProof: deviceProofSchema,
   })
   .strict();
+export type RegistrationContext = {
+  accountId: string;
+  deviceId: string;
+  deviceKeyFingerprint: string;
+  verifiedAt: number;
+  offlineUntil: number;
+  geographies: Array<{ id: string; name: string }>;
+};
 export interface PilotRuntime {
   readonly internalKey: string;
   deviceChallenge(
@@ -32,7 +40,9 @@ export interface PilotRuntime {
     clientKey: string,
     origin: string,
   ): Promise<{ cookie: string }>;
-  csrf(secret: string): Promise<{ csrfToken: string; accountId: string }>;
+  csrf(
+    secret: string,
+  ): Promise<{ csrfToken: string; accountId: string; deviceId: string }>;
   token(secret: string): Promise<{ accessToken: string }>;
   logout(secret: string, origin: string, csrf: string): Promise<void>;
   authenticate(token: string): Promise<VerifiedActor>;
@@ -46,6 +56,10 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<Array<{ id: string; name: string }>>;
+  context(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+  ): Promise<RegistrationContext>;
   close(): Promise<void>;
 }
 export const PILOT_RUNTIME = Symbol("PILOT_RUNTIME");

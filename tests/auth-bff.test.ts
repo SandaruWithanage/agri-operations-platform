@@ -150,12 +150,17 @@ describe("server-only authentication BFF", () => {
       Response.json({
         accountId,
         csrfToken: csrf,
+        deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
         sessionId: "private",
         secret: opaque,
       }),
     );
     const response = await createBffHandler(config, fetcher)(req("auth/csrf"));
-    expect(await response.json()).toEqual({ accountId, csrfToken: csrf });
+    expect(await response.json()).toEqual({
+      accountId,
+      csrfToken: csrf,
+      deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+    });
     const malformed = vi
       .fn()
       .mockResolvedValue(Response.json({ csrfToken: csrf }));
@@ -221,4 +226,38 @@ describe("server-only authentication BFF", () => {
       }),
     ).toThrow();
   });
+});
+
+it("returns only an actor-bound drafting context and no upstream role/token/record data", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2",
+    deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+    geographyId = "4e743f19-e3f7-4ed0-bdcc-29fe8e71ff0d";
+  const value = {
+    accountId,
+    deviceId,
+    deviceKeyFingerprint: "a".repeat(64),
+    verifiedAt: Date.now(),
+    offlineUntil: Date.now() + 3600000,
+    geographies: [{ id: geographyId, name: "Synthetic village" }],
+  };
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        ...value,
+        roles: ["not-authoritative"],
+        farmers: ["never cache"],
+        accessToken: "private",
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    network,
+  )(req("registration/context"));
+  expect(await response.json()).toEqual(value);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(network.mock.calls[1][1].headers.authorization).toBe(
+    "Bearer server-only",
+  );
 });

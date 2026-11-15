@@ -174,6 +174,20 @@ export class PilotController {
       };
     });
   }
+  @Get("registration/context")
+  context(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.context(
+        await runtime.authenticate(this.bearer(token)),
+        this.source(source),
+      ),
+    );
+  }
   @Get("registration/geographies")
   geographies(
     @Headers("x-agri-bff-key") key: string | undefined,

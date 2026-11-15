@@ -9,14 +9,14 @@ This is an implementation inventory, not client approval or production certifica
 - BFF cookie isolation, server-only access tokens and sanitized browser responses.
 - Configurable geography/organizational coverage and source-aware farmer creation permission checks in NestJS and PostgreSQL; signed transaction actor context, FORCE RLS and audit.
 - Minimal farmer registration, duplicate risk flagging and idempotent mutation replay without automatic merging.
-- English/Sinhala online field sign-in and registration; same-account retry with stable IDs and retained form values after an interrupted request.
-- Encrypted Dexie outbox primitive: restart/unlock, minimal payload, distinct saved/pending/synced/conflict/rejected states and retry tests. **It is not connected to the field screen.**
+- English/Sinhala field sign-in/enrollment entry point leading to the encrypted registration workspace.
+- Connected encrypted Dexie workspace: incomplete-draft autosave/restart recovery, account/device partitioning, local unlock/locking, reference-only public shell, explicit saved/pending/synced/conflict/rejected states, current-authority retry and synchronized local cleanup. Mobile/OS acceptance and full archive recovery/erasure remain incomplete.
 - Approved browser-key enrollment requests and independent-fingerprint operator provisioning/revocation; signed challenges and PostgreSQL single-use proof-gated sessions. A browser key is not hardware attestation or proof of secure pilot devices.
 - Native SQL manifest, checksum/history validation, one transaction per file, concurrent-run lock, failure rollback and refusal of untracked database adoption.
 
 ## Remaining engineering work
 
-1. Connect durable incomplete-draft autosave and the encrypted outbox to an approved-device field workspace. Partition local data by trusted account/device; demonstrate local unlock, inactivity locking, restart recovery, revoked-device handling and explicit safe cleanup. Cache only authorized task references. Add manual/background sync, current-session authorization, conflict/rejection resolution and real-device browser tests. Online form data currently lives only in the open page; do not use it as an offline pilot.
+1. Complete encrypted archive import/recovery to a replacement approved device, conflict/rejection review, full device deauthorization/erasure procedures and actual mobile/OS/security acceptance. The minimal offline workflow is connected and tested in Chromium; browser permission fixtures are not pilot-device approval.
 2. Add application account/device/MFA enrollment and administration screens (the operator CLI currently enrolls/revokes browser keys), privileged account management, MFA recovery, audited revocation and assignment/permission administration. Review the current conservative requirement for MFA and approved devices on every pilot account before changing it.
 3. Implement farmer list/detail with separate read and sensitive-field permissions, review/verification/correction/reassignment and audit history. Preserve version checks and deny unassigned access. Optional identity/contact/document fields need explicit storage/access decisions before exposing them.
 4. Add land relationships and optional GPS identification/accuracy, without claiming legal boundaries or surveyed area. Test scoped map/list/report access without leaking unauthorized locations or counts.

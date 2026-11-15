@@ -149,7 +149,11 @@ export function createBffHandler(
             "farmers/register",
           ].includes(path)) ||
         (request.method === "GET" &&
-          ["auth/csrf", "registration/geographies"].includes(path));
+          [
+            "auth/csrf",
+            "registration/geographies",
+            "registration/context",
+          ].includes(path));
       if (!allowed) return reply({ error: "Not found" }, 404);
       const origin = request.headers.get("origin");
       if (
@@ -203,8 +207,11 @@ export function createBffHandler(
         const result = (await call("auth/csrf", "POST", secret)) as {
           csrfToken?: unknown;
           accountId?: unknown;
+          deviceId?: unknown;
         };
         if (
+          typeof result.deviceId !== "string" ||
+          !uuid.test(result.deviceId) ||
           typeof result.accountId !== "string" ||
           !uuid.test(result.accountId) ||
           typeof result.csrfToken !== "string" ||
@@ -214,6 +221,7 @@ export function createBffHandler(
         return reply({
           csrfToken: result.csrfToken,
           accountId: result.accountId,
+          deviceId: result.deviceId,
         });
       }
       const csrf = request.headers.get("x-csrf-token") ?? "";
@@ -238,6 +246,56 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "registration/context") {
+        const result = (await call(
+          path,
+          "GET",
+          undefined,
+          signed.accessToken,
+        )) as {
+          accountId?: unknown;
+          deviceId?: unknown;
+          deviceKeyFingerprint?: unknown;
+          verifiedAt?: unknown;
+          offlineUntil?: unknown;
+          geographies?: unknown;
+        };
+        if (
+          typeof result?.accountId !== "string" ||
+          !uuid.test(result.accountId) ||
+          typeof result.deviceId !== "string" ||
+          !uuid.test(result.deviceId) ||
+          typeof result.deviceKeyFingerprint !== "string" ||
+          !/^[0-9a-f]{64}$/.test(result.deviceKeyFingerprint) ||
+          typeof result.verifiedAt !== "number" ||
+          !Number.isSafeInteger(result.verifiedAt) ||
+          typeof result.offlineUntil !== "number" ||
+          !Number.isSafeInteger(result.offlineUntil) ||
+          result.offlineUntil <= result.verifiedAt ||
+          result.offlineUntil - result.verifiedAt > 86400000 ||
+          !Array.isArray(result.geographies) ||
+          result.geographies.length > 10000 ||
+          result.geographies.some(
+            (value) =>
+              typeof value?.id !== "string" ||
+              !uuid.test(value.id) ||
+              typeof value?.name !== "string" ||
+              value.name.length > 1000,
+          )
+        )
+          throw new Failure(503);
+        return reply({
+          accountId: result.accountId,
+          deviceId: result.deviceId,
+          deviceKeyFingerprint: result.deviceKeyFingerprint,
+          verifiedAt: result.verifiedAt,
+          offlineUntil: result.offlineUntil,
+          geographies: result.geographies.map((value) => ({
+            id: value.id,
+            name: value.name,
+          })),
+        });
+      }
       if (path === "registration/geographies") {
         const result = await call(path, "GET", undefined, signed.accessToken);
         if (

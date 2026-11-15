@@ -1,19 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import type { FarmerRegistration } from "@agri/validation";
-import { FarmerRegistrationForm } from "./farmer-registration-form";
-import {
-  PilotClient,
-  PilotRequestError,
-  type RegistrationRequest,
-} from "../lib/pilot-client";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PilotClient, PilotRequestError } from "../lib/pilot-client";
 
 const words = {
   en: {
@@ -32,17 +20,18 @@ const words = {
     retry: "Check session again",
     setup:
       "Use your organization-issued account, authenticator and approved device ID. Contact your administrator if these have not been issued.",
-    online: "Online registration",
+    offlineLink: "Open encrypted offline workspace",
+    online: "Account and device access",
     limitation:
-      "This screen requires a connection. Entries are kept only in this open page until the server confirms saving. Offline registration and recovery are not enabled here yet.",
+      "Sign in on your approved device, then open the encrypted workspace. All field registrations are saved there before synchronization.",
     saved: "Synced. Registration saved on the server.",
-    auth: "Sign in again with the original account to continue. Entries on this page have been preserved.",
+    auth: "Sign in to continue. Encrypted drafts remain on the device.",
     denied:
       "Action denied. Check that you are using the original account and contact your administrator about your permissions.",
     conflict:
       "Registration conflict. Keep this page open and contact your administrator. The record will not be overwritten.",
     failure:
-      "The request could not be confirmed. Check your connection and retry. Keep this page open to preserve your entries.",
+      "The request could not be completed. Check your connection or contact your administrator.",
     loginFailure:
       "Sign-in failed. Check your account, password, authenticator code and approved device, or try again later.",
     dirty:
@@ -64,9 +53,10 @@ const words = {
     retry: "සැසිය නැවත පරීක්ෂා කරන්න",
     setup:
       "ආයතනයෙන් ලබා දුන් ගිණුම, සත්‍යාපකය සහ අනුමත උපාංග හැඳුනුම් අංකය භාවිත කරන්න. ඒවා නොමැති නම් පරිපාලක අමතන්න.",
-    online: "මාර්ගගත ලියාපදිංචිය",
+    offlineLink: "සංකේතනය කළ නොබැඳි වැඩපොළ විවෘත කරන්න",
+    online: "ගිණුම් සහ උපාංග ප්‍රවේශය",
     limitation:
-      "මෙම පිටුවට අන්තර්ජාල සම්බන්ධතාවක් අවශ්‍යයි. සේවාදායකය සුරැකීම තහවුරු කරන තුරු දත්ත මෙම විවෘත පිටුවේ පමණක් පවතී. නොබැඳි ලියාපදිංචිය සහ දත්ත නැවත ලබා ගැනීම මෙහි තවම සක්‍රීය නැත.",
+      "අනුමත උපාංගයෙන් පුරනය වී සංකේතනය කළ වැඩපොළ විවෘත කරන්න. සමමුහුර්ත කිරීමට පෙර සියලු ක්ෂේත්‍ර ලියාපදිංචි එහි සුරකී.",
     saved: "සමමුහුර්තයි. ලියාපදිංචිය සේවාදායකයේ සුරැකුණි.",
     auth: "ඉදිරියට යාමට මුල් ගිණුමෙන් නැවත පුරන්න. මෙම පිටුවේ දත්ත රඳවා ඇත.",
     denied: "අවසර නැත. මුල් ගිණුම භාවිත කරන බව පරීක්ෂා කර අවසර පිළිබඳව පරිපාලක අමතන්න.",
@@ -101,31 +91,17 @@ export function PilotWorkspace({
   const loginForm = useRef<HTMLFormElement>(null);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const [context, setContext] = useState<Context | null>(null);
-  const owner = useRef<string | null>(null);
-  const pending = useRef<RegistrationRequest | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const c = words[language];
-  const dirtyChange = useCallback((value: boolean) => setDirty(value), []);
-  useEffect(() => {
-    if (!dirty) return;
-    const guard = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
   useEffect(() => {
     let active = true;
     client
       .context()
       .then((value) => {
         if (!active) return;
-        owner.current = value.accountId;
         setContext(value);
         setSignedIn(true);
       })
@@ -155,11 +131,6 @@ export function PilotWorkspace({
   }
   async function check() {
     const value = await client.context();
-    if (owner.current !== null && owner.current !== value.accountId) {
-      setSignedIn(false);
-      throw new PilotRequestError(403);
-    }
-    owner.current = value.accountId;
     setContext(value);
     setSignedIn(true);
     setMessage(null);
@@ -192,28 +163,13 @@ export function PilotWorkspace({
       setBusy(false);
     }
   }
-  async function save(farmer: FarmerRegistration) {
-    if (!owner.current || busy || !signedIn)
-      throw new Error("Session required");
-    pending.current ??= { mutationId: crypto.randomUUID(), farmer };
-    if (JSON.stringify(pending.current.farmer) !== JSON.stringify(farmer))
-      throw new Error("Retry original request");
-    setBusy(true);
-    setMessage(null);
-    try {
-      await client.register(owner.current, pending.current);
-      pending.current = null;
-      setMessage("saved");
-    } catch (error) {
-      report(error);
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  }
+
   return (
     <section className="pilot-workspace" aria-label={c.online}>
       <p className="status">{c.limitation}</p>
+      <p>
+        <a href="/offline-workspace">{c.offlineLink}</a>
+      </p>
       {checking ? (
         <p role="status">{c.checking}</p>
       ) : (
@@ -337,14 +293,13 @@ export function PilotWorkspace({
             </button>
             {signedIn && (
               <button
-                disabled={busy || dirty}
+                disabled={busy}
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await client.logout();
+                    await client.logout(context ?? undefined);
                     setSignedIn(false);
                     setContext(null);
-                    owner.current = null;
                     setMessage(null);
                   } catch (error) {
                     report(error);
@@ -357,18 +312,6 @@ export function PilotWorkspace({
               </button>
             )}
           </div>
-          {dirty && <p className="status">{c.dirty}</p>}
-          {context && (
-            <FarmerRegistrationForm
-              key={context.accountId}
-              language={language}
-              geographies={context.geographies}
-              onSave={save}
-              enabled={signedIn && !busy}
-              freezeAfterAttempt
-              onDirtyChange={dirtyChange}
-            />
-          )}
         </>
       )}
     </section>

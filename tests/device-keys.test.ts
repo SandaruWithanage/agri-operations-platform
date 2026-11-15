@@ -81,6 +81,15 @@ it("uses browser WebCrypto through PilotClient and validates the resulting proof
   const network = vi
     .fn()
     .mockImplementation(async (path: string, options: RequestInit) => {
+      if (path.endsWith("registration/context"))
+        return Response.json({
+          accountId: account,
+          deviceId: device,
+          deviceKeyFingerprint: "a".repeat(64),
+          verifiedAt: Date.now(),
+          offlineUntil: Date.now() + 3600000,
+          geographies: [],
+        });
       const input = JSON.parse(String(options.body));
       if (path.endsWith("device-challenge"))
         return Response.json(
@@ -116,5 +125,5 @@ it("uses browser WebCrypto through PilotClient and validates the resulting proof
     password: "synthetic",
     otp: "123456",
   });
-  expect(network).toHaveBeenCalledTimes(2);
+  expect(network).toHaveBeenCalledTimes(3);
 });

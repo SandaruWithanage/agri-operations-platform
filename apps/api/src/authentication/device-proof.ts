@@ -89,6 +89,23 @@ export class DeviceProofs {
       .digest("base64url");
     return { ...value, mac };
   }
+  async fingerprint(
+    accountId: string,
+    deviceId: string,
+  ): Promise<string | null> {
+    const result = await this.database.query(
+      "SELECT * FROM authn.read_device_key($1,$2)",
+      [accountId, deviceId],
+    );
+    const row = result.rows[0] as { public_jwk: unknown } | undefined;
+    if (!row) return null;
+    const key = publicKeySchema.parse(row.public_jwk);
+    return createHash("sha256")
+      .update(
+        JSON.stringify({ crv: key.crv, kty: key.kty, x: key.x, y: key.y }),
+      )
+      .digest("hex");
+  }
   async verify(
     accountId: string,
     loginName: string,

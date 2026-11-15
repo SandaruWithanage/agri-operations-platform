@@ -1,5 +1,13 @@
-import { DeviceKeys, deviceKeyFingerprint } from "@agri/sync-client";
-import type { FarmerRegistration } from "@agri/validation";
+import {
+  DeviceKeys,
+  deviceKeyFingerprint,
+  VaultCatalog,
+} from "@agri/sync-client";
+import {
+  offlineReferenceContextSchema,
+  type FarmerRegistration,
+} from "@agri/validation";
+import type { SyncResult } from "@agri/sync-client";
 
 export class PilotRequestError extends Error {
   constructor(readonly status: number) {
@@ -74,6 +82,7 @@ export class PilotClient {
     const value = (await this.request("auth/csrf")) as {
       accountId?: unknown;
       csrfToken?: unknown;
+      deviceId?: unknown;
     };
     if (
       typeof value?.accountId !== "string" ||
@@ -82,7 +91,14 @@ export class PilotClient {
       !/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(value.csrfToken)
     )
       throw new PilotRequestError(503);
-    return { accountId: value.accountId, csrfToken: value.csrfToken };
+    return {
+      accountId: value.accountId,
+      csrfToken: value.csrfToken,
+      deviceId:
+        typeof value.deviceId === "string" && uuid.test(value.deviceId)
+          ? value.deviceId
+          : undefined,
+    };
   }
   async login(input: {
     loginName: string;
@@ -90,66 +106,82 @@ export class PilotClient {
     otp: string;
     deviceId: string;
   }) {
-    const challenge = (await this.request("auth/device-challenge", {
-      loginName: input.loginName,
-      deviceId: input.deviceId,
-    })) as { nonce?: unknown; expiresAt?: unknown; mac?: unknown };
-    if (
-      typeof challenge?.nonce !== "string" ||
-      !/^[A-Za-z0-9_-]{43}$/.test(challenge.nonce) ||
-      typeof challenge.mac !== "string" ||
-      !/^[A-Za-z0-9_-]{43}$/.test(challenge.mac) ||
-      typeof challenge.expiresAt !== "number" ||
-      !Number.isSafeInteger(challenge.expiresAt)
-    )
-      throw new PilotRequestError(503);
-    const text = JSON.stringify([
-      "agri-device-login-v1",
-      this.origin(),
-      input.loginName.trim(),
-      input.deviceId.toLowerCase(),
-      challenge.nonce,
-      challenge.expiresAt,
-    ]);
-    let signature: string;
+    const catalog = new VaultCatalog();
     try {
-      signature = await this.keys().sign(
-        input.deviceId,
-        JSON.stringify([text, challenge.mac]),
-      );
-    } catch {
-      throw new PilotRequestError(401);
-    }
-    await this.request("auth/login", {
-      ...input,
-      deviceProof: { ...challenge, signature },
-    });
-  }
-  async context() {
-    const session = await this.session();
-    const result = await this.request("registration/geographies");
-    if (
-      !Array.isArray(result) ||
-      result.some(
-        (value) =>
-          typeof value?.id !== "string" ||
-          !uuid.test(value.id) ||
-          typeof value?.name !== "string",
+      const epoch = await catalog.epoch(input.deviceId);
+      const challenge = (await this.request("auth/device-challenge", {
+        loginName: input.loginName,
+        deviceId: input.deviceId,
+      })) as { nonce?: unknown; expiresAt?: unknown; mac?: unknown };
+      if (
+        typeof challenge?.nonce !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(challenge.nonce) ||
+        typeof challenge.mac !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(challenge.mac) ||
+        typeof challenge.expiresAt !== "number" ||
+        !Number.isSafeInteger(challenge.expiresAt)
       )
-    )
-      throw new PilotRequestError(503);
-    return {
-      accountId: session.accountId,
-      geographies: result.map((value) => ({
-        id: value.id as string,
-        label: value.name as string,
-      })),
-    };
+        throw new PilotRequestError(503);
+      const text = JSON.stringify([
+        "agri-device-login-v1",
+        this.origin(),
+        input.loginName.trim(),
+        input.deviceId.toLowerCase(),
+        challenge.nonce,
+        challenge.expiresAt,
+      ]);
+      let signature: string;
+      try {
+        signature = await this.keys().sign(
+          input.deviceId,
+          JSON.stringify([text, challenge.mac]),
+        );
+      } catch {
+        throw new PilotRequestError(401);
+      }
+      await this.request("auth/login", {
+        ...input,
+        deviceProof: { ...challenge, signature },
+      });
+      const context = await this.context();
+      if (context.deviceId !== input.deviceId.toLowerCase())
+        throw new PilotRequestError(401);
+      if (
+        !(await catalog.authorize(context.accountId, context.deviceId, epoch))
+      )
+        throw new PilotRequestError(401);
+    } finally {
+      catalog.close();
+    }
   }
-  async register(accountId: string, input: RegistrationRequest): Promise<void> {
+
+  async context() {
+    const result = (await this.request("registration/context")) as {
+      geographies?: unknown;
+    };
+    if (!Array.isArray(result?.geographies)) throw new PilotRequestError(503);
+    const parsed = offlineReferenceContextSchema.safeParse({
+      ...result,
+      geographies: result.geographies.map((value) => ({
+        id: value?.id,
+        label: value?.name,
+      })),
+    });
+    if (!parsed.success) throw new PilotRequestError(503);
+    return parsed.data;
+  }
+  async register(
+    accountId: string,
+    input: RegistrationRequest,
+    deviceId?: string,
+  ): Promise<void> {
     // Always reauthenticate before retrying, including after an ambiguous network failure.
     const session = await this.session();
-    if (session.accountId !== accountId) throw new PilotRequestError(403);
+    if (
+      session.accountId !== accountId ||
+      (deviceId && session.deviceId !== deviceId)
+    )
+      throw new PilotRequestError(deviceId ? 401 : 403);
     const result = (await this.request(
       "farmers/register",
       input,
@@ -161,8 +193,44 @@ export class PilotClient {
     )
       throw new PilotRequestError(503);
   }
-  async logout() {
-    const session = await this.session();
-    await this.request("auth/logout", {}, session.csrfToken);
+  async sendRegistration(
+    accountId: string,
+    deviceId: string,
+    mutationId: string,
+    farmer: FarmerRegistration,
+  ): Promise<SyncResult> {
+    try {
+      await this.register(accountId, { mutationId, farmer }, deviceId);
+      return { status: "synced" };
+    } catch (error) {
+      if (error instanceof PilotRequestError && error.status === 409)
+        return { status: "conflict" };
+      if (
+        error instanceof PilotRequestError &&
+        [400, 403].includes(error.status)
+      )
+        return { status: "rejected" };
+      throw error;
+    }
+  }
+  async logout(known?: { accountId: string; deviceId: string }) {
+    const bindings = known ? [known] : [];
+    try {
+      const session = await this.session();
+      if (session.deviceId)
+        bindings.push({
+          accountId: session.accountId,
+          deviceId: session.deviceId,
+        });
+      await this.request("auth/logout", {}, session.csrfToken);
+    } finally {
+      const catalog = new VaultCatalog();
+      try {
+        for (const binding of bindings)
+          await catalog.suspend(binding.accountId, binding.deviceId);
+      } finally {
+        catalog.close();
+      }
+    }
   }
 }

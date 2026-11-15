@@ -1,6 +1,6 @@
 # Agricultural Operations Platform
 
-Development foundation and provisional pilot registration. The repository contains tested hybrid authentication, PostgreSQL ABAC/RLS, server BFFs and an English/Sinhala online field registration screen. Authentication is disabled by default. Offline device integration, administration, remaining Phase 1 domains and production validation are unfinished. See [delivery status](docs/development/PHASE_1_STATUS.md) for the current inventory. Use synthetic data during development.
+Development foundation and provisional pilot registration. The repository contains tested hybrid authentication, PostgreSQL ABAC/RLS, server BFFs and an English/Sinhala online field registration screen. Authentication is disabled by default. Complete device recovery/erasure, administration, remaining Phase 1 domains and production validation are unfinished. See [delivery status](docs/development/PHASE_1_STATUS.md) for the current inventory. Use synthetic data during development.
 
 ## Setup
 
@@ -45,7 +45,7 @@ Follow [the pilot runtime guide](docs/development/PILOT_AUTH_RUNTIME.md) to prov
 
 The field screen prepares public device enrollment requests and signs login challenges using its non-exportable browser key. Follow [device enrollment and revocation](docs/development/DEVICE_ENROLLMENT.md) for independent administrator approval; a device UUID alone cannot sign in. The device-proof migration revokes existing sessions and requires an eighth runtime connection plus a separate challenge-signing key.
 
-The field screen supports online sign-in, authorized geography selection and minimal farmer registration with same-account/idempotent retries. It currently preserves entries only in the open page. The encrypted Dexie primitive is tested separately; device persistence, offline unlock/recovery and authenticated outbox synchronization are still being integrated. Do not use the online form as an offline pilot.
+Field registrations use the [encrypted offline workspace](docs/development/OFFLINE_WORKSPACE.md). It autosaves incomplete minimal drafts, survives a prepared-browser restart offline, and revalidates account/device/permissions during synchronization. Browser persistence approval, a prepared public shell and local unlock are required. Archive import, replacement-device recovery and production/mobile/OS acceptance remain unfinished; do not treat passing Chromium checks as pilot approval.
 
 For the Chromium device-key/retry smoke check, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
 
