@@ -36,6 +36,10 @@ let adapter;
 let loginCount = 0;
 let registrationCount = 0;
 const mutationRecords = new Map();
+let releaseFirstRegistration;
+const firstRegistrationGate = new Promise((resolve) => {
+  releaseFirstRegistration = resolve;
+});
 async function freePort() {
   const server = httpServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -183,6 +187,7 @@ async function installAdapters(origin) {
       if (previous) assert.deepEqual(input, previous);
       else {
         mutationRecords.set(input.mutationId, input);
+        await firstRegistrationGate;
         return route.abort("failed");
       }
       return reply({
@@ -528,6 +533,12 @@ try {
   await page
     .getByRole("button", { name: "Set up or unlock", exact: true })
     .click();
+  await page.getByText("Syncing…", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Synced", { exact: true }).count(), 0);
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page.getByText("සමමුහුර්ත කරමින්…", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  releaseFirstRegistration();
   await page.getByText("Pending Sync", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Sync Now", exact: true }).click();
   await page.getByText("Synced", { exact: true }).waitFor();
@@ -640,7 +651,7 @@ try {
   );
   assert.equal(mutationRecords.size, 1);
   console.log(
-    "Chromium passed: secure-context key preparation, non-exportability, browser restart persistence, signed login, offline process restart/draft recovery, reauthentication, safe sync retry, local cleanup, authenticated archive recovery and no private HTTP caching.",
+    "Chromium passed: secure-context key preparation, non-exportability, browser restart persistence, signed login, offline process restart/draft recovery, reauthentication, visible bilingual sync progress, safe sync retry, local cleanup, authenticated archive recovery and no private HTTP caching.",
   );
 } catch (error) {
   const diagnostic = context?.pages().at(-1);
