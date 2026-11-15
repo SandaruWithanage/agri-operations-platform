@@ -2,10 +2,10 @@ import { z } from "zod";
 const timestamp = z.string().datetime().max(40);
 export const farmerHistoryQuerySchema = z
   .object({
-    id: z.string().uuid(),
+    id: z.guid(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
     beforeTime: timestamp.optional(),
-    beforeId: z.string().uuid().optional(),
+    beforeId: z.guid().optional(),
   })
   .strict()
   .refine(
@@ -15,7 +15,7 @@ export const farmerHistoryQuerySchema = z
 const status = z.enum(["draft", "pending-review", "verified", "inactive"]);
 const snapshot = z.object({
   fullName: z.string().min(1).max(200),
-  geographyId: z.string().uuid(),
+  geographyId: z.guid(),
   geographyName: z.string().min(1).max(1000),
   status,
 });
@@ -33,9 +33,9 @@ const changed = z
     "Invalid history revision",
   );
 const base = {
-  eventId: z.string().uuid(),
+  eventId: z.guid(),
   occurredAt: timestamp,
-  actorAccountId: z.string().uuid(),
+  actorAccountId: z.guid(),
 };
 export const farmerHistoryEventSchema = z.discriminatedUnion("action", [
   z.object({ ...base, action: z.literal("registration"), change: z.null() }),
@@ -47,12 +47,12 @@ export const farmerHistoryEventSchema = z.discriminatedUnion("action", [
 ]);
 export const farmerHistoryCursorSchema = z.object({
   beforeTime: timestamp,
-  beforeId: z.string().uuid(),
+  beforeId: z.guid(),
 });
 export const farmerHistoryPageSchema = z
   .object({
-    accountId: z.string().uuid(),
-    farmerId: z.string().uuid(),
+    accountId: z.guid(),
+    farmerId: z.guid(),
     items: z.array(farmerHistoryEventSchema).max(100),
     nextCursor: farmerHistoryCursorSchema.nullable(),
   })

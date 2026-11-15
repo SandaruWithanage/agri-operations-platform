@@ -90,8 +90,12 @@ export async function createPilotRuntime(
   let urls: Record<string, string>;
   let mfaKeys: Record<string, string>;
   try {
-    urls = z.record(z.string().url()).parse(JSON.parse(c.PILOT_DATABASE_URLS));
-    mfaKeys = z.record(z.string()).parse(JSON.parse(c.PILOT_MFA_KEYS));
+    urls = z
+      .record(z.string(), z.string().url())
+      .parse(JSON.parse(c.PILOT_DATABASE_URLS));
+    mfaKeys = z
+      .record(z.string(), z.string())
+      .parse(JSON.parse(c.PILOT_MFA_KEYS));
   } catch {
     throw new Error("Invalid pilot database or key mapping");
   }

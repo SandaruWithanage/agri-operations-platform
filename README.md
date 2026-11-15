@@ -4,10 +4,10 @@ Development foundation and provisional pilot registration. The repository contai
 
 ## Setup
 
-Use Node.js 22+ and Corepack (pnpm 10.20.0), plus Docker Compose v2.
+Use Node.js 26.13.1 (`.node-version`), pnpm 12.21.0 and Docker Compose v2. Node 26 does not bundle Corepack; install pnpm explicitly. See the [stable-version policy and compatibility notes](docs/development/DEPENDENCY_POLICY.md).
 
 ```sh
-corepack enable
+npm install --global pnpm@12.21.0
 pnpm install --frozen-lockfile
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env

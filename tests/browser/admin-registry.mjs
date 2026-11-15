@@ -1,4 +1,5 @@
 import { URL } from "node:url";
+import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import { createServer, get } from "node:http";
 import { spawn } from "node:child_process";
@@ -50,6 +51,14 @@ async function ready(url, child) {
   throw new Error("Fixture readiness timeout");
 }
 try {
+  // Production uses CJS API code and ESM validation; invalid input must retain
+  // the API's Zod error identity rather than becoming a generic 503.
+  const apiRequire = createRequire(resolve("apps/api/package.json"));
+  const compiledValidation = apiRequire("@agri/validation");
+  assert.throws(
+    () => compiledValidation.farmerChangeSchema.parse({}),
+    apiRequire("zod").ZodError,
+  );
   // Start the compiled API too: shared validation must load correctly in its CJS runtime.
   const apiPort = await port();
   const api = spawn(process.execPath, [resolve("apps/api/dist/main.js")], {

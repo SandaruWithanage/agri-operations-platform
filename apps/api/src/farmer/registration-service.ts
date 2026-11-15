@@ -10,11 +10,11 @@ import {
 // Server-side validation is intentionally strict. Sensitive optional fields require separate storage and permissions.
 export const registrationEnvelopeSchema = z
   .object({
-    mutationId: z.string().uuid(),
+    mutationId: z.guid(),
     farmer: z
       .object({
-        farmerId: z.string().uuid(),
-        geographyId: z.string().uuid(),
+        farmerId: z.guid(),
+        geographyId: z.guid(),
         fullName: z.string().trim().min(1).max(200),
         privacyNoticeProvided: z.literal(true),
       })

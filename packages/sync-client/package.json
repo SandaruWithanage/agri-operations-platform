@@ -7,13 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "~5.9.0"
+    "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
   },
   "dependencies": {
     "@agri/validation": "workspace:*",
-    "dexie": "4.2.1"
+    "dexie": "4.4.7"
   }
 }

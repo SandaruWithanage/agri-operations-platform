@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** Provisional pilot core. Server must independently validate and authorize all values. */
 const optionalText = (max: number) => z.string().trim().max(max).optional();
-const identifier = z.string().uuid();
+const identifier = z.guid();
 
 export const farmerRegistrationSchema = z
   .object({
