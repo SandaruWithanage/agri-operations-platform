@@ -117,3 +117,17 @@ dt {
 dd {
   margin: 4px 0 12px;
 }
+
+.audit-events {
+  padding-inline-start: 24px;
+}
+.audit-events > li {
+  border-bottom: 1px solid #b6c8bd;
+  padding: 16px 0;
+}
+.audit-events h4 {
+  font-weight: 700;
+}
+.audit-events code {
+  overflow-wrap: anywhere;
+}

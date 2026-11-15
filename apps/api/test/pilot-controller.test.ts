@@ -50,6 +50,7 @@ function fake(): PilotRuntime {
     context: vi.fn().mockResolvedValue({}),
     changeFarmer: vi.fn(),
     listFarmers: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    farmerHistory: vi.fn().mockResolvedValue({}),
     farmerDetail: vi.fn().mockResolvedValue({}),
     close: vi.fn(),
   };

@@ -67,6 +67,11 @@ const session = "11b492ca-bcb4-4662-91d9-88789a80a0c2";
 let client: pg.Client;
 let committedForConcurrency = false;
 let upgradeResult: { revoked: boolean; audit: number } | null = null;
+let historyUpgradeResult: {
+  before: unknown;
+  after: unknown;
+  indexed: boolean;
+} | null = null;
 
 suite("provisional authentication migration on PostgreSQL", () => {
   beforeAll(async () => {
@@ -169,6 +174,59 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    const upgradeOrg = randomUUID(),
+      upgradeGeo = randomUUID(),
+      upgradeFarmer = randomUUID();
+    await client.query(
+      "INSERT INTO farm.organization(id,name) VALUES($1,'Synthetic history upgrade organization')",
+      [upgradeOrg],
+    );
+    await client.query(
+      "INSERT INTO farm.geography(id,organization_id,name) VALUES($1,$2,'Synthetic history upgrade village')",
+      [upgradeGeo, upgradeOrg],
+    );
+    await client.query(
+      "INSERT INTO farm.farmer(id,geography_id,full_name,privacy_notice_provided,registration_source,created_by) VALUES($1,$2,'Synthetic pre-history farmer',true,'administrator',$3)",
+      [upgradeFarmer, upgradeGeo, legacyAccount],
+    );
+    const inspectUpgrade = async () => ({
+      farmer: (
+        await client.query(
+          "SELECT id,full_name,geography_id,status,created_by,created_at::text,version FROM farm.farmer WHERE id=$1",
+          [upgradeFarmer],
+        )
+      ).rows[0],
+      audit: (
+        await client.query(
+          "SELECT id,farmer_id,actor_id,action,occurred_at::text FROM farm.farmer_audit WHERE farmer_id=$1",
+          [upgradeFarmer],
+        )
+      ).rows,
+    });
+    const beforeHistory = await inspectUpgrade();
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzzzz_farmer_audit/up.sql",
+        "utf8",
+      ),
+    );
+    historyUpgradeResult = {
+      before: beforeHistory,
+      after: await inspectUpgrade(),
+      indexed: (
+        await client.query(
+          "SELECT to_regclass('farm.farmer_audit_timeline_idx') IS NOT NULL AS present",
+        )
+      ).rows[0].present,
+    };
+    await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
+      upgradeFarmer,
+    ]);
+    await client.query("DELETE FROM farm.farmer WHERE id=$1", [upgradeFarmer]);
+    await client.query("DELETE FROM farm.geography WHERE id=$1", [upgradeGeo]);
+    await client.query("DELETE FROM farm.organization WHERE id=$1", [
+      upgradeOrg,
+    ]);
     upgradeResult = (
       await client.query(
         "SELECT revoked_at IS NOT NULL AS revoked,(SELECT count(*)::int FROM authn.revocation_event WHERE session_id=$1) AS audit FROM authn.login_session WHERE id=$1",
@@ -246,6 +304,11 @@ suite("provisional authentication migration on PostgreSQL", () => {
   }
   it("revokes and audits pre-proof sessions during the device-proof migration", () => {
     expect(upgradeResult).toEqual({ revoked: true, audit: 1 });
+  });
+  it("adds the history migration without changing existing farmer or registration audit values", () => {
+    expect(historyUpgradeResult).not.toBeNull();
+    expect(historyUpgradeResult!.after).toEqual(historyUpgradeResult!.before);
+    expect(historyUpgradeResult!.indexed).toBe(true);
   });
   it("stores an opaque cookie digest with a bounded session and device ownership", async () => {
     await client.query(
@@ -1817,6 +1880,26 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "REVOKE agri_device_provisioner FROM agri_test_login_0",
       );
     }
+    await client.query(
+      "GRANT SELECT(key) ON authz.context_key TO agri_test_login_6",
+    );
+    try {
+      await expect(createPilotRuntime(env)).rejects.toThrow("least privilege");
+    } finally {
+      await client.query(
+        "REVOKE SELECT(key) ON authz.context_key FROM agri_test_login_6",
+      );
+    }
+    await client.query(
+      "GRANT SELECT(id) ON farm.farmer_audit TO agri_test_login_6",
+    );
+    try {
+      await expect(createPilotRuntime(env)).rejects.toThrow("least privilege");
+    } finally {
+      await client.query(
+        "REVOKE SELECT(id) ON farm.farmer_audit FROM agri_test_login_6",
+      );
+    }
     const runtime = (await createPilotRuntime(env))!;
     let app: Awaited<ReturnType<typeof NestFactory.create>> | undefined;
     try {
@@ -2434,6 +2517,187 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (await browser("farmers/change", "POST", failureChange)).status,
       ).toBe(403);
+      expect(
+        (await browser(`farmers/history?id=${farmerId}`, "GET")).status,
+      ).toBe(403);
+      const nativeHistory = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await nativeHistory.connect();
+      try {
+        const signed = new TransactionActorContext(Buffer.alloc(32, 42));
+        await expect(
+          signed.run(nativeHistory, identity, (db) =>
+            db.query("SELECT * FROM farm.farmer_history($1,NULL,NULL,25)", [
+              farmerId,
+            ]),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+        await expect(
+          signed.run(nativeHistory, identity, (db) =>
+            db.query("SELECT * FROM farm.farmer_audit", []),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await nativeHistory.end();
+      }
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [verifyGrant],
+      );
+      const auditGrant = randomUUID();
+      await client.query(
+        `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
+        SELECT $1,$2,organization_id,'farmer.audit.read','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
+        [auditGrant, account, locations[0].id],
+      );
+      expect(
+        (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
+          .access,
+      ).toEqual({ viewAudit: true });
+      const auditOnly = new pg.Client({ connectionString: url });
+      await auditOnly.connect();
+      try {
+        await auditOnly.query("SET SESSION AUTHORIZATION agri_policy_owner");
+        const signed = new TransactionActorContext(Buffer.alloc(32, 42));
+        await expect(
+          signed.run(auditOnly, identity, (db) =>
+            db.query(
+              "UPDATE farm.farmer SET full_name='Synthetic audit-only bypass' WHERE id=$1",
+              [farmerId],
+            ),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+        await expect(
+          signed.run(auditOnly, identity, (db) =>
+            db.query(
+              "SELECT * FROM farm.change_farmer($1,$2,7,'verification',NULL,NULL,'Synthetic audit-only review attempt')",
+              [randomUUID(), farmerId],
+            ),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await auditOnly.end();
+      }
+      // Distinct microseconds inside one millisecond, plus timestamp ties, must not skip events.
+      await client.query(
+        `WITH ordered AS (SELECT id,row_number() OVER(ORDER BY id) AS n FROM farm.farmer_audit WHERE farmer_id=$1)
+        UPDATE farm.farmer_audit a SET occurred_at='2026-11-15T12:00:00.123456Z'::timestamptz+((o.n/2)::integer)*interval '1 microsecond' FROM ordered o WHERE a.id=o.id`,
+        [farmerId],
+      );
+      const expectedEvents = (
+        await client.query(
+          "SELECT id FROM farm.farmer_audit WHERE farmer_id=$1 ORDER BY occurred_at DESC,id DESC",
+          [farmerId],
+        )
+      ).rows.map((row) => row.id);
+      const historyEvents = [];
+      let historyCursor: { beforeTime: string; beforeId: string } | null = null;
+      do {
+        const params = new URLSearchParams({
+          id: farmerId,
+          limit: "1",
+          ...(historyCursor ?? {}),
+        });
+        const response = await browser(`farmers/history?${params}`, "GET");
+        expect(response.status).toBe(200);
+        const page = await response.json();
+        expect(page.accountId).toBe(account);
+        expect(page.farmerId).toBe(farmerId);
+        historyEvents.push(...page.items);
+        historyCursor = page.nextCursor;
+        if (historyCursor) {
+          expect(historyCursor.beforeTime).toMatch(/\.\d{6}Z$/);
+          expect(historyCursor.beforeId).toBe(page.items[0].eventId);
+        }
+        expect(historyEvents.length).toBeLessThan(20);
+      } while (historyCursor);
+      expect(historyEvents.map((event) => event.eventId)).toEqual(
+        expectedEvents,
+      );
+      expect(new Set(historyEvents.map((event) => event.eventId)).size).toBe(
+        expectedEvents.length,
+      );
+      expect(
+        historyEvents.find((event) => event.action === "registration").change,
+      ).toBeNull();
+      expect(
+        historyEvents.find((event) => event.change?.resultVersion === 3).change
+          .previous.fullName,
+      ).toBe(registration.farmer.fullName);
+      expect(JSON.stringify(historyEvents)).not.toContain(identity.sessionId);
+      const hiddenEvent = (
+        await client.query(
+          "SELECT id FROM farm.farmer_audit WHERE change_id=$1",
+          [correction.mutationId],
+        )
+      ).rows[0].id;
+      await client.query(
+        "UPDATE farm.farmer_change SET previous_geography=$1,previous_name='Synthetic restricted historical name' WHERE id=$2",
+        [otherGeo, correction.mutationId],
+      );
+      const filteredHistory = await (
+        await browser(`farmers/history?id=${farmerId}`, "GET")
+      ).json();
+      expect(filteredHistory.items).toHaveLength(expectedEvents.length - 1);
+      expect(JSON.stringify(filteredHistory)).not.toContain(
+        "Synthetic restricted historical name",
+      );
+      expect(JSON.stringify(filteredHistory)).not.toContain(hiddenEvent);
+      expect(filteredHistory.nextCursor).toBeNull();
+      const oldAssignment = randomUUID();
+      await client.query(
+        "INSERT INTO authz.assignment(id,account_id,organization_id,geography_id,starts_at) SELECT $1,$2,organization_id,id,now()-interval '1 hour' FROM farm.geography WHERE id=$3",
+        [oldAssignment, account, otherGeo],
+      );
+      for (const permission of ["farmer.read", "farmer.audit.read"])
+        await client.query(
+          "INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at) SELECT gen_random_uuid(),$1,organization_id,$2,'assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3",
+          [account, permission, otherGeo],
+        );
+      expect(
+        JSON.stringify(
+          await (await browser(`farmers/history?id=${farmerId}`, "GET")).json(),
+        ),
+      ).toContain("Synthetic restricted historical name");
+      await client.query(
+        "UPDATE authz.assignment SET active=false WHERE id=$1",
+        [oldAssignment],
+      );
+      expect(
+        JSON.stringify(
+          await (await browser(`farmers/history?id=${farmerId}`, "GET")).json(),
+        ),
+      ).not.toContain("Synthetic restricted historical name");
+      expect(
+        (await browser(`farmers/history?id=${hiddenId}`, "GET")).status,
+      ).toBe(404);
+      expect(
+        (await browser(`farmers/history?id=${randomUUID()}`, "GET")).status,
+      ).toBe(404);
+      expect(
+        (
+          await browser(
+            `farmers/history?id=${farmerId}&beforeId=${randomUUID()}`,
+            "GET",
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (await browser(`farmers/history?id=${farmerId}&limit=101`, "GET"))
+          .status,
+      ).toBe(400);
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [auditGrant],
+      );
+      expect(
+        (await browser(`farmers/history?id=${farmerId}`, "GET")).status,
+      ).toBe(403);
+      expect(
+        (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
+          .access,
+      ).toEqual({ viewAudit: false });
       await client.query(
         "UPDATE authz.permission_grant SET active=false WHERE id=$1",
         [readGrant],
@@ -2445,6 +2709,9 @@ suite("provisional authentication migration on PostgreSQL", () => {
       });
       expect(
         (await browser(`farmers/detail?id=${farmerId}`, "GET")).status,
+      ).toBe(404);
+      expect(
+        (await browser(`farmers/history?id=${farmerId}`, "GET")).status,
       ).toBe(404);
       const logout = await browser("auth/logout", "POST");
       expect(logout.status).toBe(200);

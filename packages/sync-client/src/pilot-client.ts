@@ -1,4 +1,9 @@
 import {
+  farmerHistoryQuerySchema,
+  farmerHistoryPageSchema,
+  type FarmerHistoryCursor,
+} from "@agri/validation";
+import {
   farmerChangeSchema,
   farmerChangeResultSchema,
   type FarmerChange,
@@ -173,6 +178,23 @@ export class PilotClient {
     });
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
+  }
+  async farmerHistory(id: string, cursor?: FarmerHistoryCursor) {
+    const parsed = farmerHistoryQuerySchema.safeParse({
+      id,
+      limit: 25,
+      ...cursor,
+    });
+    if (!parsed.success) throw new PilotRequestError(400);
+    const query = new URLSearchParams(
+      Object.entries(parsed.data).map(([key, value]) => [key, String(value)]),
+    );
+    const result = farmerHistoryPageSchema.safeParse(
+      await this.request(`farmers/history?${query}`),
+    );
+    if (!result.success || result.data.farmerId !== id)
+      throw new PilotRequestError(503);
+    return result.data;
   }
   async changeFarmer(accountId: string, input: FarmerChange) {
     const value = farmerChangeSchema.parse(input);

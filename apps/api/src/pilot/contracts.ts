@@ -1,4 +1,5 @@
 import type {
+  FarmerHistoryPage,
   FarmerPage,
   FarmerDetail,
   FarmerChangeResult,
@@ -69,6 +70,10 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     input: unknown,
   ): Promise<FarmerChangeResult>;
+  farmerHistory(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<FarmerHistoryPage>;
   listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
   farmerDetail(actor: VerifiedActor, input: unknown): Promise<FarmerDetail>;
   close(): Promise<void>;

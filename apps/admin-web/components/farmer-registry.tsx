@@ -1,4 +1,5 @@
 "use client";
+import { FarmerHistory } from "./farmer-history";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import type { FarmerSummary } from "@agri/validation";
@@ -40,6 +41,7 @@ const words = {
     verified: "Verified",
     inactive: "Inactive",
     review: "Read-only record view.",
+    history: "Show record history",
     duplicate:
       "Possible duplicate: another visible record has the same name and location. Review the records separately; do not merge them automatically.",
   },
@@ -78,6 +80,7 @@ const words = {
     verified: "තහවුරු කළ",
     inactive: "අක්‍රීය",
     review: "කියවීමට පමණක් ඇති වාර්තා දසුනකි.",
+    history: "වාර්තා ඉතිහාසය පෙන්වන්න",
     duplicate:
       "සමාන වාර්තාවක් තිබිය හැක: එකම නම සහ ස්ථානය සහිත තවත් අවසර ලත් වාර්තාවක් ඇත. වාර්තා වෙන වෙනම සමාලෝචනය කරන්න; ස්වයංක්‍රීයව ඒකාබද්ධ නොකරන්න.",
   },
@@ -90,6 +93,8 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
   const [context, setContext] = useState<Context | null>(null);
   const [rows, setRows] = useState<FarmerSummary[]>([]);
   const [selected, setSelected] = useState<FarmerSummary | null>(null);
+  const [canViewAudit, setCanViewAudit] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [next, setNext] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Array<string | undefined>>([
     undefined,
@@ -106,6 +111,8 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
     sequence.current++;
     setRows([]);
     setSelected(null);
+    setCanViewAudit(false);
+    setShowHistory(false);
     setNext(null);
   }
   function report(error: unknown) {
@@ -204,6 +211,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
       if (!active.current || generation !== sequence.current) return;
       if (result.accountId !== accountId) throw new PilotRequestError(401);
       setSelected(result.farmer);
+      setCanViewAudit(result.access?.viewAudit === true);
     } catch (error) {
       if (active.current && generation === sequence.current) report(error);
     } finally {
@@ -438,6 +446,19 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
             </dd>
           </dl>
           <p>{copy.review}</p>
+          {canViewAudit && !showHistory && (
+            <button onClick={() => setShowHistory(true)}>{copy.history}</button>
+          )}
+          {showHistory && context && (
+            <FarmerHistory
+              key={`${context.accountId}:${selected.id}`}
+              client={client}
+              accountId={context.accountId}
+              farmerId={selected.id}
+              language={language}
+              onFailure={report}
+            />
+          )}
           <button onClick={() => void load()}>{copy.close}</button>
         </section>
       )}

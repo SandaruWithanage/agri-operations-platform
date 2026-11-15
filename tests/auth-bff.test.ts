@@ -384,3 +384,75 @@ it("requires CSRF and a strict versioned body for farmer changes and sanitizes i
   ).toBe(400);
   expect(invalid).toHaveBeenCalledTimes(1);
 });
+
+it("keeps history server tokens private, sanitizes events and rejects partial cursor/scope injection", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2",
+    farmerId = "06149451-4004-4a23-a5a2-64a24e485a82";
+  const event = {
+    eventId: farmerId,
+    occurredAt: "2026-11-15T12:00:00.123457Z",
+    actorAccountId: accountId,
+    action: "registration",
+    change: null,
+  };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        farmerId,
+        items: [{ ...event, sessionId: "synthetic-session-extra" }],
+        nextCursor: null,
+        hiddenCount: 99,
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req(`farmers/history?id=${farmerId}`));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(await response.json()).toEqual({
+    accountId,
+    farmerId,
+    items: [event],
+    nextCursor: null,
+  });
+  for (const query of [
+    `id=${farmerId}&beforeId=${farmerId}`,
+    `id=${farmerId}&accountId=${accountId}`,
+    `id=${farmerId}&limit=1&limit=2`,
+  ]) {
+    const network = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect(
+      (await createBffHandler(config, network)(req(`farmers/history?${query}`)))
+        .status,
+    ).toBe(400);
+    expect(network).toHaveBeenCalledTimes(1);
+  }
+});
+
+it("rejects a history response for another farmer before it reaches the browser", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2",
+    farmerId = "06149451-4004-4a23-a5a2-64a24e485a82";
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        farmerId: accountId,
+        items: [],
+        nextCursor: null,
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    network,
+  )(req(`farmers/history?id=${farmerId}`));
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "Service unavailable" });
+});
