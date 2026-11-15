@@ -1,3 +1,4 @@
+import type { FarmerPage, FarmerDetail } from "@agri/validation";
 import {
   deviceProofSchema,
   deviceChallengeSchema,
@@ -60,6 +61,8 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<RegistrationContext>;
+  listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
+  farmerDetail(actor: VerifiedActor, input: unknown): Promise<FarmerDetail>;
   close(): Promise<void>;
 }
 export const PILOT_RUNTIME = Symbol("PILOT_RUNTIME");

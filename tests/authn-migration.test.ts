@@ -157,6 +157,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzz_farmer_registry/up.sql",
+        "utf8",
+      ),
+    );
     upgradeResult = (
       await client.query(
         "SELECT revoked_at IS NOT NULL AS revoked,(SELECT count(*)::int FROM authn.revocation_event WHERE session_id=$1) AS audit FROM authn.login_session WHERE id=$1",
@@ -2050,6 +2056,117 @@ suite("provisional authentication migration on PostgreSQL", () => {
           request.onerror = () => reject(request.error);
         });
       }
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE account_id=$1 AND permission='farmer.read'",
+        [account],
+      );
+      // Creation alone never grants existing-record read access.
+      const unreadable = await browser("farmers", "GET");
+      expect(unreadable.status).toBe(200);
+      expect(await unreadable.json()).toEqual({
+        accountId: account,
+        items: [],
+        nextCursor: null,
+      });
+      const unavailable = await browser(`farmers/detail?id=${farmerId}`, "GET");
+      const nonexistent = await browser(
+        `farmers/detail?id=${randomUUID()}`,
+        "GET",
+      );
+      expect(unavailable.status).toBe(404);
+      expect(nonexistent.status).toBe(404);
+      expect(await unavailable.json()).toEqual(await nonexistent.json());
+      const readGrant = randomUUID();
+      await client.query(
+        `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
+        SELECT $1,$2,organization_id,'farmer.read','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
+        [readGrant, account, locations[0].id],
+      );
+      const hiddenId = randomUUID();
+      const otherGeo = randomUUID();
+      await client.query(
+        "INSERT INTO farm.geography(id,organization_id,name) SELECT $1,organization_id,'Synthetic uncovered village' FROM farm.geography WHERE id=$2",
+        [otherGeo, locations[0].id],
+      );
+      await client.query(
+        "INSERT INTO farm.farmer(id,geography_id,full_name,privacy_notice_provided,registration_source,created_by) VALUES($1,$2,'Synthetic forbidden registry record',true,'administrator',$3)",
+        [hiddenId, otherGeo, account],
+      );
+      const scopedConnection = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await scopedConnection.connect();
+      try {
+        const labels = await new TransactionActorContext(
+          Buffer.alloc(32, 42),
+        ).run(scopedConnection, identity, (db) =>
+          db.query(
+            "SELECT farm.farmer_geography_name($1) AS visible, farm.farmer_geography_name($2) AS hidden",
+            [locations[0].id, otherGeo],
+          ),
+        );
+        expect(labels.rows[0]).toEqual({
+          visible: locations[0].name,
+          hidden: null,
+        });
+      } finally {
+        await scopedConnection.end();
+      }
+      const pages = [];
+      let after: string | null = null;
+      do {
+        const page = await browser(
+          `farmers?limit=1${after ? `&after=${after}` : ""}`,
+          "GET",
+        );
+        expect(page.status).toBe(200);
+        const result = await page.json();
+        expect(result.items.length).toBeLessThanOrEqual(1);
+        pages.push(result);
+        if (result.nextCursor)
+          expect(result.nextCursor).toBe(result.items[0].id);
+        after = result.nextCursor;
+        expect(pages.length).toBeLessThan(20);
+      } while (after);
+      const visibleRows = pages.flatMap((page) => page.items);
+      expect(new Set(visibleRows.map((row) => row.id)).size).toBe(
+        visibleRows.length,
+      );
+      expect(visibleRows.some((row) => row.id === farmerId)).toBe(true);
+      expect(JSON.stringify(pages)).not.toContain(hiddenId);
+      expect(JSON.stringify(pages)).not.toContain(
+        "Synthetic forbidden registry record",
+      );
+      expect(JSON.stringify(pages)).not.toContain(
+        "Synthetic uncovered village",
+      );
+      expect(
+        visibleRows.every((row) => row.geographyName === locations[0].name),
+      ).toBe(true);
+      expect(
+        (await browser(`farmers/detail?id=${hiddenId}`, "GET")).status,
+      ).toBe(404);
+      const visible = await browser(`farmers/detail?id=${farmerId}`, "GET");
+      expect(visible.status).toBe(200);
+      expect((await visible.json()).farmer.fullName).toBe(
+        registration.farmer.fullName,
+      );
+      expect((await browser("farmers?limit=101", "GET")).status).toBe(400);
+      expect(
+        (await browser(`farmers?accountId=${account}`, "GET")).status,
+      ).toBe(400);
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [readGrant],
+      );
+      expect(await (await browser("farmers", "GET")).json()).toEqual({
+        accountId: account,
+        items: [],
+        nextCursor: null,
+      });
+      expect(
+        (await browser(`farmers/detail?id=${farmerId}`, "GET")).status,
+      ).toBe(404);
       const logout = await browser("auth/logout", "POST");
       expect(logout.status).toBe(200);
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");

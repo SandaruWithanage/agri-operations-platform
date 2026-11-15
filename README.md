@@ -47,6 +47,8 @@ The field screen prepares public device enrollment requests and signs login chal
 
 Field registrations use the [encrypted offline workspace](docs/development/OFFLINE_WORKSPACE.md). It autosaves incomplete minimal drafts, survives a prepared-browser restart offline, and revalidates account/device/permissions during synchronization. Browser persistence approval, a prepared public shell and local unlock are required. Authenticated archives can restore all saved/incomplete versions into an empty same-account vault after normal approved-device sign-in. Legacy-only/lost-passphrase recovery, managed erasure and production/mobile/OS acceptance remain unfinished; do not treat passing Chromium checks as pilot approval.
 
-For the Chromium device-key/retry smoke check, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
+The admin app provides a [scoped farmer registry](docs/development/FARMER_REGISTRY.md). It lists only records permitted by explicit read grants and assignments; creation alone grants no read access. Review, correction and remaining Phase 1 domains are still unfinished.
+
+For the Chromium field/admin browser checks, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
 
 For database integration tests, supply `DATABASE_TEST_URL` pointing only to a fresh isolated PostgreSQL 17 database named `agri_test`, then run `pnpm test`. The suite refuses an existing authentication schema and cleans up its synthetic fixtures/roles. Without that variable, database tests are skipped; CI supplies a disposable service. Never use a shared/production database for tests.

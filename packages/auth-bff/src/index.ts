@@ -1,3 +1,9 @@
+import {
+  farmerListQuerySchema,
+  farmerDetailQuerySchema,
+  farmerPageSchema,
+  farmerDetailSchema,
+} from "@agri/validation";
 /** Server route code only. Never import configured instances into client components. */
 export type BffConfig = {
   apiOrigin: string;
@@ -127,7 +133,7 @@ export function createBffHandler(
     }
     if (!response.ok)
       throw new Failure(
-        [400, 401, 403, 409, 429].includes(response.status)
+        [400, 401, 403, 404, 409, 429].includes(response.status)
           ? response.status
           : 503,
       );
@@ -151,6 +157,8 @@ export function createBffHandler(
         (request.method === "GET" &&
           [
             "auth/csrf",
+            "farmers",
+            "farmers/detail",
             "registration/geographies",
             "registration/context",
           ].includes(path));
@@ -246,6 +254,32 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "farmers" || path === "farmers/detail") {
+        const params = new URL(request.url).searchParams;
+        const keys = Array.from(params.keys());
+        if (new Set(keys).size !== keys.length) throw new Failure(400);
+        const schema =
+          path === "farmers" ? farmerListQuerySchema : farmerDetailQuerySchema;
+        const query = schema.safeParse(Object.fromEntries(params));
+        if (!query.success) throw new Failure(400);
+        const safeParams = new URLSearchParams(
+          Object.entries(query.data).map(([key, value]) => [
+            key,
+            String(value),
+          ]),
+        );
+        const result = await call(
+          `${path}?${safeParams}`,
+          "GET",
+          undefined,
+          signed.accessToken,
+        );
+        const parsed = (
+          path === "farmers" ? farmerPageSchema : farmerDetailSchema
+        ).safeParse(result);
+        if (!parsed.success) throw new Failure(503);
+        return reply(parsed.data);
+      }
       if (path === "registration/context") {
         const result = (await call(
           path,
@@ -342,11 +376,13 @@ export function createBffHandler(
               ? "Authentication required"
               : status === 403
                 ? "Action denied"
-                : status === 409
-                  ? "Conflict"
-                  : status === 400 || status === 413
-                    ? "Invalid request"
-                    : "Service unavailable",
+                : status === 404
+                  ? "Not found"
+                  : status === 409
+                    ? "Conflict"
+                    : status === 400 || status === 413
+                      ? "Invalid request"
+                      : "Service unavailable",
         },
         status,
       );

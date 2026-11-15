@@ -22,7 +22,7 @@ export const registrationEnvelopeSchema = z
   .strict();
 export type RegistrationSource = "field_officer" | "administrator";
 
-/** Unwired server component. Actor and source must be derived from verified server-side state. */
+/** Server registration component. Actor and source must be derived from verified server-side state. */
 export class FarmerRegistrationService {
   constructor(private readonly context: TransactionActorContext) {}
   async register(

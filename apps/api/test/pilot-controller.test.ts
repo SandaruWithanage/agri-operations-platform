@@ -48,6 +48,8 @@ function fake(): PilotRuntime {
     }),
     geographies: vi.fn().mockResolvedValue([]),
     context: vi.fn().mockResolvedValue({}),
+    listFarmers: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    farmerDetail: vi.fn().mockResolvedValue({}),
     close: vi.fn(),
   };
 }
