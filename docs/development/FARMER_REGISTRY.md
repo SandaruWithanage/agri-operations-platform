@@ -1,6 +1,6 @@
 # Scoped farmer registry
 
-The admin application now provides a minimal English/Sinhala farmer list/detail workflow. The screen is read-only: a [versioned review/correction API](FARMER_REVIEW_API.md) is available, but its editor, reassignment, sensitive optional fields and audit-history screens remain unfinished.
+The admin application now provides a minimal English/Sinhala farmer list/detail workflow. The screen is read-only: a [versioned review/correction API](FARMER_REVIEW_API.md) is available, but its editor, reassignment and sensitive optional fields remain unfinished. [Audit history](FARMER_AUDIT_HISTORY.md) requires a separate permission.
 
 ## Setup
 

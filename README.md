@@ -47,7 +47,7 @@ The field screen prepares public device enrollment requests and signs login chal
 
 Field registrations use the [encrypted offline workspace](docs/development/OFFLINE_WORKSPACE.md). It autosaves incomplete minimal drafts, survives a prepared-browser restart offline, and revalidates account/device/permissions during synchronization. Browser persistence approval, a prepared public shell and local unlock are required. Authenticated archives can restore all saved/incomplete versions into an empty same-account vault after normal approved-device sign-in. Legacy-only/lost-passphrase recovery, managed erasure and production/mobile/OS acceptance remain unfinished; do not treat passing Chromium checks as pilot approval.
 
-The admin app provides a [scoped farmer registry](docs/development/FARMER_REGISTRY.md). It lists only records permitted by explicit read grants and assignments; creation alone grants no read access. Review, correction and remaining Phase 1 domains are still unfinished.
+The admin app provides a [scoped farmer registry](docs/development/FARMER_REGISTRY.md). It lists only records permitted by explicit read grants and assignments; creation alone grants no read access. A separately authorized [audit history view](docs/development/FARMER_AUDIT_HISTORY.md) is available. The review/correction editor and remaining Phase 1 domains are still unfinished.
 
 For the Chromium field/admin browser checks, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
 

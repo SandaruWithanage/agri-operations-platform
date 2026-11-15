@@ -142,3 +142,41 @@ it("clears password and OTP after failed login without disabling future attempts
     ).disabled,
   ).toBe(false);
 });
+
+it("loads audit history only after the server capability and clears it when the view is hidden", async () => {
+  const api = client();
+  vi.mocked(api.farmer).mockResolvedValue({
+    accountId,
+    farmer,
+    access: { viewAudit: true },
+  });
+  vi.spyOn(api, "farmerHistory").mockResolvedValue({
+    accountId,
+    farmerId: farmer.id,
+    items: [
+      {
+        eventId: farmer.id,
+        actorAccountId: accountId,
+        occurredAt: "2026-11-15T10:00:00.123456Z",
+        action: "registration",
+        change: null,
+      },
+    ],
+    nextCursor: null,
+  });
+  render(<FarmerRegistry client={api} />);
+  await screen.findByText(farmer.fullName);
+  await userEvent.click(
+    screen.getByRole("button", { name: `View record: ${farmer.fullName}` }),
+  );
+  await screen.findByRole("button", { name: "Show record history" });
+  expect(api.farmerHistory).not.toHaveBeenCalled();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Show record history" }),
+  );
+  await screen.findByText(/Original field values were not captured/);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  expect(screen.queryByRole("heading", { name: "Record history" })).toBeNull();
+  expect(screen.queryByText(farmer.fullName)).toBeNull();
+});

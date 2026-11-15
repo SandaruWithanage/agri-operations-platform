@@ -61,7 +61,19 @@ export class FarmerRegistryService {
         )
       ).rows;
       if (!rows.length) throw new NotFoundException("Farmer not available");
-      return { accountId: actor.accountId, farmer: project(rows[0]) };
+      const farmer = project(rows[0]);
+      const permission = await db.query(
+        "SELECT authz.allowed($1,'farmer.audit.read',NULL) AS permitted",
+        [farmer.geographyId],
+      );
+      return {
+        accountId: actor.accountId,
+        farmer,
+        access: {
+          viewAudit:
+            (permission.rows[0] as { permitted?: unknown })?.permitted === true,
+        },
+      };
     });
   }
 }

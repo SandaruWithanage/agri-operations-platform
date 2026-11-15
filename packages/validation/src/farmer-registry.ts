@@ -28,6 +28,7 @@ export type FarmerSummary = z.infer<typeof farmerSummarySchema>;
 export type FarmerPage = z.infer<typeof farmerPageSchema>;
 
 export const farmerDetailSchema = z.object({
+  access: z.object({ viewAudit: z.boolean() }).optional(),
   accountId: z.string().uuid(),
   farmer: farmerSummarySchema,
 });

@@ -107,7 +107,8 @@ try {
   });
   const context = await browser.newContext();
   let authorized = true,
-    readable = true;
+    readable = true,
+    auditable = true;
   await context.route("**/api/pilot/**", async (route) => {
     const url = new URL(route.request().url()),
       path = url.pathname.replace("/api/pilot/", "");
@@ -142,7 +143,50 @@ try {
       return reply({
         accountId,
         farmer: rows.find((row) => row.id === url.searchParams.get("id")),
+        access: { viewAudit: auditable },
       });
+    if (path === "farmers/history") {
+      if (!auditable) return reply({ error: "Action denied" }, 403);
+      const older = url.searchParams.has("beforeTime");
+      if (older)
+        assert.equal(
+          url.searchParams.get("beforeTime"),
+          "2026-11-15T12:00:00.123457Z",
+        );
+      const before = {
+        fullName: "Synthetic historic name",
+        geographyId: rows[0].geographyId,
+        geographyName: rows[0].geographyName,
+        status: "pending-review",
+      };
+      return reply({
+        accountId,
+        farmerId: ids[0],
+        items: [
+          {
+            eventId: older ? ids[0] : ids[2],
+            occurredAt: older
+              ? "2026-11-15T12:00:00.123456Z"
+              : "2026-11-15T12:00:00.123457Z",
+            actorAccountId: accountId,
+            action: older ? "registration" : "correction",
+            change: older
+              ? null
+              : {
+                  reason: "Synthetic audit correction reason",
+                  previousVersion: 1,
+                  resultVersion: 2,
+                  duplicateRisk: false,
+                  previous: before,
+                  result: { ...before, fullName: rows[0].fullName },
+                },
+          },
+        ],
+        nextCursor: older
+          ? null
+          : { beforeTime: "2026-11-15T12:00:00.123457Z", beforeId: ids[2] },
+      });
+    }
     throw new Error("Unexpected synthetic registry request");
   });
   const page = await context.newPage();
@@ -171,6 +215,66 @@ try {
   await page
     .getByRole("heading", { name: rows[0].fullName, exact: true })
     .waitFor();
+  await page
+    .getByRole("button", { name: "Show record history", exact: true })
+    .click();
+  await page
+    .getByText("Synthetic audit correction reason", { exact: false })
+    .waitFor();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "වාර්තා ඉතිහාසය", exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page.getByRole("button", { name: "Older events", exact: true }).click();
+  await page
+    .getByText(
+      "This registration event records who and when. Original field values were not captured.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(
+    (await page.locator("body").innerText()).includes(
+      "Synthetic historic name",
+    ),
+    false,
+  );
+  auditable = false;
+  await page
+    .getByRole("button", { name: "Latest events", exact: true })
+    .click();
+  await page.getByRole("alert").waitFor();
+  await page
+    .getByRole("heading", { name: "Record history", exact: true })
+    .waitFor({ state: "detached" });
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Record history", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page.getByText(rows[0].fullName, { exact: true }).count(),
+    0,
+  );
+  await page
+    .getByRole("button", { name: "Check session and refresh", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("heading", { name: rows[0].fullName, exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Show record history", exact: true })
+      .count(),
+    0,
+  );
   await page.getByRole("button", { name: "Close record", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   await page.getByRole("button", { name: "සිංහල", exact: true }).click();
@@ -226,7 +330,7 @@ try {
     false,
   );
   console.log(
-    "Chromium passed: compiled API startup, admin pagination/detail, bilingual controls, scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin pagination/detail/history, bilingual controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

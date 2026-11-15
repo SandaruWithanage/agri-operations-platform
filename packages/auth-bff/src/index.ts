@@ -1,4 +1,8 @@
 import {
+  farmerHistoryQuerySchema,
+  farmerHistoryPageSchema,
+} from "@agri/validation";
+import {
   farmerChangeSchema,
   farmerChangeResultSchema,
   farmerListQuerySchema,
@@ -162,6 +166,7 @@ export function createBffHandler(
             "auth/csrf",
             "farmers",
             "farmers/detail",
+            "farmers/history",
             "registration/geographies",
             "registration/context",
           ].includes(path));
@@ -273,12 +278,16 @@ export function createBffHandler(
         if (!result.success) throw new Failure(503);
         return reply(result.data);
       }
-      if (path === "farmers" || path === "farmers/detail") {
+      if (["farmers", "farmers/detail", "farmers/history"].includes(path)) {
         const params = new URL(request.url).searchParams;
         const keys = Array.from(params.keys());
         if (new Set(keys).size !== keys.length) throw new Failure(400);
         const schema =
-          path === "farmers" ? farmerListQuerySchema : farmerDetailQuerySchema;
+          path === "farmers"
+            ? farmerListQuerySchema
+            : path === "farmers/history"
+              ? farmerHistoryQuerySchema
+              : farmerDetailQuerySchema;
         const query = schema.safeParse(Object.fromEntries(params));
         if (!query.success) throw new Failure(400);
         const safeParams = new URLSearchParams(
@@ -294,9 +303,20 @@ export function createBffHandler(
           signed.accessToken,
         );
         const parsed = (
-          path === "farmers" ? farmerPageSchema : farmerDetailSchema
+          path === "farmers"
+            ? farmerPageSchema
+            : path === "farmers/history"
+              ? farmerHistoryPageSchema
+              : farmerDetailSchema
         ).safeParse(result);
         if (!parsed.success) throw new Failure(503);
+        if (
+          path === "farmers/history" &&
+          (!("farmerId" in parsed.data) ||
+            !("id" in query.data) ||
+            parsed.data.farmerId !== query.data.id)
+        )
+          throw new Failure(503);
         return reply(parsed.data);
       }
       if (path === "registration/context") {
