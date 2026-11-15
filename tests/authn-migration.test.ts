@@ -1,3 +1,4 @@
+import { ReadinessController } from "../apps/api/src/readiness.controller";
 import { verifyCorrectionReceipt } from "./support/correction-receipt-integration";
 import { verifyLandIdentification } from "./support/land-integration";
 // @vitest-environment node
@@ -1952,12 +1953,16 @@ suite("provisional authentication migration on PostgreSQL", () => {
       app = await NestFactory.create(
         {
           module: class RuntimeTestModule {},
-          controllers: [PilotController],
+          controllers: [PilotController, ReadinessController],
           providers: [{ provide: PILOT_RUNTIME, useValue: runtime }],
         },
         { logger: false },
       );
       await app.listen(0, "127.0.0.1");
+      const readiness = await fetch(`${await app.getUrl()}/ready`);
+      expect(readiness.status).toBe(200);
+      expect(readiness.headers.get("cache-control")).toBe("no-store");
+      expect(await readiness.json()).toEqual({ status: "ready" });
       const handler = createBffHandler({
         apiOrigin: await app.getUrl(),
         publicOrigin: "https://field.example.test",

@@ -106,6 +106,7 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<LandGeographies>;
+  readiness(): Promise<boolean>;
   close(): Promise<void>;
 }
 export const PILOT_RUNTIME = Symbol("PILOT_RUNTIME");

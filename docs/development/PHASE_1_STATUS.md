@@ -11,6 +11,7 @@ The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is
 ## Implemented and verified with synthetic data
 
 - [Shared per-workspace Zustand locale preferences](SHARED_LOCALE.md) for admin and field, preserving legacy storage, form state and browser/server isolation. No business records or credentials enter the store.
+- [Separate API dependency readiness](API_READINESS.md) with bounded/shared nine-role primary-connection probes, sanitized no-store responses and shutdown hooks. Deployment routing and operational acceptance remain unfinished.
 - M0 monorepo, independent Next.js apps, NestJS liveness, shared packages, local PostGIS Compose, language toggle, lint/typecheck/test/build CI.
 - Password/MFA/session/JWT/CSRF components with a disabled-by-default integrated NestJS runtime and restricted PostgreSQL connections.
 - BFF cookie isolation, server-only access tokens and sanitized browser responses.
