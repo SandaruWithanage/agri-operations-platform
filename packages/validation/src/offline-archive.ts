@@ -33,7 +33,7 @@ export const encryptedArchiveContentsSchema = z
       .array(
         z
           .object({
-            id: z.string().uuid(),
+            id: z.guid(),
             status: z.enum([
               "saved-on-device",
               "pending-sync",

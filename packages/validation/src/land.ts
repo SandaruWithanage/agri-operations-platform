@@ -14,9 +14,9 @@ export const landPointSchema = z
   .strict();
 export const landRegistrationSchema = z
   .object({
-    mutationId: z.string().uuid(),
-    landId: z.string().uuid(),
-    geographyId: z.string().uuid(),
+    mutationId: z.guid(),
+    landId: z.guid(),
+    geographyId: z.guid(),
     label: z.string().trim().min(1).max(200).nullable().default(null),
     point: landPointSchema.nullable().default(null),
     reportedAreaHectares: z
@@ -32,15 +32,13 @@ export const landRegistrationSchema = z
 export const landQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
-    after: z.string().uuid().optional(),
+    after: z.guid().optional(),
   })
   .strict();
-export const landDetailQuerySchema = z
-  .object({ id: z.string().uuid() })
-  .strict();
+export const landDetailQuerySchema = z.object({ id: z.guid() }).strict();
 export const landIdentificationSchema = z.object({
-  id: z.string().uuid(),
-  geographyId: z.string().uuid(),
+  id: z.guid(),
+  geographyId: z.guid(),
   geographyName: z.string().min(1).max(1000),
   label: z.string().min(1).max(200).nullable(),
   point: landPointSchema.nullable(),
@@ -50,25 +48,23 @@ export const landIdentificationSchema = z.object({
   identificationOnly: z.literal(true),
 });
 export const landPageSchema = z.object({
-  accountId: z.string().uuid(),
+  accountId: z.guid(),
   items: z.array(landIdentificationSchema).max(100),
-  nextCursor: z.string().uuid().nullable(),
+  nextCursor: z.guid().nullable(),
 });
 export const landDetailSchema = z.object({
-  accountId: z.string().uuid(),
+  accountId: z.guid(),
   land: landIdentificationSchema,
 });
 export const landRegistrationResultSchema = z.object({
   status: z.literal("synced"),
-  landId: z.string().uuid(),
+  landId: z.guid(),
   replayed: z.boolean(),
 });
 export const landGeographiesSchema = z.object({
-  accountId: z.string().uuid(),
+  accountId: z.guid(),
   geographies: z
-    .array(
-      z.object({ id: z.string().uuid(), name: z.string().min(1).max(1000) }),
-    )
+    .array(z.object({ id: z.guid(), name: z.string().min(1).max(1000) }))
     .max(10000),
 });
 export type LandRegistration = z.input<typeof landRegistrationSchema>;

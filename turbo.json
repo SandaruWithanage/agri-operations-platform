@@ -28,5 +28,11 @@
       "passThroughEnv": ["PILOT_*"]
     }
   },
-  "globalEnv": ["DATABASE_URL", "NEXT_TELEMETRY_DISABLED"]
+  "globalEnv": ["DATABASE_URL", "NEXT_TELEMETRY_DISABLED"],
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "scripts/typecheck.mjs",
+    ".node-version",
+    "pnpm-workspace.yaml"
+  ]
 }

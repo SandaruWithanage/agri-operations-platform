@@ -22,7 +22,7 @@ import type { RegistrationSource } from "../authorization/registration-source";
 export const deviceChallengeRequestSchema = z
   .object({
     loginName: z.string().trim().min(1).max(200),
-    deviceId: z.string().uuid(),
+    deviceId: z.guid(),
   })
   .strict();
 export const pilotLoginSchema = z
@@ -30,7 +30,7 @@ export const pilotLoginSchema = z
     loginName: z.string().trim().min(1).max(200),
     password: z.string().min(1).max(1024),
     otp: z.string().regex(/^\d{6}$/),
-    deviceId: z.string().uuid(),
+    deviceId: z.guid(),
     deviceProof: deviceProofSchema,
   })
   .strict();

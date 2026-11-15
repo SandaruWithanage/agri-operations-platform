@@ -25,13 +25,16 @@ jobs:
       DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.1
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "22"
+          node-version: "26.13.1"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level low
+      - run: pnpm audit --audit-level high
+      - run: pnpm peers check
       - run: pnpm check:structure
       - run: pnpm lint
       - run: pnpm format:check

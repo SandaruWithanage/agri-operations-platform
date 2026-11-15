@@ -4,8 +4,8 @@ export default defineConfig({
     include: ["tests/**/*.test.{ts,tsx}", "apps/api/test/**/*.test.ts"],
     environment: "jsdom",
   },
-  esbuild: {
-    jsx: "automatic",
-    tsconfigRaw: { compilerOptions: { experimentalDecorators: true } },
+  oxc: {
+    jsx: { runtime: "automatic" },
+    decorator: { legacy: true, emitDecoratorMetadata: true },
   },
 });

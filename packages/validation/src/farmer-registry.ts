@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { farmerStatusSchema } from "./farmer";
+import { farmerStatusSchema } from "./farmer.ts";
 const filterFields = {
   status: farmerStatusSchema.optional(),
   reviewable: z.literal("true").optional(),
@@ -25,21 +25,19 @@ export function sameFarmerFilters(
 export const farmerListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
-    after: z.string().uuid().optional(),
+    after: z.guid().optional(),
     ...filterFields,
   })
   .strict()
   .refine(compatibleReview, "Reviewable records must be Pending Review");
-export const farmerDetailQuerySchema = z
-  .object({ id: z.string().uuid() })
-  .strict();
+export const farmerDetailQuerySchema = z.object({ id: z.guid() }).strict();
 /** Explicit public projection. Unknown server fields are stripped at the BFF/browser boundary. */
 export const farmerSummarySchema = z.object({
   duplicateRisk: z.boolean(),
   version: z.number().int().positive().max(2147483647),
-  id: z.string().uuid(),
+  id: z.guid(),
   fullName: z.string().min(1).max(200),
-  geographyId: z.string().uuid(),
+  geographyId: z.guid(),
   geographyName: z.string().min(1).max(1000),
   status: farmerStatusSchema,
   createdAt: z.string().datetime(),
@@ -47,9 +45,9 @@ export const farmerSummarySchema = z.object({
 export const farmerPageSchema = z
   .object({
     filters: farmerListFiltersSchema.optional(),
-    accountId: z.string().uuid(),
+    accountId: z.guid(),
     items: z.array(farmerSummarySchema).max(100),
-    nextCursor: z.string().uuid().nullable(),
+    nextCursor: z.guid().nullable(),
   })
   .superRefine((page, context) => {
     if (
@@ -77,7 +75,7 @@ export const farmerDetailSchema = z.object({
       correct: z.boolean().optional(),
     })
     .optional(),
-  accountId: z.string().uuid(),
+  accountId: z.guid(),
   farmer: farmerSummarySchema,
 });
 export type FarmerDetail = z.infer<typeof farmerDetailSchema>;
@@ -85,8 +83,8 @@ export type FarmerDetail = z.infer<typeof farmerDetailSchema>;
 export const farmerChangeSchema = z.discriminatedUnion("action", [
   z
     .object({
-      mutationId: z.string().uuid(),
-      farmerId: z.string().uuid(),
+      mutationId: z.guid(),
+      farmerId: z.guid(),
       expectedVersion: z.number().int().positive().max(2147483646),
       action: z.literal("verification"),
       reason: z.string().trim().min(8).max(500),
@@ -94,18 +92,18 @@ export const farmerChangeSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      mutationId: z.string().uuid(),
-      farmerId: z.string().uuid(),
+      mutationId: z.guid(),
+      farmerId: z.guid(),
       expectedVersion: z.number().int().positive().max(2147483646),
       action: z.literal("correction"),
       fullName: z.string().trim().min(1).max(200),
-      geographyId: z.string().uuid(),
+      geographyId: z.guid(),
       reason: z.string().trim().min(8).max(500),
     })
     .strict(),
 ]);
 export const farmerChangeResultSchema = z.object({
-  farmerId: z.string().uuid(),
+  farmerId: z.guid(),
   version: z.number().int().positive().max(2147483647),
   replayed: z.boolean(),
   duplicateRisk: z.boolean(),
@@ -114,11 +112,11 @@ export type FarmerChange = z.infer<typeof farmerChangeSchema>;
 export type FarmerChangeResult = z.infer<typeof farmerChangeResultSchema>;
 
 export const farmerVerificationReceiptSchema = z.object({
-  accountId: z.string().uuid(),
-  farmerId: z.string().uuid(),
+  accountId: z.guid(),
+  farmerId: z.guid(),
   receipt: z
     .object({
-      mutationId: z.string().uuid(),
+      mutationId: z.guid(),
       version: z.number().int().min(2).max(2147483647),
       occurredAt: z.string().datetime(),
     })
@@ -130,23 +128,21 @@ export type FarmerVerificationReceipt = z.infer<
 
 export const farmerCorrectionGeographiesQuerySchema = z
   .object({
-    id: z.string().uuid(),
-    after: z.string().uuid().optional(),
+    id: z.guid(),
+    after: z.guid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })
   .strict();
 export const farmerCorrectionGeographiesSchema = z
   .object({
-    accountId: z.string().uuid(),
-    farmerId: z.string().uuid(),
+    accountId: z.guid(),
+    farmerId: z.guid(),
     farmerVersion: z.number().int().positive().max(2147483647),
-    sourceGeographyId: z.string().uuid(),
+    sourceGeographyId: z.guid(),
     geographies: z
-      .array(
-        z.object({ id: z.string().uuid(), name: z.string().min(1).max(1000) }),
-      )
+      .array(z.object({ id: z.guid(), name: z.string().min(1).max(1000) }))
       .max(100),
-    nextCursor: z.string().uuid().nullable(),
+    nextCursor: z.guid().nullable(),
   })
   .superRefine((page, context) => {
     if (

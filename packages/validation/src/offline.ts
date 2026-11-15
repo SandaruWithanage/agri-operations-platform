@@ -1,9 +1,9 @@
 import { z } from "zod";
 export const workingRegistrationSchema = z
   .object({
-    farmerId: z.string().uuid(),
+    farmerId: z.guid(),
     fullName: z.string().max(200),
-    geographyId: z.union([z.string().uuid(), z.literal("")]),
+    geographyId: z.union([z.guid(), z.literal("")]),
     privacyNoticeProvided: z.boolean(),
   })
   .strict();
@@ -11,16 +11,14 @@ export type WorkingRegistration = z.infer<typeof workingRegistrationSchema>;
 /** A cached drafting context, never a credential accepted by server endpoints. */
 export const offlineReferenceContextSchema = z
   .object({
-    accountId: z.string().uuid(),
-    deviceId: z.string().uuid(),
+    accountId: z.guid(),
+    deviceId: z.guid(),
     deviceKeyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
     verifiedAt: z.number().int().positive(),
     offlineUntil: z.number().int().positive(),
     geographies: z
       .array(
-        z
-          .object({ id: z.string().uuid(), label: z.string().min(1).max(1000) })
-          .strict(),
+        z.object({ id: z.guid(), label: z.string().min(1).max(1000) }).strict(),
       )
       .max(10000),
   })

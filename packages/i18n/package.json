@@ -9,11 +9,10 @@
     "./store": "./src/locale-store.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
   },
   "devDependencies": {
-    "@types/react": "^19.3.0",
-    "typescript": "~5.9.0"
+    "@types/react": "19.3.0"
   },
   "dependencies": {
     "zustand": "5.1.0"

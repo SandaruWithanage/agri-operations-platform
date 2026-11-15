@@ -114,7 +114,7 @@ export class LoginCoordinator {
       );
     } catch (error) {
       if (error instanceof SessionIssuanceDeniedError)
-        throw new Error("Invalid credentials");
+        throw new Error("Invalid credentials", { cause: error });
       throw error;
     }
   }

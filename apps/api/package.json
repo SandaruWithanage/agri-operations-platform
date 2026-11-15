@@ -6,25 +6,24 @@
     "dev": "pnpm --filter @agri/validation build && nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.0",
-    "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^11.0.0",
-    "@node-rs/argon2": "2.0.2",
-    "jose": "5.10.0",
-    "pg": "8.16.3",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "zod": "3.25.76",
+    "@nestjs/common": "12.5.0",
+    "@nestjs/core": "12.5.0",
+    "@nestjs/platform-express": "12.5.0",
+    "@node-rs/argon2": "2.2.2",
+    "jose": "6.2.17",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7",
     "@agri/validation": "workspace:*"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.0",
-    "@types/express": "5.0.3",
-    "@types/node": "^22.0.0",
-    "@types/pg": "8.15.5",
-    "typescript": "~5.9.0"
+    "@nestjs/cli": "12.0.13",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1"
   }
 }
