@@ -226,6 +226,13 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzzzzzz_verification_receipt/up.sql",
+        "utf8",
+      ),
+    );
+    expect(await inspectUpgrade()).toEqual(historyUpgradeResult.after);
     await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
       upgradeFarmer,
     ]);
@@ -2287,6 +2294,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
       } finally {
         await rawChanges.end();
       }
+      expect(
+        (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       const verifyGrant = randomUUID(),
         correctGrant = randomUUID();
       await client.query(
@@ -2294,6 +2305,15 @@ suite("provisional authentication migration on PostgreSQL", () => {
         SELECT $1,$2,organization_id,'farmer.verify','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
         [verifyGrant, account, locations[0].id],
       );
+      expect(
+        (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
+          .access.verify,
+      ).toBe(true);
+      expect(
+        await (
+          await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
+        ).json(),
+      ).toEqual({ accountId: account, farmerId, receipt: null });
       const verified = await browser("farmers/change", "POST", verification);
       expect(verified.status).toBe(200);
       expect(await verified.json()).toEqual({
@@ -2302,6 +2322,75 @@ suite("provisional authentication migration on PostgreSQL", () => {
         replayed: false,
         duplicateRisk: false,
       });
+      const ownReceipt = await (
+        await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
+      ).json();
+      expect(ownReceipt).toMatchObject({
+        accountId: account,
+        farmerId,
+        receipt: { mutationId: verification.mutationId, version: 2 },
+      });
+      expect(ownReceipt.receipt.occurredAt).toMatch(/\.\d{6}Z$/);
+      expect(Object.keys(ownReceipt.receipt).sort()).toEqual([
+        "mutationId",
+        "occurredAt",
+        "version",
+      ]);
+      // Inject a synthetic other-actor journal fixture, then remove it before subsequent assertions.
+      const otherReceipt = randomUUID();
+      await client.query(
+        `INSERT INTO farm.farmer_change SELECT $1,farmer_id,$2,session_id,action,reason,payload_mac,previous_version,result_version,previous_name,result_name,previous_geography,result_geography,previous_status,result_status,duplicate_risk,occurred_at+interval '1 second' FROM farm.farmer_change WHERE id=$3`,
+        [otherReceipt, another, verification.mutationId],
+      );
+      expect(
+        await (
+          await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
+        ).json(),
+      ).toEqual(ownReceipt);
+      await client.query("DELETE FROM farm.farmer_change WHERE id=$1", [
+        otherReceipt,
+      ]);
+      await client.query(
+        "UPDATE farm.farmer_change SET previous_geography=$1,result_geography=$1 WHERE id=$2",
+        [otherGeo, verification.mutationId],
+      );
+      expect(
+        await (
+          await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
+        ).json(),
+      ).toEqual({ accountId: account, farmerId, receipt: null });
+      await client.query(
+        "UPDATE farm.farmer_change SET previous_geography=$1,result_geography=$1 WHERE id=$2",
+        [locations[0].id, verification.mutationId],
+      );
+      expect(
+        (await browser(`farmers/verification-receipt?id=${hiddenId}`, "GET"))
+          .status,
+      ).toBe(404);
+      expect(
+        (
+          await browser(
+            `farmers/verification-receipt?id=${randomUUID()}`,
+            "GET",
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await browser(
+            `farmers/verification-receipt?id=${farmerId}&accountId=${another}`,
+            "GET",
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await browser(
+            `farmers/verification-receipt?id=${farmerId}&id=${farmerId}`,
+            "GET",
+          )
+        ).status,
+      ).toBe(400);
       expect(
         await (await browser("farmers/change", "POST", verification)).json(),
       ).toEqual({ farmerId, version: 2, replayed: true, duplicateRisk: false });
@@ -2386,6 +2475,11 @@ suite("provisional authentication migration on PostgreSQL", () => {
           )
         ).rows[0],
       ).toEqual({ version: 3, status: "pending-review", created_by: account });
+      expect(
+        await (
+          await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
+        ).json(),
+      ).toEqual(ownReceipt);
       const changeAudit = await client.query(
         "SELECT actor_id,session_id,action,previous_version,result_version,previous_status,result_status FROM farm.farmer_change WHERE farmer_id=$1 ORDER BY result_version",
         [farmerId],
@@ -2556,6 +2650,31 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "UPDATE authz.permission_grant SET active=false WHERE id=$1",
         [verifyGrant],
       );
+      expect(
+        (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
+      const rawReceipt = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await rawReceipt.connect();
+      try {
+        await expect(
+          rawReceipt.query("SELECT * FROM farm.latest_own_verification($1)", [
+            farmerId,
+          ]),
+        ).rejects.toMatchObject({ code: "42501" });
+        const signed = new TransactionActorContext(Buffer.alloc(32, 42));
+        await expect(
+          signed.run(rawReceipt, identity, (db) =>
+            db.query("SELECT * FROM farm.latest_own_verification($1)", [
+              farmerId,
+            ]),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await rawReceipt.end();
+      }
       const auditGrant = randomUUID();
       await client.query(
         `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
@@ -2565,7 +2684,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
           .access,
-      ).toEqual({ viewAudit: true });
+      ).toEqual({ viewAudit: true, verify: false });
       const auditOnly = new pg.Client({ connectionString: url });
       await auditOnly.connect();
       try {
@@ -2708,7 +2827,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
           .access,
-      ).toEqual({ viewAudit: false });
+      ).toMatchObject({ viewAudit: false });
       await verifyLandIdentification({
         owner: client,
         actor: identity,
@@ -2733,6 +2852,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ).toBe(404);
       expect(
         (await browser(`farmers/history?id=${farmerId}`, "GET")).status,
+      ).toBe(404);
+      expect(
+        (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
+          .status,
       ).toBe(404);
       const logout = await browser("auth/logout", "POST");
       expect(logout.status).toBe(200);

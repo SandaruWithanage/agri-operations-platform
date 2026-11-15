@@ -1,5 +1,10 @@
-import { ForbiddenException } from "@nestjs/common";
-import { farmerChangeSchema, farmerChangeResultSchema } from "@agri/validation";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  farmerChangeSchema,
+  farmerChangeResultSchema,
+  farmerDetailQuerySchema,
+  farmerVerificationReceiptSchema,
+} from "@agri/validation";
 import {
   TransactionActorContext,
   type ActorQuery,
@@ -7,6 +12,51 @@ import {
 } from "../authorization/transaction-context";
 export class FarmerChangeService {
   constructor(private readonly context: TransactionActorContext) {}
+  async verificationReceipt(
+    connection: ActorQuery,
+    actor: VerifiedActor,
+    input: unknown,
+  ) {
+    const query = farmerDetailQuerySchema.parse(input);
+    return this.context.run(connection, actor, async (db) => {
+      const row = (
+        await db.query(
+          "SELECT geography_id FROM farm.farmer WHERE id=$1 AND authz.allowed(geography_id,'farmer.read',NULL)",
+          [query.id],
+        )
+      ).rows[0] as { geography_id?: unknown } | undefined;
+      if (typeof row?.geography_id !== "string")
+        throw new NotFoundException("Farmer not available");
+      const permission = await db.query(
+        "SELECT authz.allowed($1,'farmer.verify',NULL) AS permitted",
+        [row.geography_id],
+      );
+      if ((permission.rows[0] as { permitted?: unknown })?.permitted !== true)
+        throw new ForbiddenException("Verification receipt denied");
+      const result = (
+        await db.query("SELECT * FROM farm.latest_own_verification($1)", [
+          query.id,
+        ])
+      ).rows[0] as
+        | {
+            mutation_id?: unknown;
+            result_version?: unknown;
+            occurred_at?: unknown;
+          }
+        | undefined;
+      return farmerVerificationReceiptSchema.parse({
+        accountId: actor.accountId,
+        farmerId: query.id,
+        receipt: result
+          ? {
+              mutationId: result.mutation_id,
+              version: result.result_version,
+              occurredAt: result.occurred_at,
+            }
+          : null,
+      });
+    });
+  }
   async change(connection: ActorQuery, actor: VerifiedActor, input: unknown) {
     const value = farmerChangeSchema.parse(input);
     return this.context.run(connection, actor, async (db) => {

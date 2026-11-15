@@ -1,6 +1,6 @@
 # Farmer review/correction API
 
-This is a provisional online API foundation. Follow [registry setup](FARMER_REGISTRY.md), apply native migration 12, and use synthetic data. Review controls and audit viewing are not exposed in the current admin screen.
+This is a provisional online API foundation. Follow [registry setup](FARMER_REGISTRY.md), apply native migration 12, and use synthetic data. The [bounded online staff verification UI](FARMER_VERIFICATION.md) now requires migration 15; [audit history](FARMER_AUDIT_HISTORY.md) is also available. Correction editing remains unfinished.
 
 `POST /api/pilot/farmers/change` accepts one of these strict bodies through the same-origin BFF. The BFF derives the session; callers must not supply actor IDs, source scopes, roles or resulting status.
 
@@ -18,7 +18,7 @@ A `correction` body additionally requires `fullName` and configured `geographyId
 
 Use `PilotClient.changeFarmer(accountId, input)` from `@agri/sync-client`. The account argument prevents sending a retained edit under a changed cookie session; it is not server authorization. The transport obtains a fresh session-bound CSRF token. JWTs and opaque session secrets remain server-only. The result contains `farmerId`, incremented `version`, `replayed` and `duplicateRisk`.
 
-Keep the complete original payload and mutation ID across an uncertain network result. Retry it exactly; do not mint another ID, alter a retained retry, or increment the expected version speculatively. A 409 requires a current authorized read and explicit conflict review. Current permission revocation can deny an otherwise identical retry. The API must not be presented as a complete admin editor or an offline change queue.
+Keep the complete original payload and mutation ID across an uncertain network result. Retry it exactly; do not mint another ID, alter a retained retry, or increment the expected version speculatively. A 409 requires a current authorized read and explicit conflict review. Current permission revocation can deny an otherwise identical retry. The API is not a complete correction editor or an offline change queue. The bounded verification UI provides exact retry and a server receipt lookup without editable correction fields.
 
 Provision `farmer.read` and the separate `farmer.verify`/`farmer.correct` grants through the controlled IAM process, with active scoped assignments as required. Nothing in the migration automatically grants these permissions or assigns permanent officer ownership. A correction requires both original and destination coverage. Inactive records are not automatically activated; Verified corrections return to Pending Review. Read [ADR-0009](../decisions/ADR-0009-online-farmer-review.md) for the provisional interpretation of verification and outstanding client decisions.
 

@@ -7,6 +7,7 @@ import type {
   FarmerPage,
   FarmerDetail,
   FarmerChangeResult,
+  FarmerVerificationReceipt,
 } from "@agri/validation";
 import {
   deviceProofSchema,
@@ -79,6 +80,10 @@ export interface PilotRuntime {
     input: unknown,
   ): Promise<FarmerHistoryPage>;
   listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
+  farmerVerificationReceipt(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<FarmerVerificationReceipt>;
   farmerDetail(actor: VerifiedActor, input: unknown): Promise<FarmerDetail>;
   registerLand(
     actor: VerifiedActor,

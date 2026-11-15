@@ -17,6 +17,7 @@ import {
   type FarmerChange,
   farmerPageSchema,
   farmerDetailSchema,
+  farmerVerificationReceiptSchema,
 } from "@agri/validation";
 import { DeviceKeys, deviceKeyFingerprint } from "./device-keys";
 import { VaultCatalog } from "./vault-catalog";
@@ -256,6 +257,20 @@ export class PilotClient {
     const result = farmerHistoryPageSchema.safeParse(
       await this.request(
         `farmers/history?${query}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success || result.data.farmerId !== id)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async farmerVerificationReceipt(id: string, signal?: AbortSignal) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = farmerVerificationReceiptSchema.safeParse(
+      await this.request(
+        `farmers/verification-receipt?id=${encodeURIComponent(id)}`,
         undefined,
         undefined,
         signal,

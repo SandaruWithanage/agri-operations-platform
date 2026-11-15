@@ -109,7 +109,10 @@ try {
   let authorized = true,
     readable = true,
     auditable = true,
-    landReadable = true;
+    landReadable = true,
+    verifyAllowed = true,
+    verificationCalls = 0,
+    verificationReceipt = null;
   const landRows = ids.map((id, index) => ({
     id,
     label: `Synthetic browser land ${index + 1}`,
@@ -160,6 +163,45 @@ try {
         land: landRows.find((row) => row.id === url.searchParams.get("id")),
       });
     }
+    if (path === "auth/csrf")
+      return reply({
+        accountId,
+        deviceId,
+        csrfToken: `${"B".repeat(43)}.${"C".repeat(43)}`,
+      });
+    if (path === "farmers/change") {
+      if (!verifyAllowed) return reply({ error: "Denied" }, 403);
+      const input = route.request().postDataJSON();
+      assert.equal(input.action, "verification");
+      assert.equal(input.farmerId, ids[0]);
+      assert.equal(input.expectedVersion, 1);
+      verificationCalls++;
+      if (!verificationReceipt) {
+        rows[0].status = "verified";
+        rows[0].version = 2;
+        verificationReceipt = {
+          mutationId: input.mutationId,
+          version: 2,
+          occurredAt: "2026-11-15T20:00:00.123456Z",
+        };
+        return route.abort("failed");
+      }
+      assert.equal(input.mutationId, verificationReceipt.mutationId);
+      return reply({
+        farmerId: ids[0],
+        version: 2,
+        replayed: true,
+        duplicateRisk: false,
+      });
+    }
+    if (path === "farmers/verification-receipt") {
+      if (!verifyAllowed) return reply({ error: "Denied" }, 403);
+      return reply({
+        accountId,
+        farmerId: url.searchParams.get("id"),
+        receipt: verificationReceipt,
+      });
+    }
     if (path === "farmers")
       return reply({
         accountId,
@@ -174,7 +216,7 @@ try {
       return reply({
         accountId,
         farmer: rows.find((row) => row.id === url.searchParams.get("id")),
-        access: { viewAudit: auditable },
+        access: { viewAudit: auditable, verify: verifyAllowed },
       });
     if (path === "farmers/history") {
       if (!auditable) return reply({ error: "Action denied" }, 403);
@@ -312,6 +354,61 @@ try {
   await page.getByRole("heading", { name: "ගොවි ලේඛනය", exact: true }).waitFor();
   await page.getByRole("button", { name: "English", exact: true }).click();
   await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Confirm record review", exact: true })
+    .click();
+  await page.getByText(/The outcome is uncertain/).waitFor();
+  await Promise.all([
+    page.waitForEvent("dialog").then((dialog) => dialog.accept()),
+    page.reload(),
+  ]);
+  await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page.getByText("Verified", { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Confirm record review", exact: true })
+      .count(),
+    0,
+  );
+  await page
+    .getByRole("button", {
+      name: "Check my latest verification receipt",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByText("Your latest visible verification", { exact: true })
+    .waitFor();
+  assert.equal(verificationCalls, 1);
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page.getByText("කාර්ය මණ්ඩල වාර්තා සමාලෝචනය", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  verifyAllowed = false;
+  await page
+    .getByRole("button", {
+      name: "Check my latest verification receipt",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("main").getByRole("alert").waitFor();
+  assert.equal(
+    await page
+      .getByRole("heading", { name: rows[0].fullName, exact: true })
+      .count(),
+    0,
+  );
+  await page
     .getByRole("button", { name: "Reported land", exact: true })
     .click();
   await page.getByText(landRows[0].label, { exact: true }).waitFor();
@@ -426,7 +523,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin verification/lost-acknowledgement recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

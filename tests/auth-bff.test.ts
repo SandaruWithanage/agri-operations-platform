@@ -550,3 +550,59 @@ it("filters land reads without forwarding untrusted scopes or private extra fiel
     expect(calls).toHaveBeenCalledTimes(1);
   }
 });
+
+it("sanitizes account-bound verification receipts and rejects scoped or mismatched lookups", async () => {
+  const id = "06149451-4004-4a23-a5a2-64a24e485a82",
+    accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const receipt = {
+    mutationId: id,
+    version: 2,
+    occurredAt: "2026-11-15T20:00:00.123456Z",
+  };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        farmerId: id,
+        receipt: { ...receipt, sessionId: "synthetic-private" },
+        hiddenCount: 30,
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req(`farmers/verification-receipt?id=${id}`));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(await response.json()).toEqual({ accountId, farmerId: id, receipt });
+  for (const query of [`id=${id}&actorId=${accountId}`, `id=${id}&id=${id}`]) {
+    const call = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only" }));
+    expect(
+      (
+        await createBffHandler(
+          config,
+          call,
+        )(req(`farmers/verification-receipt?${query}`))
+      ).status,
+    ).toBe(400);
+    expect(call).toHaveBeenCalledTimes(1);
+  }
+  const mismatch = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({ accountId, farmerId: accountId, receipt }),
+    );
+  expect(
+    (
+      await createBffHandler(
+        config,
+        mismatch,
+      )(req(`farmers/verification-receipt?id=${id}`))
+    ).status,
+  ).toBe(503);
+});

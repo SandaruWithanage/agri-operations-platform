@@ -63,13 +63,16 @@ export class FarmerRegistryService {
       if (!rows.length) throw new NotFoundException("Farmer not available");
       const farmer = project(rows[0]);
       const permission = await db.query(
-        "SELECT authz.allowed($1,'farmer.audit.read',NULL) AS permitted",
+        "SELECT authz.allowed($1,'farmer.audit.read',NULL) AS permitted, authz.allowed($1,'farmer.verify',NULL) AS can_verify",
         [farmer.geographyId],
       );
       return {
         accountId: actor.accountId,
         farmer,
         access: {
+          verify:
+            (permission.rows[0] as { can_verify?: unknown })?.can_verify ===
+            true,
           viewAudit:
             (permission.rows[0] as { permitted?: unknown })?.permitted === true,
         },

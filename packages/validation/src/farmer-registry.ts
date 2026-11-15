@@ -28,7 +28,9 @@ export type FarmerSummary = z.infer<typeof farmerSummarySchema>;
 export type FarmerPage = z.infer<typeof farmerPageSchema>;
 
 export const farmerDetailSchema = z.object({
-  access: z.object({ viewAudit: z.boolean() }).optional(),
+  access: z
+    .object({ viewAudit: z.boolean(), verify: z.boolean().optional() })
+    .optional(),
   accountId: z.string().uuid(),
   farmer: farmerSummarySchema,
 });
@@ -64,3 +66,18 @@ export const farmerChangeResultSchema = z.object({
 });
 export type FarmerChange = z.infer<typeof farmerChangeSchema>;
 export type FarmerChangeResult = z.infer<typeof farmerChangeResultSchema>;
+
+export const farmerVerificationReceiptSchema = z.object({
+  accountId: z.string().uuid(),
+  farmerId: z.string().uuid(),
+  receipt: z
+    .object({
+      mutationId: z.string().uuid(),
+      version: z.number().int().min(2).max(2147483647),
+      occurredAt: z.string().datetime(),
+    })
+    .nullable(),
+});
+export type FarmerVerificationReceipt = z.infer<
+  typeof farmerVerificationReceiptSchema
+>;
