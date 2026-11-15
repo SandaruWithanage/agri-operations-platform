@@ -67,6 +67,7 @@ export class PilotClient {
     path: string,
     input?: unknown,
     csrf?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -75,7 +76,9 @@ export class PilotClient {
         credentials: "same-origin",
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(15000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+          : AbortSignal.timeout(15000),
         headers:
           input === undefined
             ? {}
@@ -226,7 +229,11 @@ export class PilotClient {
     if (!result.success) throw new PilotRequestError(503);
     return result.data;
   }
-  async farmerHistory(id: string, cursor?: FarmerHistoryCursor) {
+  async farmerHistory(
+    id: string,
+    cursor?: FarmerHistoryCursor,
+    signal?: AbortSignal,
+  ) {
     const parsed = farmerHistoryQuerySchema.safeParse({
       id,
       limit: 25,
@@ -237,7 +244,12 @@ export class PilotClient {
       Object.entries(parsed.data).map(([key, value]) => [key, String(value)]),
     );
     const result = farmerHistoryPageSchema.safeParse(
-      await this.request(`farmers/history?${query}`),
+      await this.request(
+        `farmers/history?${query}`,
+        undefined,
+        undefined,
+        signal,
+      ),
     );
     if (!result.success || result.data.farmerId !== id)
       throw new PilotRequestError(503);

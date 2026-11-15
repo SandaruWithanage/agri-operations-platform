@@ -454,6 +454,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
               key={`${context.accountId}:${selected.id}`}
               client={client}
               accountId={context.accountId}
+              authorizationEpoch={sequence.current}
               farmerId={selected.id}
               language={language}
               onFailure={report}
