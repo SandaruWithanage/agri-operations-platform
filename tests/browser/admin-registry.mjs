@@ -72,6 +72,12 @@ try {
       .status,
     503,
   );
+  const disabledReadiness = await globalThis.fetch(
+    `http://127.0.0.1:${apiPort}/ready`,
+  );
+  assert.equal(disabledReadiness.status, 503);
+  assert.deepEqual(await disabledReadiness.json(), { status: "not-ready" });
+  assert.equal(disabledReadiness.headers.get("cache-control"), "no-store");
   const adminPort = await port();
   const app = spawn(
     process.execPath,

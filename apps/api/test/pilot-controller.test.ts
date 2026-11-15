@@ -59,6 +59,7 @@ function fake(): PilotRuntime {
     farmerVerificationReceipt: vi.fn().mockResolvedValue({}),
     farmerCorrectionReceipt: vi.fn().mockResolvedValue({}),
     farmerDetail: vi.fn().mockResolvedValue({}),
+    readiness: vi.fn().mockResolvedValue(true),
     close: vi.fn(),
   };
 }

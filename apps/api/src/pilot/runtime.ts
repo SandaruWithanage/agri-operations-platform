@@ -1,3 +1,4 @@
+import { RuntimeReadiness } from "./readiness";
 import { LandIdentificationService } from "../land/identification-service";
 import { FarmerHistoryService } from "../farmer/history-service";
 import { FarmerChangeService } from "../farmer/change-service";
@@ -248,7 +249,19 @@ export async function createPilotRuntime(
     const registry = new FarmerRegistryService(context);
     const land = new LandIdentificationService(context);
     const changes = new FarmerChangeService(context);
+    const readiness = new RuntimeReadiness(
+      Array.from(pools.values(), (database) => async () => {
+        // pg supports per-query timeouts; @types/pg exposes this only on clients.
+        const probe: pg.QueryConfig & { query_timeout: number } = {
+          text: "SELECT NOT pg_is_in_recovery() AND current_setting('transaction_read_only')='off' AS ready",
+          query_timeout: 1500,
+        };
+        const result = await database.query(probe);
+        return result.rows[0]?.ready === true;
+      }),
+    );
     return {
+      readiness: () => readiness.check(),
       internalKey: c.PILOT_INTERNAL_KEY,
       deviceChallenge: (input, origin) =>
         devices.issue(input.loginName, input.deviceId, origin),
@@ -457,6 +470,7 @@ export async function createPilotRuntime(
         }
       },
       close: async () => {
+        readiness.stop();
         await Promise.all([...pools.values()].map((pool) => pool.end()));
       },
     };

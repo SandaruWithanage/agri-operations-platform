@@ -11,6 +11,7 @@ import { PilotController } from "./pilot.controller";
 import { createPilotRuntime } from "./runtime";
 @Module({
   controllers: [PilotController],
+  exports: [PILOT_RUNTIME],
   providers: [
     { provide: PILOT_RUNTIME, useFactory: () => createPilotRuntime() },
   ],

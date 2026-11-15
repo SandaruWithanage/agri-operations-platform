@@ -18,7 +18,7 @@ pnpm db:up
 pnpm dev
 ```
 
-Choose a local-only database password and update `.env` and `database/.env` consistently. Never commit populated environment files. Nest starts with default port 4000; to override it, export API_PORT in the shell (Nest does not automatically load its example environment file; Turbo passes the API runtime variables only to the API dev task). Next.js loads its own `.env.local` files. Admin: http://localhost:3000; field: http://localhost:3001; liveness: http://localhost:4000/health.
+Choose a local-only database password and update `.env` and `database/.env` consistently. Never commit populated environment files. Nest starts with default port 4000; to override it, export API_PORT in the shell (Nest does not automatically load its example environment file; Turbo passes the API runtime variables only to the API dev task). Next.js loads its own `.env.local` files. Admin: http://localhost:3000; field: http://localhost:3001; liveness: http://localhost:4000/health. Dependency readiness: http://localhost:4000/ready (503 when the pilot runtime is disabled); see [probe semantics](docs/development/API_READINESS.md).
 
 ```sh
 pnpm lint
