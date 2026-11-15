@@ -163,6 +163,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzzz_farmer_review/up.sql",
+        "utf8",
+      ),
+    );
     upgradeResult = (
       await client.query(
         "SELECT revoked_at IS NOT NULL AS revoked,(SELECT count(*)::int FROM authn.revocation_event WHERE session_id=$1) AS audit FROM authn.login_session WHERE id=$1",
@@ -2155,6 +2161,279 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(
         (await browser(`farmers?accountId=${account}`, "GET")).status,
       ).toBe(400);
+      const verification = {
+        mutationId: randomUUID(),
+        farmerId,
+        expectedVersion: 1,
+        action: "verification",
+        reason: "Synthetic record reviewed in person",
+      };
+      expect(
+        (await browser("farmers/change", "POST", verification)).status,
+      ).toBe(403);
+      const rawChanges = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await rawChanges.connect();
+      try {
+        const signed = new TransactionActorContext(Buffer.alloc(32, 42));
+        await expect(
+          signed.run(rawChanges, identity, (db) =>
+            db.query(
+              "SELECT * FROM farm.change_farmer($1,$2,1,'verification',NULL,NULL,'Synthetic native denied review')",
+              [randomUUID(), farmerId],
+            ),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+        await expect(
+          signed.run(rawChanges, identity, (db) =>
+            db.query("SELECT * FROM farm.farmer_change", []),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await rawChanges.end();
+      }
+      const verifyGrant = randomUUID(),
+        correctGrant = randomUUID();
+      await client.query(
+        `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
+        SELECT $1,$2,organization_id,'farmer.verify','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
+        [verifyGrant, account, locations[0].id],
+      );
+      const verified = await browser("farmers/change", "POST", verification);
+      expect(verified.status).toBe(200);
+      expect(await verified.json()).toEqual({
+        farmerId,
+        version: 2,
+        replayed: false,
+        duplicateRisk: false,
+      });
+      expect(
+        await (await browser("farmers/change", "POST", verification)).json(),
+      ).toEqual({ farmerId, version: 2, replayed: true, duplicateRisk: false });
+      expect(
+        (
+          await browser("farmers/change", "POST", {
+            ...verification,
+            reason: "Synthetic changed retry reason",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await browser("farmers/change", "POST", {
+            ...verification,
+            mutationId: randomUUID(),
+          })
+        ).status,
+      ).toBe(409);
+      await client.query(
+        `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
+        SELECT $1,$2,organization_id,'farmer.correct','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
+        [correctGrant, account, locations[0].id],
+      );
+      const rawUpdate = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await rawUpdate.connect();
+      try {
+        await expect(
+          new TransactionActorContext(Buffer.alloc(32, 42)).run(
+            rawUpdate,
+            identity,
+            (db) =>
+              db.query(
+                "UPDATE farm.farmer SET full_name='Synthetic bypass attempt' WHERE id=$1",
+                [farmerId],
+              ),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await rawUpdate.end();
+      }
+      const correction = {
+        mutationId: randomUUID(),
+        farmerId,
+        expectedVersion: 2,
+        action: "correction",
+        fullName: "Synthetic corrected farmer",
+        geographyId: locations[0].id,
+        reason: "Synthetic spelling correction following review",
+      };
+      expect(
+        (
+          await browser("farmers/change", "POST", {
+            ...correction,
+            geographyId: otherGeo,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await browser("farmers/change", "POST", {
+            ...correction,
+            creatorId: account,
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        await (await browser("farmers/change", "POST", correction)).json(),
+      ).toEqual({
+        farmerId,
+        version: 3,
+        replayed: false,
+        duplicateRisk: false,
+      });
+      expect(
+        (
+          await client.query(
+            "SELECT version,status,created_by FROM farm.farmer WHERE id=$1",
+            [farmerId],
+          )
+        ).rows[0],
+      ).toEqual({ version: 3, status: "pending-review", created_by: account });
+      const changeAudit = await client.query(
+        "SELECT actor_id,session_id,action,previous_version,result_version,previous_status,result_status FROM farm.farmer_change WHERE farmer_id=$1 ORDER BY result_version",
+        [farmerId],
+      );
+      expect(changeAudit.rows).toEqual([
+        {
+          actor_id: account,
+          session_id: identity.sessionId,
+          action: "verification",
+          previous_version: 1,
+          result_version: 2,
+          previous_status: "pending-review",
+          result_status: "verified",
+        },
+        {
+          actor_id: account,
+          session_id: identity.sessionId,
+          action: "correction",
+          previous_version: 2,
+          result_version: 3,
+          previous_status: "verified",
+          result_status: "pending-review",
+        },
+      ]);
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::int AS n FROM farm.farmer_audit WHERE farmer_id=$1",
+            [farmerId],
+          )
+        ).rows[0].n,
+      ).toBe(3);
+      const duplicateName = visibleRows.find(
+        (row) => row.id !== farmerId,
+      )!.fullName;
+      const duplicateChange = {
+        ...correction,
+        mutationId: randomUUID(),
+        expectedVersion: 3,
+        fullName: duplicateName,
+      };
+      expect(
+        await (await browser("farmers/change", "POST", duplicateChange)).json(),
+      ).toEqual({ farmerId, version: 4, replayed: false, duplicateRisk: true });
+      const failureChange = {
+        ...correction,
+        mutationId: randomUUID(),
+        expectedVersion: 4,
+        fullName: "Synthetic audit failure retry",
+      };
+      await client.query(
+        "CREATE FUNCTION farm.test_fail_change_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='correction' THEN RAISE EXCEPTION 'Synthetic audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_fail_change_audit BEFORE INSERT ON farm.farmer_audit FOR EACH ROW EXECUTE FUNCTION farm.test_fail_change_audit()",
+      );
+      try {
+        expect(
+          (await browser("farmers/change", "POST", failureChange)).status,
+        ).toBe(503);
+        expect(
+          (
+            await client.query("SELECT version FROM farm.farmer WHERE id=$1", [
+              farmerId,
+            ])
+          ).rows[0].version,
+        ).toBe(4);
+        expect(
+          (
+            await client.query(
+              "SELECT id FROM farm.farmer_change WHERE id=$1",
+              [failureChange.mutationId],
+            )
+          ).rowCount,
+        ).toBe(0);
+      } finally {
+        await client.query(
+          "DROP TRIGGER test_fail_change_audit ON farm.farmer_audit; DROP FUNCTION farm.test_fail_change_audit()",
+        );
+      }
+      expect(
+        await (await browser("farmers/change", "POST", failureChange)).json(),
+      ).toEqual({
+        farmerId,
+        version: 5,
+        replayed: false,
+        duplicateRisk: false,
+      });
+      const competing = await Promise.all(
+        ["Synthetic competing one", "Synthetic competing two"].map((fullName) =>
+          browser("farmers/change", "POST", {
+            ...correction,
+            mutationId: randomUUID(),
+            expectedVersion: 5,
+            fullName,
+          }),
+        ),
+      );
+      expect(competing.map((result) => result.status).sort()).toEqual([
+        200, 409,
+      ]);
+      expect(
+        (
+          await client.query("SELECT version FROM farm.farmer WHERE id=$1", [
+            farmerId,
+          ])
+        ).rows[0].version,
+      ).toBe(6);
+      await client.query(
+        "UPDATE farm.farmer SET status='inactive' WHERE id=$1",
+        [farmerId],
+      );
+      const inactiveCorrection = {
+        ...correction,
+        mutationId: randomUUID(),
+        expectedVersion: 6,
+        fullName: "Synthetic inactive correction",
+      };
+      expect(
+        (await browser("farmers/change", "POST", inactiveCorrection)).status,
+      ).toBe(200);
+      expect(
+        (
+          await client.query(
+            "SELECT status,version FROM farm.farmer WHERE id=$1",
+            [farmerId],
+          )
+        ).rows[0],
+      ).toEqual({ status: "inactive", version: 7 });
+      expect(
+        (
+          await browser("farmers/change", "POST", {
+            ...verification,
+            mutationId: randomUUID(),
+            expectedVersion: 7,
+          })
+        ).status,
+      ).toBe(409);
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [correctGrant],
+      );
+      expect(
+        (await browser("farmers/change", "POST", failureChange)).status,
+      ).toBe(403);
       await client.query(
         "UPDATE authz.permission_grant SET active=false WHERE id=$1",
         [readGrant],

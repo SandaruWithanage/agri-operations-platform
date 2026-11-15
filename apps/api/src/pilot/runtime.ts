@@ -1,3 +1,4 @@
+import { FarmerChangeService } from "../farmer/change-service";
 import { FarmerRegistryService } from "../farmer/registry-service";
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import { createPrivateKey, createPublicKey } from "node:crypto";
@@ -240,6 +241,7 @@ export async function createPilotRuntime(
       return deviceId;
     };
     const registry = new FarmerRegistryService(context);
+    const changes = new FarmerChangeService(context);
     return {
       internalKey: c.PILOT_INTERNAL_KEY,
       deviceChallenge: (input, origin) =>
@@ -356,6 +358,14 @@ export async function createPilotRuntime(
               geographies,
             };
           });
+        } finally {
+          connection.release();
+        }
+      },
+      changeFarmer: async (actor, input) => {
+        const connection = await pool("agri_farmer_runtime").connect();
+        try {
+          return await changes.change(connection, actor, input);
         } finally {
           connection.release();
         }

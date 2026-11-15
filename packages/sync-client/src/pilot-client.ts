@@ -1,4 +1,10 @@
-import { farmerPageSchema, farmerDetailSchema } from "@agri/validation";
+import {
+  farmerChangeSchema,
+  farmerChangeResultSchema,
+  type FarmerChange,
+  farmerPageSchema,
+  farmerDetailSchema,
+} from "@agri/validation";
 import { DeviceKeys, deviceKeyFingerprint } from "./device-keys";
 import { VaultCatalog } from "./vault-catalog";
 import {
@@ -167,6 +173,21 @@ export class PilotClient {
     });
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
+  }
+  async changeFarmer(accountId: string, input: FarmerChange) {
+    const value = farmerChangeSchema.parse(input);
+    const session = await this.session();
+    if (session.accountId !== accountId) throw new PilotRequestError(401);
+    const result = farmerChangeResultSchema.safeParse(
+      await this.request("farmers/change", value, session.csrfToken),
+    );
+    if (
+      !result.success ||
+      result.data.farmerId !== input.farmerId ||
+      result.data.version !== input.expectedVersion + 1
+    )
+      throw new PilotRequestError(503);
+    return result.data;
   }
   async farmers(after?: string) {
     const query = new URLSearchParams({
