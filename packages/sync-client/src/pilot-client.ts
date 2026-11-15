@@ -24,6 +24,7 @@ import {
   type FarmerListFilters,
   farmerDetailSchema,
   farmerVerificationReceiptSchema,
+  farmerCorrectionReceiptSchema,
 } from "@agri/validation";
 import { DeviceKeys, deviceKeyFingerprint } from "./device-keys";
 import { VaultCatalog } from "./vault-catalog";
@@ -307,6 +308,20 @@ export class PilotClient {
     const result = farmerVerificationReceiptSchema.safeParse(
       await this.request(
         `farmers/verification-receipt?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success || result.data.farmerId !== id)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async farmerCorrectionReceipt(id: string, signal?: AbortSignal) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = farmerCorrectionReceiptSchema.safeParse(
+      await this.request(
+        `farmers/correction-receipt?id=${encodeURIComponent(id)}`,
         undefined,
         undefined,
         signal,

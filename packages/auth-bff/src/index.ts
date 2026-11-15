@@ -22,6 +22,7 @@ import {
   sameFarmerFilters,
   farmerDetailSchema,
   farmerVerificationReceiptSchema,
+  farmerCorrectionReceiptSchema,
 } from "@agri/validation";
 /** Server route code only. Never import configured instances into client components. */
 export type BffConfig = {
@@ -182,6 +183,7 @@ export function createBffHandler(
             "farmers/detail",
             "farmers/history",
             "farmers/verification-receipt",
+            "farmers/correction-receipt",
             "farmers/correction-geographies",
             "land",
             "land/detail",
@@ -392,6 +394,7 @@ export function createBffHandler(
           "farmers/detail",
           "farmers/history",
           "farmers/verification-receipt",
+          "farmers/correction-receipt",
         ].includes(path)
       ) {
         const params = new URL(request.url).searchParams;
@@ -422,8 +425,13 @@ export function createBffHandler(
             ? farmerPageSchema
             : path === "farmers/history"
               ? farmerHistoryPageSchema
-              : path === "farmers/verification-receipt"
-                ? farmerVerificationReceiptSchema
+              : [
+                    "farmers/verification-receipt",
+                    "farmers/correction-receipt",
+                  ].includes(path)
+                ? path === "farmers/correction-receipt"
+                  ? farmerCorrectionReceiptSchema
+                  : farmerVerificationReceiptSchema
                 : farmerDetailSchema
         ).safeParse(result);
         if (!parsed.success) throw new Failure(503);
@@ -434,7 +442,11 @@ export function createBffHandler(
             throw new Failure(503);
         }
         if (
-          ["farmers/history", "farmers/verification-receipt"].includes(path) &&
+          [
+            "farmers/history",
+            "farmers/verification-receipt",
+            "farmers/correction-receipt",
+          ].includes(path) &&
           (!("farmerId" in parsed.data) ||
             !("id" in query.data) ||
             parsed.data.farmerId !== query.data.id)

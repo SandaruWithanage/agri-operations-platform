@@ -106,6 +106,7 @@ try {
     args: process.getuid?.() === 0 ? ["--no-sandbox"] : [],
   });
   const context = await browser.newContext();
+  let correctionAllowed = true;
   let authorized = true,
     readable = true,
     auditable = true,
@@ -194,6 +195,19 @@ try {
         duplicateRisk: false,
       });
     }
+    if (path === "farmers/correction-receipt") {
+      if (!correctionAllowed) return reply({ error: "Denied" }, 403);
+      return reply({
+        accountId,
+        farmerId: url.searchParams.get("id"),
+        receipt: {
+          mutationId: ids[1],
+          version: 3,
+          occurredAt: "2026-11-16T00:00:00.123456Z",
+        },
+        sessionId: "synthetic-private",
+      });
+    }
     if (path === "farmers/verification-receipt") {
       if (!verifyAllowed) return reply({ error: "Denied" }, 403);
       return reply({
@@ -233,7 +247,11 @@ try {
       return reply({
         accountId,
         farmer: rows.find((row) => row.id === url.searchParams.get("id")),
-        access: { viewAudit: auditable, verify: verifyAllowed },
+        access: {
+          viewAudit: auditable,
+          verify: verifyAllowed,
+          correct: correctionAllowed,
+        },
       });
     if (path === "farmers/history") {
       if (!auditable) return reply({ error: "Action denied" }, 403);
@@ -450,6 +468,57 @@ try {
   await page.getByRole("button", { name: "සිංහල", exact: true }).click();
   await page.getByText("කාර්ය මණ්ඩල වාර්තා සමාලෝචනය", { exact: true }).waitFor();
   await page.getByRole("button", { name: "English", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Check my latest correction receipt",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("region", {
+      name: "Your latest visible correction",
+      exact: true,
+    })
+    .getByText("3", { exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "ඔබගේ නවතම අවසර ලත් නිවැරදි කිරීම", exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  correctionAllowed = false;
+  await page
+    .getByRole("button", {
+      name: "Check my latest correction receipt",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("main").getByRole("alert").waitFor();
+  assert.equal(
+    await page
+      .getByRole("heading", { name: rows[0].fullName, exact: true })
+      .count(),
+    0,
+  );
+  await page
+    .getByRole("button", { name: "Check session and refresh", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page.getByText("Verified", { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", {
+        name: "Check my latest correction receipt",
+        exact: true,
+      })
+      .count(),
+    0,
+  );
   verifyAllowed = false;
   await page
     .getByRole("button", {
