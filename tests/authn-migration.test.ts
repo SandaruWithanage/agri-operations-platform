@@ -1,3 +1,4 @@
+import { verifyCorrectionReceipt } from "./support/correction-receipt-integration";
 import { verifyLandIdentification } from "./support/land-integration";
 // @vitest-environment node
 import "fake-indexeddb/auto";
@@ -242,6 +243,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     await client.query(
       readFileSync(
         "database/migrations/20261115_zzzzzzzzzzzzz_correction_geographies/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261116_farmer_correction_receipt/up.sql",
         "utf8",
       ),
     );
@@ -2517,6 +2524,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
           })
         ).status,
       ).toBe(409);
+      expect(
+        (await browser(`farmers/correction-receipt?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       await client.query(
         `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
         SELECT $1,$2,organization_id,'farmer.correct','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
@@ -2582,6 +2593,22 @@ suite("provisional authentication migration on PostgreSQL", () => {
       } finally {
         await rawUpdate.end();
       }
+      expect(
+        await (
+          await browser(`farmers/correction-receipt?id=${farmerId}`, "GET")
+        ).json(),
+      ).toEqual({ accountId: account, farmerId, receipt: null });
+      for (const query of [
+        `id=${farmerId}&accountId=${another}`,
+        `id=${farmerId}&id=${farmerId}`,
+      ])
+        expect(
+          (await browser(`farmers/correction-receipt?${query}`, "GET")).status,
+        ).toBe(400);
+      for (const id of [hiddenId, randomUUID()])
+        expect(
+          (await browser(`farmers/correction-receipt?id=${id}`, "GET")).status,
+        ).toBe(404);
       const correction = {
         mutationId: randomUUID(),
         farmerId,
@@ -2638,6 +2665,20 @@ suite("provisional authentication migration on PostgreSQL", () => {
           ).json()
         ).farmerVersion,
       ).toBe(3);
+      await verifyCorrectionReceipt({
+        owner: client,
+        browser,
+        accountId: account,
+        otherAccountId: another,
+        farmerId,
+        mutationId: correction.mutationId,
+        correctGrant,
+        verifyGrant,
+        geographyId: locations[0].id,
+        hiddenGeographyId: otherGeo,
+        actor: identity,
+        runtimeUrl: mappings.agri_farmer_runtime,
+      });
       const changeAudit = await client.query(
         "SELECT actor_id,session_id,action,previous_version,result_version,previous_status,result_status FROM farm.farmer_change WHERE farmer_id=$1 ORDER BY result_version",
         [farmerId],
@@ -2824,6 +2865,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
         (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
           .status,
       ).toBe(403);
+      expect(
+        (await browser(`farmers/correction-receipt?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(403);
       const rawReceipt = new pg.Client({
         connectionString: mappings.agri_farmer_runtime,
       });
@@ -2835,6 +2880,13 @@ suite("provisional authentication migration on PostgreSQL", () => {
           ]),
         ).rejects.toMatchObject({ code: "42501" });
         const signed = new TransactionActorContext(Buffer.alloc(32, 42));
+        await expect(
+          signed.run(rawReceipt, identity, (db) =>
+            db.query("SELECT * FROM farm.latest_own_correction($1)", [
+              farmerId,
+            ]),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
         await expect(
           signed.run(rawReceipt, identity, (db) =>
             db.query("SELECT * FROM farm.latest_own_verification($1)", [
@@ -3029,6 +3081,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ).toBe(404);
       expect(
         (await browser(`farmers/correction-geographies?id=${farmerId}`, "GET"))
+          .status,
+      ).toBe(404);
+      expect(
+        (await browser(`farmers/correction-receipt?id=${farmerId}`, "GET"))
           .status,
       ).toBe(404);
       const logout = await browser("auth/logout", "POST");

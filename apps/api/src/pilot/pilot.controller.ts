@@ -290,6 +290,20 @@ export class PilotController {
       ),
     );
   }
+  @Get("farmers/correction-receipt")
+  farmerCorrectionReceipt(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.farmerCorrectionReceipt(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
   @Get("farmers/history")
   farmerHistory(
     @Headers("x-agri-bff-key") key: string | undefined,

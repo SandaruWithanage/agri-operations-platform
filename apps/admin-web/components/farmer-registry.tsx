@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { createProtectedQueryClient } from "../lib/protected-query";
 import { LandDirectory, landWords } from "./land-directory";
+import { FarmerCorrectionReceipt } from "./farmer-correction-receipt";
 import { FarmerVerification } from "./farmer-verification";
 import { FarmerHistory } from "./farmer-history";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -712,6 +713,18 @@ function RegistryView({ client }: { client: PilotClient }) {
                 authorizationEpoch={sequence.current}
                 language={language}
                 onRefresh={() => detail(selected.id)}
+                onFailure={report}
+              />
+            )}
+          {data?.kind === "farmer-detail" &&
+            data.value.access?.correct === true &&
+            context && (
+              <FarmerCorrectionReceipt
+                client={client}
+                accountId={context.accountId}
+                farmerId={selected.id}
+                authorizationEpoch={sequence.current}
+                language={language}
                 onFailure={report}
               />
             )}

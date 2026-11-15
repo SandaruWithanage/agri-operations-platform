@@ -163,3 +163,9 @@ export const farmerCorrectionGeographiesSchema = z
 export type FarmerCorrectionGeographies = z.infer<
   typeof farmerCorrectionGeographiesSchema
 >;
+
+// The receipt shape is shared; each endpoint enforces its own action permission.
+export const farmerCorrectionReceiptSchema = farmerVerificationReceiptSchema;
+export type FarmerCorrectionReceipt = z.infer<
+  typeof farmerCorrectionReceiptSchema
+>;

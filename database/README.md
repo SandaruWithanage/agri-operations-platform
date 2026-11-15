@@ -43,3 +43,7 @@ Manifest entry 16 adds the status/UUID cursor index without changing rows, RLS o
 ## Correction-location choices (manifest entry 17)
 
 Apply entry 17 before deploying the correction-choice read endpoint. It adds a bounded function executable only by the existing farmer runtime, with current source and destination read/correct checks. It does not grant geography-table reads, business permissions or require new connection URLs. See [the API contract and verification limits](../docs/development/FARMER_CORRECTION_OPTIONS.md).
+
+## Own correction receipts (manifest entry 18)
+
+Apply entry 18 before deploying the correction receipt endpoint. It adds an indexed actor-bound function with current and historical read/correct coverage checks, using existing roles and URLs. No direct journal read privilege or business grant is added. See [receipt semantics and recovery limits](../docs/development/FARMER_CORRECTION_RECEIPTS.md).
