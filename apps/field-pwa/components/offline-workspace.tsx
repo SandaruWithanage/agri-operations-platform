@@ -50,6 +50,7 @@ const words = {
     saved: "Saved on Device",
     saving: "Saving on device…",
     pending: "Pending Sync",
+    syncing: "Syncing…",
     synced: "Synced",
     conflict: "Conflict — review required",
     rejected: "Rejected — review required",
@@ -116,6 +117,7 @@ const words = {
     saved: "උපාංගයේ සුරැකුණි",
     saving: "උපාංගයේ සුරකිමින්…",
     pending: "සමමුහුර්ත කිරීමට නියමිතයි",
+    syncing: "සමමුහුර්ත කරමින්…",
     synced: "සමමුහුර්තයි",
     conflict: "ගැටුමක් — සමාලෝචනය අවශ්‍යයි",
     rejected: "ප්‍රතික්ෂේපයි — සමාලෝචනය අවශ්‍යයි",
@@ -179,6 +181,8 @@ export function OfflineWorkspacePage() {
   const [context, setContext] = useState<OfflineReferenceContext | null>(null);
   const [working, setWorking] = useState<WorkingRegistration | undefined>();
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const reloadSequence = useRef(0);
   const [recovered, setRecovered] = useState<
     Array<{ slot: string; value: WorkingRegistration }>
   >([]);
@@ -199,11 +203,13 @@ export function OfflineWorkspacePage() {
   const [editable, setEditable] = useState(false);
   const clear = useCallback(() => {
     generation.current++;
+    reloadSequence.current++;
     editorLock.current = false;
     setUnlocked(false);
     setContext(null);
     setWorking(undefined);
     setEntries([]);
+    setSyncingId(null);
     setRecovered([]);
     setEditable(false);
     release.current?.();
@@ -334,6 +340,7 @@ export function OfflineWorkspacePage() {
     return () => channel.close();
   }, [clear]);
   const reload = async () => {
+    const load = ++reloadSequence.current;
     const current = model.current;
     const version = generation.current;
     if (!current?.isUnlocked) {
@@ -346,6 +353,7 @@ export function OfflineWorkspacePage() {
     ]);
     if (
       version !== generation.current ||
+      load !== reloadSequence.current ||
       model.current !== current ||
       !current.isUnlocked
     )
@@ -500,11 +508,26 @@ export function OfflineWorkspacePage() {
     busyRef.current = true;
     setBusy(true);
     setMessage(null);
+    const current = model.current;
+    const version = generation.current;
+    const valid = () =>
+      model.current === current &&
+      generation.current === version &&
+      current.isUnlocked;
     try {
-      await model.current.sync(client);
+      await current.sync(client, (id) => {
+        if (!valid()) return;
+        setSyncingId(id);
+        if (id)
+          void reload().catch(() => {
+            if (valid()) clear();
+          });
+      });
+      if (!valid()) return;
       await reload();
       setMessage("syncDone");
     } catch (error) {
+      if (!valid()) return;
       setMessage(
         (error instanceof PilotRequestError &&
           [401, 403].includes(error.status)) ||
@@ -515,6 +538,8 @@ export function OfflineWorkspacePage() {
       if (!model.current?.canAccess()) await lock();
       else if (model.current?.isUnlocked) await reload().catch(() => clear());
     } finally {
+      if (model.current === current && generation.current === version)
+        setSyncingId(null);
       setBusy(false);
     }
   }
@@ -885,7 +910,11 @@ export function OfflineWorkspacePage() {
                   {entries.map((row) => (
                     <li key={row.id}>
                       <p>{row.farmer.fullName}</p>
-                      <p role="status">{statuses[row.status]}</p>
+                      <p role="status">
+                        {syncingId === row.id
+                          ? c.syncing
+                          : statuses[row.status]}
+                      </p>
                       {row.status === "synced" && (
                         <button
                           disabled={busy}

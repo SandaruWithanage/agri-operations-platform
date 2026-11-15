@@ -616,15 +616,28 @@ export class RegistrationOutbox {
     });
   }
   /** Server must authorize, atomically deduplicate mutation IDs and check payload hashes. */
-  syncPending(send: RegistrationSender): Promise<void> {
+  syncPending(
+    send: RegistrationSender,
+    progress?: (mutationId: string | null) => void,
+  ): Promise<void> {
     this.unlocked();
     if (this.syncing) return this.syncing;
-    this.syncing = this.performSync(send).finally(() => {
+    this.syncing = this.performSync(send, progress).finally(() => {
       this.syncing = null;
     });
     return this.syncing;
   }
-  private async performSync(send: RegistrationSender): Promise<void> {
+  private async performSync(
+    send: RegistrationSender,
+    progress?: (mutationId: string | null) => void,
+  ): Promise<void> {
+    const notify = (id: string | null) => {
+      try {
+        progress?.(id);
+      } catch {
+        /* Display observers cannot change durable reconciliation. */
+      }
+    };
     for (const row of await this.db.mutations
       .where("status")
       .equals("pending-sync")
@@ -632,15 +645,20 @@ export class RegistrationOutbox {
       const key = this.unlocked();
       const payload = await this.readDraft(row.id);
       if (this.key !== key) throw new Error("Vault locked");
-      const result = await send(row.id, payload);
-      if (!["synced", "conflict", "rejected"].includes(result.status))
-        throw new Error("Invalid sync response");
-      if (this.key !== key) throw new Error("Vault locked");
-      await this.db.transaction("rw", this.db.mutations, async () => {
-        const current = await this.db.mutations.get(row.id);
-        if (current?.status === "pending-sync")
-          await this.db.mutations.update(row.id, { status: result.status });
-      });
+      notify(row.id);
+      try {
+        const result = await send(row.id, payload);
+        if (!["synced", "conflict", "rejected"].includes(result.status))
+          throw new Error("Invalid sync response");
+        if (this.key !== key) throw new Error("Vault locked");
+        await this.db.transaction("rw", this.db.mutations, async () => {
+          const current = await this.db.mutations.get(row.id);
+          if (current?.status === "pending-sync")
+            await this.db.mutations.update(row.id, { status: result.status });
+        });
+      } finally {
+        notify(null);
+      }
     }
   }
   async removeSynced(id: string): Promise<void> {

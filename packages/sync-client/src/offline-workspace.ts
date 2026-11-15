@@ -204,7 +204,10 @@ export class OfflineWorkspace {
       result.push({ ...row, farmer: await this.outbox.readDraft(row.id) });
     return result;
   }
-  async sync(transport: OfflineTransport): Promise<void> {
+  async sync(
+    transport: OfflineTransport,
+    progress?: (mutationId: string | null) => void,
+  ): Promise<void> {
     await this.flush();
     try {
       const current = this.binding(await transport.context());
@@ -215,8 +218,10 @@ export class OfflineWorkspace {
         );
       for (const row of await this.outbox.list())
         if (row.status === "saved-on-device") await this.outbox.queue(row.id);
-      await this.outbox.syncPending((id, value) =>
-        transport.sendRegistration(this.accountId, this.deviceId, id, value),
+      await this.outbox.syncPending(
+        (id, value) =>
+          transport.sendRegistration(this.accountId, this.deviceId, id, value),
+        progress,
       );
     } catch (error) {
       if ([401, 403].includes((error as { status?: number })?.status ?? 0)) {

@@ -1,6 +1,6 @@
 # Protected online query integration
 
-Read the [accepted data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md). This is the incremental TanStack Query integration for admin farmer registry, detail, audit-history and land directory reads. Field online operations and future domain mutations still require migration. PostgreSQL remains authoritative, and cached capabilities never confer permission.
+Read the [accepted data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md). This is the incremental TanStack Query integration for admin farmer registry, detail, audit-history and land directory reads. The [field home session display](FIELD_SESSION_SYNC.md) also uses isolated queries; future online domain mutations still need integration. PostgreSQL remains authoritative, and cached capabilities never confer permission.
 
 ## Implemented boundary
 

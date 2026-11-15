@@ -1,5 +1,13 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
+import * as fieldQueries from "../apps/field-pwa/lib/online-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PilotWorkspace } from "../apps/field-pwa/components/pilot-workspace";
 import {
@@ -109,4 +117,89 @@ it("prepares a public device request before sign-in and displays its independent
   expect(api.prepareDevice).toHaveBeenCalledWith(geography.id);
   expect(api.login).not.toHaveBeenCalled();
   expect(click).toHaveBeenCalledOnce();
+});
+
+it("cancels hidden session checks, clears cached context and ignores a late response", async () => {
+  const api = client(),
+    factory = vi.spyOn(fieldQueries, "createFieldQueryClient");
+  const value = await api.context();
+  vi.mocked(api.context).mockClear();
+  let finish!: (input: typeof value) => void;
+  vi.mocked(api.context).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  render(<PilotWorkspace language="en" client={api} />);
+  await waitFor(() => expect(api.context).toHaveBeenCalledOnce());
+  const signal = vi.mocked(api.context).mock.calls[0][0]!;
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  expect(signal.aborted).toBe(true);
+  finish(value);
+  await screen.findByLabelText("Password");
+  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  expect(
+    factory.mock.results[0].value
+      .getQueryCache()
+      .getAll()
+      .every((query) => query.state.data === undefined),
+  ).toBe(true);
+});
+it("keeps only account/device metadata in memory and empties it on logout", async () => {
+  const api = client(),
+    factory = vi.spyOn(fieldQueries, "createFieldQueryClient");
+  render(<PilotWorkspace language="en" client={api} />);
+  await screen.findByRole("button", { name: "Sign out" });
+  const cache = factory.mock.results[0].value;
+  expect(
+    cache
+      .getQueryCache()
+      .getAll()
+      .find((query) => query.state.data)?.state.data,
+  ).toEqual({ accountId, deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86" });
+  await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  await screen.findByLabelText("Password");
+  expect(
+    cache
+      .getQueryCache()
+      .getAll()
+      .every((query) => query.state.data === undefined),
+  ).toBe(true);
+});
+it("rechecks a revoked session without reusing cached success or automatic retries", async () => {
+  const api = client();
+  render(<PilotWorkspace language="en" client={api} />);
+  await screen.findByRole("button", { name: "Sign out" });
+  vi.mocked(api.context).mockRejectedValue(new PilotRequestError(401));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Check session again" }),
+  );
+  await screen.findByLabelText("Password");
+  expect(api.context).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+});
+it("replaces the cache when the client changes and supports strict lifecycle replay", async () => {
+  const first = client(),
+    second = client(),
+    factory = vi.spyOn(fieldQueries, "createFieldQueryClient");
+  vi.mocked(second.context).mockRejectedValue(new PilotRequestError(401));
+  const { rerender, unmount } = render(
+    <StrictMode>
+      <PilotWorkspace language="en" client={first} />
+    </StrictMode>,
+  );
+  await screen.findByRole("button", { name: "Sign out" });
+  rerender(
+    <StrictMode>
+      <PilotWorkspace language="en" client={second} />
+    </StrictMode>,
+  );
+  await screen.findByLabelText("Password");
+  unmount();
+  expect(
+    factory.mock.results.every(
+      (result) => result.value.getQueryCache().getAll().length === 0,
+    ),
+  ).toBe(true);
 });

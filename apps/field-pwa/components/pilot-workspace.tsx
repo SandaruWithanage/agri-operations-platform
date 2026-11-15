@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { createFieldQueryClient } from "../lib/online-query";
 import { PilotClient, PilotRequestError } from "../lib/pilot-client";
 
 const words = {
@@ -70,7 +76,6 @@ const words = {
       "වරන්නට පෙර ලියාපදිංචිය සුරකා ප්‍රතිඵලය තහවුරු කරන්න. පිටුව වැසීමෙන් හෝ නැවත පූරණය කිරීමෙන් නොසුරැකි දත්ත නැති විය හැක.",
   },
 } as const;
-type Context = Awaited<ReturnType<PilotClient["context"]>>;
 type Message =
   | "prepared"
   | "saved"
@@ -80,59 +85,87 @@ type Message =
   | "failure"
   | "loginFailure";
 
-export function PilotWorkspace({
+type Props = { language: "en" | "si"; client?: PilotClient };
+let nextBoundary = 0;
+export function PilotWorkspace({ language, client: supplied }: Props) {
+  const [fallback] = useState(() => new PilotClient());
+  const client = supplied ?? fallback;
+  const boundary = useMemo(
+    () => ({ id: ++nextBoundary, queries: createFieldQueryClient() }),
+    [client],
+  );
+  return (
+    <QueryClientProvider key={boundary.id} client={boundary.queries}>
+      <SessionView client={client} language={language} />
+    </QueryClientProvider>
+  );
+}
+function SessionView({
   language,
-  client: supplied,
+  client,
 }: {
   language: "en" | "si";
-  client?: PilotClient;
+  client: PilotClient;
 }) {
-  const [client] = useState(() => supplied ?? new PilotClient());
+  const queries = useQueryClient();
+  const [revision, setRevision] = useState(0);
+  const [readEnabled, setReadEnabled] = useState(true);
+  const sequence = useRef(0),
+    active = useRef(true);
   const loginForm = useRef<HTMLFormElement>(null);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
-  const [context, setContext] = useState<Context | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const c = words[language];
+  const query = useQuery({
+    queryKey: ["protected", "field-session", { revision }],
+    enabled: readEnabled,
+    queryFn: async ({ signal }) => {
+      const value = await client.context(signal);
+      signal.throwIfAborted();
+      // The home screen needs identity metadata only; authorized references stay out of this cache.
+      return { accountId: value.accountId, deviceId: value.deviceId };
+    },
+  });
+  const context = readEnabled && !query.isError ? query.data : undefined;
+  const signedIn = context !== undefined;
+  const checking = readEnabled && query.isFetching;
+  function clearSession() {
+    sequence.current++;
+    setReadEnabled(false);
+    void queries.cancelQueries();
+    queries.removeQueries();
+  }
   useEffect(() => {
-    let active = true;
-    client
-      .context()
-      .then((value) => {
-        if (!active) return;
-        setContext(value);
-        setSignedIn(true);
-      })
-      .catch((error) => {
-        if (
-          active &&
-          !(error instanceof PilotRequestError && error.status === 401)
-        )
-          setMessage("failure");
-      })
-      .finally(() => {
-        if (active) setChecking(false);
-      });
-    return () => {
-      active = false;
+    active.current = true;
+    const hidden = () => {
+      if (document.visibilityState === "hidden") clearSession();
     };
-  }, [client]);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      active.current = false;
+      sequence.current++;
+      void queries.cancelQueries();
+      queries.clear();
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [queries]);
+  useEffect(() => {
+    if (readEnabled && query.isError) report(query.error);
+  }, [readEnabled, query.isError, query.error]);
   function report(error: unknown) {
     const status = error instanceof PilotRequestError ? error.status : 503;
     if (status === 401) {
-      setSignedIn(false);
       setMessage("auth");
     } else
       setMessage(
         status === 403 ? "denied" : status === 409 ? "conflict" : "failure",
       );
   }
-  async function check() {
-    const value = await client.context();
-    setContext(value);
-    setSignedIn(true);
+  function check() {
+    clearSession();
+    setRevision((value) => value + 1);
+    setReadEnabled(true);
     setMessage(null);
   }
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -142,6 +175,8 @@ export function PilotWorkspace({
     const data = new FormData(form);
     setBusy(true);
     setMessage(null);
+    clearSession();
+    const generation = sequence.current;
     try {
       await client.login({
         loginName: String(data.get("loginName") ?? ""),
@@ -149,13 +184,14 @@ export function PilotWorkspace({
         otp: String(data.get("otp") ?? ""),
         deviceId: String(data.get("deviceId") ?? ""),
       });
-      await check();
+      if (active.current && generation === sequence.current) check();
     } catch (error) {
-      setMessage(
-        error instanceof PilotRequestError && error.status === 403
-          ? "denied"
-          : "loginFailure",
-      );
+      if (active.current && generation === sequence.current)
+        setMessage(
+          error instanceof PilotRequestError && error.status === 403
+            ? "denied"
+            : "loginFailure",
+        );
     } finally {
       // Password and OTP live only in the form/request; clear after every attempt.
       (form.elements.namedItem("password") as HTMLInputElement).value = "";
@@ -296,10 +332,10 @@ export function PilotWorkspace({
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
+                  const known = context;
+                  clearSession();
                   try {
-                    await client.logout(context ?? undefined);
-                    setSignedIn(false);
-                    setContext(null);
+                    await client.logout(known);
                     setMessage(null);
                   } catch (error) {
                     report(error);

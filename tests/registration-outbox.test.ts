@@ -240,3 +240,57 @@ it("opens a legacy version-one vault with its original KDF and preserves its pen
   await upgraded.recoverLegacyIndexes();
   expect(await upgraded.saveDraft(sample)).toBe(id);
 });
+
+it("reports in-flight progress without persisting a non-retryable state; lock/restart retains the same mutation", async () => {
+  const { box, name } = create();
+  await box.initialize(passphrase);
+  const id = await box.saveDraft(sample);
+  await box.queue(id);
+  let finish!: (result: { status: "synced" }) => void;
+  const progress = vi.fn(),
+    sender = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+  const pending = box.syncPending(sender, progress);
+  await vi.waitFor(() => expect(progress).toHaveBeenCalledWith(id));
+  expect(await box.list()).toEqual([{ id, status: "pending-sync" }]);
+  const archive = await box.exportEncryptedArchive();
+  expect(archive).not.toContain('"status":"syncing"');
+  box.lock();
+  const rejected = expect(pending).rejects.toThrow("Vault locked");
+  finish({ status: "synced" });
+  await rejected;
+  expect(progress).toHaveBeenLastCalledWith(null);
+  const next = create(name).box;
+  await next.unlock(passphrase);
+  expect(await next.list()).toEqual([{ id, status: "pending-sync" }]);
+  const retry = vi.fn().mockResolvedValue({ status: "synced" });
+  await next.syncPending(retry);
+  expect(retry).toHaveBeenCalledWith(id, sample);
+  expect(await next.list()).toEqual([{ id, status: "synced" }]);
+});
+it("clears in-flight presentation after interruption and isolates failing display observers", async () => {
+  const { box } = create();
+  await box.initialize(passphrase);
+  const id = await box.saveDraft(sample);
+  await box.queue(id);
+  const progress = vi.fn();
+  await expect(
+    box.syncPending(async () => {
+      throw new Error("Synthetic network loss");
+    }, progress),
+  ).rejects.toThrow("Synthetic network loss");
+  expect(progress.mock.calls).toEqual([[id], [null]]);
+  expect(await box.list()).toEqual([{ id, status: "pending-sync" }]);
+  await box.syncPending(
+    async () => ({ status: "conflict" }),
+    () => {
+      throw new Error("Synthetic presentation failure");
+    },
+  );
+  expect(await box.list()).toEqual([{ id, status: "conflict" }]);
+  expect(await box.readDraft(id)).toEqual(sample);
+});

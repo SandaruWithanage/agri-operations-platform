@@ -103,9 +103,11 @@ it("rechecks account/device before sync, preserves pending data after unauthoriz
     context: vi.fn().mockResolvedValue(context),
     sendRegistration: vi.fn().mockRejectedValue({ status: 401 }),
   };
-  await expect(workspace.sync(transport)).rejects.toMatchObject({
+  const progress = vi.fn();
+  await expect(workspace.sync(transport, progress)).rejects.toMatchObject({
     status: 401,
   });
+  expect(progress.mock.calls).toEqual([[id], [null]]);
   expect((await workspace.outbox.list())[0]).toEqual({
     id,
     status: "pending-sync",
