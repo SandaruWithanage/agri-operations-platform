@@ -1,4 +1,15 @@
-# First Codex task
+# Codex continuation entry
+
+M0 is complete. Before continuing current authorized work, read:
+
+1. [Root AGENTS.md](../AGENTS.md).
+2. [Project context](PROJECT_CONTEXT.md).
+3. [Accepted data/state/cache ADR](architecture/decisions/ADR-data-state-cache.md).
+4. [Current roadmap](development/ROADMAP.md), [delivery status/backlog](development/PHASE_1_STATUS.md) and relevant domain/security ADRs.
+
+Inspect the repository and current branch/PR state before making changes. Accepted architecture is not the same as implemented behavior or production acceptance. Follow the current user-authorized scope and feature-branch process. The original M0 brief below is historical; do not restart M0 or treat its milestone boundary as today's backlog.
+
+## Historical first M0 brief
 
 Open repository `SandaruWithanage/agri-operations-platform`. Read root `AGENTS.md` and `docs/PROJECT_CONTEXT.md`, inspect actual code, and begin **Milestone M0 only**.
 

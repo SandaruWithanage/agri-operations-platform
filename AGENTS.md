@@ -2,6 +2,8 @@
 
 Read `docs/PROJECT_CONTEXT.md` before proposing changes. Treat it as the current architectural and requirements baseline, **not** an approved final SRS. Resolve disagreements by recording an ADR; never invent client decisions.
 
+Read the [Accepted data/state/cache ADR](docs/architecture/decisions/ADR-data-state-cache.md) before selecting or changing persistence, server-state, UI-state, caching or offline approaches. PostgreSQL/PostGIS owns authoritative data; TanStack Query owns online server state; Zustand is limited to shared UI state; Dexie owns durable offline work; Redis remains optional for confirmed needs. Follow the [roadmap](docs/development/ROADMAP.md), distinguish accepted architecture from implemented behavior, and propose an updated ADR for conflicts rather than silently replacing this decision.
+
 ## Working principles
 
 - Work in a feature branch. Never push directly to `main`, force-push, or merge without approval.

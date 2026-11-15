@@ -23,6 +23,10 @@ A Sri Lankan organization coordinates numerous farmers across Ginisiriya (Gliric
 - Admin interface desktop-first; field-officer PWA/mobile-first with high-contrast forms and explicit offline state; restrained or no glassmorphism on field forms. Future farmer portal should be especially simple.
 - English/Sinhala visible toggle; locale preference persistent; farmer-entered names and official documents are not automatically translated.
 
+## Accepted data/state architecture
+
+The project owner accepted [PostgreSQL/PostGIS, optional Redis, TanStack Query, Zustand and Dexie with separate responsibilities](architecture/decisions/ADR-data-state-cache.md) on 15 November 2026. Read that ADR before related choices. TanStack Query/Zustand are selected but not yet integrated; Redis is optional and absent. This does not approve provisional business rules or establish production readiness. The [current roadmap](development/ROADMAP.md) and [implementation inventory](development/PHASE_1_STATUS.md) govern implementation timing and remaining work.
+
 ## Architectural direction (provisional)
 
 - Monorepo: pnpm workspaces + Turborepo; apps `admin-web`, `field-pwa`, `api`.

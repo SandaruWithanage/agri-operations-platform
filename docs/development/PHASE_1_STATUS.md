@@ -2,6 +2,10 @@
 
 This is an implementation inventory, not client approval or production certification. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
 
+## Accepted architecture versus implementation
+
+The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is accepted architecture. PostgreSQL authority and encrypted Dexie farmer persistence are implemented; local PostGIS Compose is configured but land/GPS domain implementation is unfinished. TanStack Query and Zustand are not yet installed/integrated; Redis remains optional and absent. Existing online server fetching and locale state use local React state. The [roadmap](ROADMAP.md) places the frontend migration at current M2, and Redis only at M3+ for a confirmed use case.
+
 ## Implemented and verified with synthetic data
 
 - M0 monorepo, independent Next.js apps, NestJS liveness, shared packages, local PostGIS Compose, language toggle, lint/typecheck/test/build CI.
@@ -19,14 +23,15 @@ This is an implementation inventory, not client approval or production certifica
 
 ## Remaining engineering work
 
-1. Complete legacy-only/lost-passphrase recovery decisions, conflict/rejection review, full device deauthorization/erasure procedures and actual mobile/OS/security acceptance. The minimal offline workflow is connected and tested in Chromium; browser permission fixtures are not pilot-device approval.
-2. Add application account/device/MFA enrollment and administration screens (the operator CLI currently enrolls/revokes browser keys), privileged account management, MFA recovery, audited revocation and assignment/permission administration. Review the current conservative requirement for MFA and approved devices on every pilot account before changing it.
-3. Extend the minimal farmer list/detail with sensitive-field permissions, a safe review/correction editor, lifecycle/reassignment and audit retention/redaction procedures. Preserve version checks and deny unassigned access. Optional identity/contact/document fields need explicit storage/access decisions before exposing them.
-4. Add land relationships and optional GPS identification/accuracy, without claiming legal boundaries or surveyed area. Test scoped map/list/report access without leaking unauthorized locations or counts.
-5. Add configurable projects/enrollments, officer responsibilities and initial resource records/reports within Phase 1. Do not automatically enroll a farmer or assign permanent ownership to the registering officer. Financial/procurement/insurance/advanced-survey workflows remain excluded.
-6. Rehearse upgrades and backup/restore, including a reviewed path for any manually migrated database. Complete production ownership/provisioning, secret rotation and recovery procedures. Harden trusted-proxy client identity and tune shared login throttling.
-7. Build and verify deployment infrastructure: TLS/proxy, verified database connections, runtime network isolation, durable database storage/backups, monitoring/readiness/alerts, restoration, load/security testing and rollback/forward-fix procedures. Hosting resources, domain names, operating responsibilities and real pilot devices have not been supplied or validated.
-8. Complete Sinhala/native-speaker, accessibility, outdoor mobile and device-security acceptance; obtain the outstanding client decisions recorded in `docs/decisions/`. Component tests cannot establish those results.
+1. Complete M2 state integration: TanStack Query for typed online domain reads/mutations; structured auth-context/filter/page cache keys; logout/session/device/scope cancellation and sensitive-cache clearing with late-response tests. Introduce Zustand for shared locale/UI preferences only. Preserve encrypted Dexie drafts/IDs/recovery without a second durable queue, and verify per-mutation Syncing/interruption behavior. Keep Redis conditional on measured M3+ needs; a future worker relay needs a PostgreSQL transactional outbox. See the [roadmap](ROADMAP.md).
+2. Complete legacy-only/lost-passphrase recovery decisions, conflict/rejection review, full device deauthorization/erasure procedures and actual mobile/OS/security acceptance. The minimal offline workflow is connected and tested in Chromium; browser permission fixtures are not pilot-device approval.
+3. Add application account/device/MFA enrollment and administration screens (the operator CLI currently enrolls/revokes browser keys), privileged account management, MFA recovery, audited revocation and assignment/permission administration. Review the current conservative requirement for MFA and approved devices on every pilot account before changing it.
+4. Extend the minimal farmer list/detail with sensitive-field permissions, a safe review/correction editor, lifecycle/reassignment and audit retention/redaction procedures. Preserve version checks and deny unassigned access. Optional identity/contact/document fields need explicit storage/access decisions before exposing them.
+5. Add land relationships and optional GPS identification/accuracy, without claiming legal boundaries or surveyed area. Test scoped map/list/report access without leaking unauthorized locations or counts.
+6. Add configurable projects/enrollments, officer responsibilities and initial resource records/reports within Phase 1. Do not automatically enroll a farmer or assign permanent ownership to the registering officer. Financial/procurement/insurance/advanced-survey workflows remain excluded.
+7. Rehearse upgrades and backup/restore, including a reviewed path for any manually migrated database. Complete production ownership/provisioning, secret rotation and recovery procedures. Harden trusted-proxy client identity and tune shared login throttling.
+8. Build and verify deployment infrastructure: TLS/proxy, verified database connections, runtime network isolation, durable database storage/backups, monitoring/readiness/alerts, restoration, load/security testing and rollback/forward-fix procedures. Hosting resources, domain names, operating responsibilities and real pilot devices have not been supplied or validated.
+9. Complete Sinhala/native-speaker, accessibility, outdoor mobile and device-security acceptance; obtain the outstanding client decisions recorded in `docs/decisions/`. Component tests cannot establish those results.
 
 ## How to verify the current revision
 
