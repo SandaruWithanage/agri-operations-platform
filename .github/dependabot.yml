@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     versioning-strategy: increase
+    # The project compiler is TS 7; this dependency supplies the required TS 6 API.
+    # Review compiler/API major transitions together until upstream supports TS 7.
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       stable-dependencies:
         patterns:
