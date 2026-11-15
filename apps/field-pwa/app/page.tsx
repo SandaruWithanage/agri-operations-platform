@@ -3,25 +3,17 @@ import { applicationName } from "@agri/ui";
 import { useEffect, useState } from "react";
 import { PilotWorkspace } from "../components/pilot-workspace";
 import { copy } from "@agri/i18n";
+import { LocaleProvider, useLocale } from "@agri/i18n/react";
 export default function Home() {
+  return (
+    <LocaleProvider initial="si">
+      <FieldHome />
+    </LocaleProvider>
+  );
+}
+function FieldHome() {
   const [online, setOnline] = useState<boolean | null>(null);
-  const [language, setLanguage] = useState<"en" | "si">("si");
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("agri-language");
-      if (saved === "en" || saved === "si") setLanguage(saved);
-    } catch {
-      /* Language switching still works when storage is unavailable. */
-    }
-  }, []);
-  function chooseLanguage(value: "en" | "si") {
-    setLanguage(value);
-    try {
-      window.localStorage.setItem("agri-language", value);
-    } catch {
-      /* Optional persistence. */
-    }
-  }
+  const [language, chooseLanguage] = useLocale();
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     update();
@@ -32,9 +24,6 @@ export default function Home() {
       window.removeEventListener("offline", update);
     };
   }, []);
-  useEffect(() => {
-    document.documentElement.lang = language;
-  }, [language]);
   const c = copy[language];
   return (
     <main>

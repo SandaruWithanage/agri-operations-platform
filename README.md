@@ -47,6 +47,8 @@ The field screen prepares public device enrollment requests and signs login chal
 
 Field registrations use the [encrypted offline workspace](docs/development/OFFLINE_WORKSPACE.md). It autosaves incomplete minimal drafts, survives a prepared-browser restart offline, and revalidates account/device/permissions during synchronization. Browser persistence approval, a prepared public shell and local unlock are required. Authenticated archives can restore all saved/incomplete versions into an empty same-account vault after normal approved-device sign-in. Legacy-only/lost-passphrase recovery, managed erasure and production/mobile/OS acceptance remain unfinished; do not treat passing Chromium checks as pilot approval.
 
+Both applications use [shared English/Sinhala UI preferences](docs/development/SHARED_LOCALE.md), with the existing locale-only browser preference and no business records in Zustand.
+
 The field home uses [cancellable session queries and per-registration Syncing presentation](docs/development/FIELD_SESSION_SYNC.md); encrypted pending submissions retain their stable IDs across interrupted sends and retries.
 
 The admin app provides a [scoped farmer registry](docs/development/FARMER_REGISTRY.md). It lists only records permitted by explicit read grants and assignments; creation alone grants no read access. A separately authorized [audit history view](docs/development/FARMER_AUDIT_HISTORY.md) is available. The review/correction editor and remaining Phase 1 domains are still unfinished.

@@ -413,8 +413,20 @@ try {
     ),
     false,
   );
+  const preferenceTab = await context.newPage();
+  await preferenceTab.goto(origin);
+  await preferenceTab
+    .getByRole("button", { name: "සිංහල", exact: true })
+    .click();
+  await page.waitForFunction(() => document.documentElement.lang === "si");
+  await page.getByRole("heading", { name: "ගොවි ලේඛනය", exact: true }).waitFor();
+  await preferenceTab
+    .getByRole("button", { name: "English", exact: true })
+    .click();
+  await page.waitForFunction(() => document.documentElement.lang === "en");
+  await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin farmer/land pagination/detail/history, bilingual controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

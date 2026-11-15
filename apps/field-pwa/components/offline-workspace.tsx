@@ -1,4 +1,5 @@
 "use client";
+import { LocaleProvider, useLocale } from "@agri/i18n/react";
 import {
   useCallback,
   useEffect,
@@ -158,7 +159,14 @@ const words = {
 } as const;
 type Entry = { id: string; status: LocalStatus; farmer: FarmerRegistration };
 export function OfflineWorkspacePage() {
-  const [language, setLanguage] = useState<"en" | "si">("si");
+  return (
+    <LocaleProvider initial="si">
+      <OfflineWorkspaceView />
+    </LocaleProvider>
+  );
+}
+function OfflineWorkspaceView() {
+  const [language, setLanguage] = useLocale();
   const c = words[language];
   const [client] = useState(() => new PilotClient());
   const [keys] = useState(() => new DeviceKeys());
@@ -215,17 +223,6 @@ export function OfflineWorkspacePage() {
     release.current?.();
     release.current = null;
   }, []);
-  useEffect(() => {
-    try {
-      const value = localStorage.getItem("agri-language");
-      if (value === "en" || value === "si") setLanguage(value);
-    } catch {
-      /* Optional locale persistence. */
-    }
-  }, []);
-  useEffect(() => {
-    document.documentElement.lang = language;
-  }, [language]);
   useEffect(() => {
     let active = true;
     const update = () => setOnline(navigator.onLine);
@@ -617,27 +614,13 @@ export function OfflineWorkspacePage() {
       <div className="workspace-actions">
         <button
           aria-pressed={language === "en"}
-          onClick={() => {
-            setLanguage("en");
-            try {
-              localStorage.setItem("agri-language", "en");
-            } catch {
-              /* Optional locale persistence. */
-            }
-          }}
+          onClick={() => setLanguage("en")}
         >
           English
         </button>
         <button
           aria-pressed={language === "si"}
-          onClick={() => {
-            setLanguage("si");
-            try {
-              localStorage.setItem("agri-language", "si");
-            } catch {
-              /* Optional locale persistence. */
-            }
-          }}
+          onClick={() => setLanguage("si")}
         >
           සිංහල
         </button>

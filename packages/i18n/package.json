@@ -4,12 +4,21 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./react": "./src/locale-provider.tsx",
+    "./store": "./src/locale-store.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
     "typescript": "~5.9.0"
+  },
+  "dependencies": {
+    "zustand": "5.1.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0"
   }
 }
