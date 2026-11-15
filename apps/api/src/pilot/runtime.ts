@@ -1,3 +1,4 @@
+import { LandIdentificationService } from "../land/identification-service";
 import { FarmerHistoryService } from "../farmer/history-service";
 import { FarmerChangeService } from "../farmer/change-service";
 import { FarmerRegistryService } from "../farmer/registry-service";
@@ -37,6 +38,7 @@ const roles = [
   "agri_session_reader",
   "agri_farmer_runtime",
   "agri_device_verifier",
+  "agri_land_runtime",
 ] as const;
 const configSchema = z.object({
   PILOT_INTERNAL_KEY: z.string().min(43).max(200),
@@ -154,7 +156,7 @@ export async function createPilotRuntime(
       );
       pools.set(role, pool);
       const check = await pool.query(
-        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='farm' AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
+        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_land_function_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('farm','land') AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk','audit') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
         [role],
       );
       const row = check.rows[0];
@@ -244,6 +246,7 @@ export async function createPilotRuntime(
     };
     const history = new FarmerHistoryService(context);
     const registry = new FarmerRegistryService(context);
+    const land = new LandIdentificationService(context);
     const changes = new FarmerChangeService(context);
     return {
       internalKey: c.PILOT_INTERNAL_KEY,
@@ -377,6 +380,38 @@ export async function createPilotRuntime(
         const connection = await pool("agri_farmer_runtime").connect();
         try {
           return await history.history(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
+      registerLand: async (actor, source, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await land.register(connection, actor, source, input);
+        } finally {
+          connection.release();
+        }
+      },
+      listLand: async (actor, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await land.list(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
+      landDetail: async (actor, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await land.detail(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
+      landGeographies: async (actor, source) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await land.geographies(connection, actor, source);
         } finally {
           connection.release();
         }

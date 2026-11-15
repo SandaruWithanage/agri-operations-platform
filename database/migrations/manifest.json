@@ -11,5 +11,6 @@
   "20261115_zzzzzz_device_proof/up.sql",
   "20261115_zzzzzzz_farmer_registry/up.sql",
   "20261115_zzzzzzzz_farmer_review/up.sql",
-  "20261115_zzzzzzzzz_farmer_audit/up.sql"
+  "20261115_zzzzzzzzz_farmer_audit/up.sql",
+  "20261115_zzzzzzzzzz_land_identification/up.sql"
 ]

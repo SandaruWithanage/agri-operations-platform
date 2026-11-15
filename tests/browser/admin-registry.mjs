@@ -243,7 +243,7 @@ try {
   await page
     .getByRole("button", { name: "Latest events", exact: true })
     .click();
-  await page.getByRole("alert").waitFor();
+  await page.getByRole("main").getByRole("alert").waitFor();
   await page
     .getByRole("heading", { name: "Record history", exact: true })
     .waitFor({ state: "detached" });

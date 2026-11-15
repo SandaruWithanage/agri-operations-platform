@@ -1,4 +1,8 @@
 import type {
+  LandPage,
+  LandDetail,
+  LandRegistrationResult,
+  LandGeographies,
   FarmerHistoryPage,
   FarmerPage,
   FarmerDetail,
@@ -10,7 +14,7 @@ import {
 } from "../authentication/device-proof";
 import { z } from "zod";
 import type { VerifiedActor } from "../authorization/transaction-context";
-import type { RegistrationSource } from "../farmer/registration-service";
+import type { RegistrationSource } from "../authorization/registration-source";
 
 export const deviceChallengeRequestSchema = z
   .object({
@@ -76,6 +80,17 @@ export interface PilotRuntime {
   ): Promise<FarmerHistoryPage>;
   listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
   farmerDetail(actor: VerifiedActor, input: unknown): Promise<FarmerDetail>;
+  registerLand(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<LandRegistrationResult>;
+  listLand(actor: VerifiedActor, input: unknown): Promise<LandPage>;
+  landDetail(actor: VerifiedActor, input: unknown): Promise<LandDetail>;
+  landGeographies(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+  ): Promise<LandGeographies>;
   close(): Promise<void>;
 }
 export const PILOT_RUNTIME = Symbol("PILOT_RUNTIME");

@@ -1,6 +1,12 @@
 "use client";
+import {
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { createProtectedQueryClient } from "../lib/protected-query";
 import { FarmerHistory } from "./farmer-history";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import type { FarmerSummary } from "@agri/validation";
 const words = {
@@ -85,21 +91,42 @@ const words = {
       "සමාන වාර්තාවක් තිබිය හැක: එකම නම සහ ස්ථානය සහිත තවත් අවසර ලත් වාර්තාවක් ඇත. වාර්තා වෙන වෙනම සමාලෝචනය කරන්න; ස්වයංක්‍රීයව ඒකාබද්ධ නොකරන්න.",
   },
 } as const;
-type Context = Awaited<ReturnType<PilotClient["context"]>>;
+type Context = Pick<
+  Awaited<ReturnType<PilotClient["context"]>>,
+  "accountId" | "deviceId"
+>;
+type ReadRequest = { epoch: number } & (
+  { kind: "list"; cursor?: string } | { kind: "detail"; id: string }
+);
+let nextRegistryBoundary = 0;
 export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
-  const [client] = useState(() => supplied ?? new PilotClient());
+  const [fallback] = useState(() => new PilotClient());
+  const client = supplied ?? fallback;
+  const boundary = useMemo(
+    () => ({
+      id: ++nextRegistryBoundary,
+      queries: createProtectedQueryClient(),
+    }),
+    [client],
+  );
+  return (
+    <QueryClientProvider key={boundary.id} client={boundary.queries}>
+      <RegistryView client={client} />
+    </QueryClientProvider>
+  );
+}
+function RegistryView({ client }: { client: PilotClient }) {
   const [language, setLanguage] = useState<"en" | "si">("en");
   const copy = words[language];
   const [context, setContext] = useState<Context | null>(null);
-  const [rows, setRows] = useState<FarmerSummary[]>([]);
-  const [selected, setSelected] = useState<FarmerSummary | null>(null);
-  const [canViewAudit, setCanViewAudit] = useState(false);
+  const [request, setRequest] = useState<ReadRequest | null>(null);
+  const queries = useQueryClient();
+  const authRequest = useRef<AbortController | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [next, setNext] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Array<string | undefined>>([
     undefined,
   ]);
-  const [busy, setBusy] = useState(false);
+  const [authBusy, setBusy] = useState(false);
   const [message, setMessage] = useState<
     "auth" | "failure" | "missing" | "prepared" | null
   >(null);
@@ -107,13 +134,57 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
   const sequence = useRef(0),
     active = useRef(true);
   const form = useRef<HTMLFormElement>(null);
+  const query = useQuery({
+    queryKey: [
+      "protected",
+      {
+        accountId: context?.accountId,
+        deviceId: context?.deviceId,
+        authorizationEpoch: request?.epoch,
+      },
+      "farmers",
+      request?.kind,
+      request?.kind === "list"
+        ? { limit: 25, after: request.cursor ?? null }
+        : request?.kind === "detail"
+          ? { id: request.id }
+          : null,
+    ],
+    enabled: context !== null && request !== null,
+    queryFn: async ({ signal }) => {
+      if (!context || !request) throw new Error("No active read context");
+      const result =
+        request.kind === "list"
+          ? {
+              kind: "list" as const,
+              value: await client.farmers(request.cursor, signal),
+            }
+          : {
+              kind: "detail" as const,
+              value: await client.farmer(request.id, signal),
+            };
+      signal.throwIfAborted();
+      if (result.value.accountId !== context.accountId)
+        throw new PilotRequestError(401);
+      return result;
+    },
+  });
+  const busy = authBusy || (request !== null && query.isFetching);
+  const data =
+    request !== null && !busy && !query.isError ? query.data : undefined;
+  const rows = data?.kind === "list" ? data.value.items : [];
+  const next = data?.kind === "list" ? data.value.nextCursor : null;
+  const selected = data?.kind === "detail" ? data.value.farmer : null;
+  const canViewAudit =
+    data?.kind === "detail" && data.value.access?.viewAudit === true;
   function clear() {
     sequence.current++;
-    setRows([]);
-    setSelected(null);
-    setCanViewAudit(false);
+    authRequest.current?.abort();
+    authRequest.current = null;
+    void queries.cancelQueries();
+    queries.removeQueries();
+    setRequest(null);
     setShowHistory(false);
-    setNext(null);
   }
   function report(error: unknown) {
     clear();
@@ -137,15 +208,13 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
     setBusy(true);
     setMessage(null);
     try {
-      const current = await client.context();
-      const page = await client.farmers(cursor);
+      const controller = new AbortController();
+      authRequest.current = controller;
+      const current = await client.context(controller.signal);
       if (!active.current || generation !== sequence.current) return;
-      if (page.accountId !== current.accountId)
-        throw new PilotRequestError(401);
-      setContext(current);
-      setRows(page.items);
-      setNext(page.nextCursor);
+      setContext({ accountId: current.accountId, deviceId: current.deviceId });
       setCursors(history);
+      setRequest({ kind: "list", cursor, epoch: generation });
     } catch (error) {
       if (active.current && generation === sequence.current) report(error);
     } finally {
@@ -171,6 +240,9 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
     return () => {
       active.current = false;
       sequence.current++;
+      authRequest.current?.abort();
+      void queries.cancelQueries();
+      queries.clear();
       document.removeEventListener("visibilitychange", hidden);
     };
   }, [client]);
@@ -184,6 +256,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
       data = new FormData(element);
     setBusy(true);
     clear();
+    const generation = sequence.current;
     try {
       await client.login({
         loginName: String(data.get("loginName") ?? ""),
@@ -191,33 +264,23 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
         otp: String(data.get("otp") ?? ""),
         deviceId: String(data.get("deviceId") ?? ""),
       });
-      await load();
+      if (active.current && generation === sequence.current) await load();
     } catch (error) {
-      report(error);
+      if (active.current && generation === sequence.current) report(error);
     } finally {
       (element.elements.namedItem("password") as HTMLInputElement).value = "";
       (element.elements.namedItem("otp") as HTMLInputElement).value = "";
       setBusy(false);
     }
   }
-  async function detail(id: string) {
-    const accountId = context?.accountId;
+  function detail(id: string) {
     clear();
-    const generation = sequence.current;
-    setBusy(true);
     setMessage(null);
-    try {
-      const result = await client.farmer(id);
-      if (!active.current || generation !== sequence.current) return;
-      if (result.accountId !== accountId) throw new PilotRequestError(401);
-      setSelected(result.farmer);
-      setCanViewAudit(result.access?.viewAudit === true);
-    } catch (error) {
-      if (active.current && generation === sequence.current) report(error);
-    } finally {
-      if (active.current && generation === sequence.current) setBusy(false);
-    }
+    if (context) setRequest({ kind: "detail", id, epoch: sequence.current });
   }
+  useEffect(() => {
+    if (request && query.isError) report(query.error);
+  }, [query.isError, query.error, request]);
   const status = (value: FarmerSummary["status"]) =>
     value === "pending-review"
       ? copy.pending
@@ -454,6 +517,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
               key={`${context.accountId}:${selected.id}`}
               client={client}
               accountId={context.accountId}
+              authorizationEpoch={sequence.current}
               farmerId={selected.id}
               language={language}
               onFailure={report}

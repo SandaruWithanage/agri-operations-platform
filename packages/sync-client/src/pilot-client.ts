@@ -1,4 +1,12 @@
 import {
+  landRegistrationSchema,
+  landRegistrationResultSchema,
+  landPageSchema,
+  landDetailSchema,
+  landGeographiesSchema,
+  type LandRegistration,
+} from "@agri/validation";
+import {
   farmerHistoryQuerySchema,
   farmerHistoryPageSchema,
   type FarmerHistoryCursor,
@@ -59,6 +67,7 @@ export class PilotClient {
     path: string,
     input?: unknown,
     csrf?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -67,7 +76,9 @@ export class PilotClient {
         credentials: "same-origin",
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(15000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+          : AbortSignal.timeout(15000),
         headers:
           input === undefined
             ? {}
@@ -164,8 +175,13 @@ export class PilotClient {
     }
   }
 
-  async context() {
-    const result = (await this.request("registration/context")) as {
+  async context(signal?: AbortSignal) {
+    const result = (await this.request(
+      "registration/context",
+      undefined,
+      undefined,
+      signal,
+    )) as {
       geographies?: unknown;
     };
     if (!Array.isArray(result?.geographies)) throw new PilotRequestError(503);
@@ -179,7 +195,50 @@ export class PilotClient {
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
   }
-  async farmerHistory(id: string, cursor?: FarmerHistoryCursor) {
+  async registerLand(accountId: string, input: LandRegistration) {
+    const value = landRegistrationSchema.parse(input);
+    const session = await this.session();
+    if (session.accountId !== accountId) throw new PilotRequestError(401);
+    const result = landRegistrationResultSchema.safeParse(
+      await this.request("land/register", value, session.csrfToken),
+    );
+    if (!result.success || result.data.landId !== value.landId)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async land(after?: string) {
+    if (after && !uuid.test(after)) throw new PilotRequestError(400);
+    const params = new URLSearchParams({
+      limit: "25",
+      ...(after ? { after } : {}),
+    });
+    const result = landPageSchema.safeParse(
+      await this.request(`land?${params}`),
+    );
+    if (!result.success) throw new PilotRequestError(503);
+    return result.data;
+  }
+  async landIdentification(id: string) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = landDetailSchema.safeParse(
+      await this.request(`land/detail?id=${encodeURIComponent(id)}`),
+    );
+    if (!result.success || result.data.land.id !== id)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async landGeographies() {
+    const result = landGeographiesSchema.safeParse(
+      await this.request("land/geographies"),
+    );
+    if (!result.success) throw new PilotRequestError(503);
+    return result.data;
+  }
+  async farmerHistory(
+    id: string,
+    cursor?: FarmerHistoryCursor,
+    signal?: AbortSignal,
+  ) {
     const parsed = farmerHistoryQuerySchema.safeParse({
       id,
       limit: 25,
@@ -190,7 +249,12 @@ export class PilotClient {
       Object.entries(parsed.data).map(([key, value]) => [key, String(value)]),
     );
     const result = farmerHistoryPageSchema.safeParse(
-      await this.request(`farmers/history?${query}`),
+      await this.request(
+        `farmers/history?${query}`,
+        undefined,
+        undefined,
+        signal,
+      ),
     );
     if (!result.success || result.data.farmerId !== id)
       throw new PilotRequestError(503);
@@ -211,23 +275,29 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async farmers(after?: string) {
+  async farmers(after?: string, signal?: AbortSignal) {
     const query = new URLSearchParams({
       limit: "25",
       ...(after ? { after } : {}),
     });
     const value = farmerPageSchema.safeParse(
-      await this.request(`farmers?${query}`),
+      await this.request(`farmers?${query}`, undefined, undefined, signal),
     );
     if (!value.success) throw new PilotRequestError(503);
     return value.data;
   }
-  async farmer(id: string) {
+  async farmer(id: string, signal?: AbortSignal) {
     if (!uuid.test(id)) throw new PilotRequestError(400);
     const value = farmerDetailSchema.safeParse(
-      await this.request(`farmers/detail?id=${encodeURIComponent(id)}`),
+      await this.request(
+        `farmers/detail?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
     );
-    if (!value.success) throw new PilotRequestError(503);
+    if (!value.success || value.data.farmer.id !== id)
+      throw new PilotRequestError(503);
     return value.data;
   }
   async register(

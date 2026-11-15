@@ -1,7 +1,16 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  createProtectedQueryClient,
+  farmerHistoryKey,
+} from "../lib/protected-query";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
-import type { FarmerHistoryCursor, FarmerHistoryPage } from "@agri/validation";
+import type { FarmerHistoryCursor } from "@agri/validation";
 const words = {
   en: {
     title: "Record history",
@@ -53,55 +62,84 @@ const words = {
     inactive: "අක්‍රීය",
   },
 } as const;
-export function FarmerHistory({
-  client,
-  accountId,
-  farmerId,
-  language,
-  onFailure,
-}: {
+type Props = {
   client: PilotClient;
   accountId: string;
   farmerId: string;
   language: "en" | "si";
+  authorizationEpoch?: number;
   onFailure?: (error: unknown) => void;
-}) {
+};
+let nextBoundary = 0;
+/** A new protected view never inherits another account/session/scope's cache. */
+export function FarmerHistory(props: Props) {
+  const { client, accountId, farmerId, authorizationEpoch = 0 } = props;
+  const boundary = useMemo(
+    () => ({
+      id: ++nextBoundary,
+      queries: createProtectedQueryClient(),
+    }),
+    [client, accountId, farmerId, authorizationEpoch],
+  );
+  return (
+    <QueryClientProvider key={boundary.id} client={boundary.queries}>
+      <HistoryView {...props} />
+    </QueryClientProvider>
+  );
+}
+function HistoryView({
+  client,
+  accountId,
+  farmerId,
+  language,
+  authorizationEpoch = 0,
+  onFailure,
+}: Props) {
   const copy = words[language];
-  const [page, setPage] = useState<FarmerHistoryPage | null>(null);
-  const [busy, setBusy] = useState(true),
-    [failed, setFailed] = useState(false);
-  const sequence = useRef(0),
-    active = useRef(false),
-    listener = useRef(onFailure);
+  const queryClient = useQueryClient();
+  const [request, setRequest] = useState<{
+    cursor?: FarmerHistoryCursor;
+    revision: number;
+  }>({ revision: 0 });
+  const listener = useRef(onFailure);
   listener.current = onFailure;
-  async function load(cursor?: FarmerHistoryCursor) {
-    const generation = ++sequence.current;
-    setPage(null);
-    setFailed(false);
-    setBusy(true);
-    try {
-      const value = await client.farmerHistory(farmerId, cursor);
-      if (!active.current || generation !== sequence.current) return;
+  const query = useQuery({
+    queryKey: farmerHistoryKey(
+      accountId,
+      authorizationEpoch,
+      request.revision,
+      farmerId,
+      request.cursor,
+    ),
+    queryFn: async ({ signal }) => {
+      const value = await client.farmerHistory(
+        farmerId,
+        request.cursor,
+        signal,
+      );
+      signal.throwIfAborted();
       if (value.accountId !== accountId || value.farmerId !== farmerId)
         throw new PilotRequestError(401);
-      setPage(value);
-    } catch (error) {
-      if (active.current && generation === sequence.current) {
-        setFailed(true);
-        listener.current?.(error);
-      }
-    } finally {
-      if (active.current && generation === sequence.current) setBusy(false);
-    }
-  }
+      return value;
+    },
+  });
   useEffect(() => {
-    active.current = true;
-    void load();
-    return () => {
-      active.current = false;
-      sequence.current++;
-    };
-  }, [client, accountId, farmerId]);
+    if (query.isError) listener.current?.(query.error);
+  }, [query.isError, query.error]);
+  useEffect(
+    () => () => {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+    },
+    [queryClient],
+  );
+  function load(cursor?: FarmerHistoryCursor) {
+    // Each explicit request rechecks authority; no cached snapshot is a grant.
+    setRequest((previous) => ({ cursor, revision: previous.revision + 1 }));
+  }
+  const busy = query.isPending || query.isFetching;
+  const failed = query.isError;
+  const page = !busy && !failed ? query.data : undefined;
   const status = (value: string) =>
     value === "pending-review"
       ? copy.pending

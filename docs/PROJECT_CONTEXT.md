@@ -25,7 +25,7 @@ A Sri Lankan organization coordinates numerous farmers across Ginisiriya (Gliric
 
 ## Accepted data/state architecture
 
-The project owner accepted [PostgreSQL/PostGIS, optional Redis, TanStack Query, Zustand and Dexie with separate responsibilities](architecture/decisions/ADR-data-state-cache.md) on 15 November 2026. Read that ADR before related choices. TanStack Query/Zustand are selected but not yet integrated; Redis is optional and absent. This does not approve provisional business rules or establish production readiness. The [current roadmap](development/ROADMAP.md) and [implementation inventory](development/PHASE_1_STATUS.md) govern implementation timing and remaining work.
+The project owner accepted [PostgreSQL/PostGIS, optional Redis, TanStack Query, Zustand and Dexie with separate responsibilities](architecture/decisions/ADR-data-state-cache.md) on 15 November 2026. Read that ADR before related choices. TanStack Query is integrated for admin registry/detail/audit reads; field online operations and future domain mutations remain unfinished. Zustand is selected but not yet integrated; Redis is optional and absent. This does not approve provisional business rules or establish production readiness. The [current roadmap](development/ROADMAP.md) and [implementation inventory](development/PHASE_1_STATUS.md) govern implementation timing and remaining work.
 
 ## Architectural direction (provisional)
 

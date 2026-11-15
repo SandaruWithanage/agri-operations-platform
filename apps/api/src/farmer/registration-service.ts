@@ -1,3 +1,4 @@
+import type { RegistrationSource } from "../authorization/registration-source";
 import { ForbiddenException } from "@nestjs/common";
 import { z } from "zod";
 import {
@@ -20,7 +21,7 @@ export const registrationEnvelopeSchema = z
       .strict(),
   })
   .strict();
-export type RegistrationSource = "field_officer" | "administrator";
+export type { RegistrationSource } from "../authorization/registration-source";
 
 /** Server registration component. Actor and source must be derived from verified server-side state. */
 export class FarmerRegistrationService {
