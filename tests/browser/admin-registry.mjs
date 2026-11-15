@@ -19,6 +19,8 @@ const rows = ids.map((id, index) => ({
   geographyName: "Synthetic authorized village",
   status: "pending-review",
   createdAt: "2026-11-15T10:00:00.000Z",
+  version: 1,
+  duplicateRisk: false,
   nic: "synthetic-sensitive-extra",
 }));
 const children = [];

@@ -18,6 +18,8 @@ const farmer = {
   geographyName: "Synthetic configured village",
   status: "pending-review" as const,
   createdAt: "2026-11-15T10:00:00.000Z",
+  version: 1,
+  duplicateRisk: false,
 };
 function client() {
   const api = new PilotClient();

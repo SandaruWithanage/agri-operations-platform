@@ -11,11 +11,15 @@ import {
   type ActorQuery,
   type VerifiedActor,
 } from "../authorization/transaction-context";
-const projection = `id, full_name, geography_id, farm.farmer_geography_name(geography_id) AS geography_name, status, created_at`;
+const projection = `f.id, f.version, f.full_name, f.geography_id, farm.farmer_geography_name(f.geography_id) AS geography_name, f.status, f.created_at,
+  EXISTS(SELECT 1 FROM farm.farmer d WHERE d.id<>f.id AND d.geography_id=f.geography_id AND lower(btrim(d.full_name))=lower(btrim(f.full_name))) AS duplicate_risk`;
+
 function project(value: unknown): FarmerSummary {
   const row = value as Record<string, unknown>;
   return farmerSummarySchema.parse({
     id: row.id,
+    duplicateRisk: row.duplicate_risk,
+    version: row.version,
     fullName: row.full_name,
     geographyId: row.geography_id,
     geographyName: row.geography_name,
@@ -34,7 +38,7 @@ export class FarmerRegistryService {
     return this.context.run(connection, actor, async (db) => {
       const rows = (
         await db.query(
-          `SELECT ${projection} FROM farm.farmer WHERE authz.allowed(geography_id,'farmer.read',NULL) AND ($1::uuid IS NULL OR id > $1::uuid) ORDER BY id LIMIT $2`,
+          `SELECT ${projection} FROM farm.farmer f WHERE authz.allowed(f.geography_id,'farmer.read',NULL) AND ($1::uuid IS NULL OR f.id > $1::uuid) ORDER BY f.id LIMIT $2`,
           [query.after ?? null, query.limit + 1],
         )
       ).rows;
@@ -52,7 +56,7 @@ export class FarmerRegistryService {
     return this.context.run(connection, actor, async (db) => {
       const rows = (
         await db.query(
-          `SELECT ${projection} FROM farm.farmer WHERE id=$1 AND authz.allowed(geography_id,'farmer.read',NULL)`,
+          `SELECT ${projection} FROM farm.farmer f WHERE f.id=$1 AND authz.allowed(f.geography_id,'farmer.read',NULL)`,
           [query.id],
         )
       ).rows;

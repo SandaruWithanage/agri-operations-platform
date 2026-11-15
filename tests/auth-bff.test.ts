@@ -271,6 +271,8 @@ it("forwards only bounded registry queries and strips non-public response fields
     geographyName: "Synthetic village",
     status: "pending-review",
     createdAt: "2026-11-15T10:00:00.000Z",
+    version: 1,
+    duplicateRisk: false,
   };
   const network = vi
     .fn()
@@ -323,4 +325,62 @@ it("does not distinguish unavailable registry records from nonexistent ones", as
   )(req("farmers/detail?id=06149451-4004-4a23-a5a2-64a24e485a82"));
   expect(reply.status).toBe(404);
   expect(await reply.json()).toEqual({ error: "Not found" });
+});
+
+it("requires CSRF and a strict versioned body for farmer changes and sanitizes its result", async () => {
+  const farmerId = "06149451-4004-4a23-a5a2-64a24e485a82";
+  const input = {
+    mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+    farmerId,
+    expectedVersion: 1,
+    action: "verification",
+    reason: "Synthetic staff record review",
+  };
+  const denied = vi.fn();
+  expect(
+    (
+      await createBffHandler(
+        config,
+        denied,
+      )(req("farmers/change", "POST", input, { "x-csrf-token": "" }))
+    ).status,
+  ).toBe(403);
+  expect(denied).not.toHaveBeenCalled();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        farmerId,
+        version: 2,
+        replayed: false,
+        duplicateRisk: false,
+        actorSecret: "synthetic-extra",
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req("farmers/change", "POST", input));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    farmerId,
+    version: 2,
+    replayed: false,
+    duplicateRisk: false,
+  });
+  expect(fetcher.mock.calls[1][1].headers["x-csrf-token"]).toBe(csrf);
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual(input);
+  const invalid = vi
+    .fn()
+    .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+  expect(
+    (
+      await createBffHandler(
+        config,
+        invalid,
+      )(req("farmers/change", "POST", { ...input, accountId: farmerId }))
+    ).status,
+  ).toBe(400);
+  expect(invalid).toHaveBeenCalledTimes(1);
 });

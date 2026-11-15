@@ -75,8 +75,10 @@ export class PilotController {
       )
         throw error;
       const code = (error as { code?: unknown })?.code;
+      if (code === "22023") throw new BadRequestException("Invalid input");
       if (code === "42501") throw new ForbiddenException("Action denied");
-      if (code === "23505") throw new ConflictException("Mutation conflict");
+      if (code === "23505" || code === "40001")
+        throw new ConflictException("Mutation conflict");
       throw new ServiceUnavailableException("Request could not be completed");
     }
   }
@@ -175,6 +177,22 @@ export class PilotController {
         status: "synced",
         ...(await runtime.register(actor, this.source(source), input)),
       };
+    });
+  }
+  @Post("farmers/change")
+  @HttpCode(200)
+  changeFarmer(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.changeFarmer(actor, input);
     });
   }
   @Get("farmers")

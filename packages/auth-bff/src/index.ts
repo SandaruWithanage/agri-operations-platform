@@ -1,4 +1,6 @@
 import {
+  farmerChangeSchema,
+  farmerChangeResultSchema,
   farmerListQuerySchema,
   farmerDetailQuerySchema,
   farmerPageSchema,
@@ -153,6 +155,7 @@ export function createBffHandler(
             "auth/device-challenge",
             "auth/logout",
             "farmers/register",
+            "farmers/change",
           ].includes(path)) ||
         (request.method === "GET" &&
           [
@@ -254,6 +257,22 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "farmers/change") {
+        const parsed = farmerChangeSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = farmerChangeResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (!result.success) throw new Failure(503);
+        return reply(result.data);
+      }
       if (path === "farmers" || path === "farmers/detail") {
         const params = new URL(request.url).searchParams;
         const keys = Array.from(params.keys());

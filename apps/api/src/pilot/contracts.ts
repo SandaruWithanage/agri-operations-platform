@@ -1,4 +1,8 @@
-import type { FarmerPage, FarmerDetail } from "@agri/validation";
+import type {
+  FarmerPage,
+  FarmerDetail,
+  FarmerChangeResult,
+} from "@agri/validation";
 import {
   deviceProofSchema,
   deviceChallengeSchema,
@@ -61,6 +65,10 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<RegistrationContext>;
+  changeFarmer(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<FarmerChangeResult>;
   listFarmers(actor: VerifiedActor, input: unknown): Promise<FarmerPage>;
   farmerDetail(actor: VerifiedActor, input: unknown): Promise<FarmerDetail>;
   close(): Promise<void>;

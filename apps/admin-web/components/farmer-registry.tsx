@@ -39,7 +39,9 @@ const words = {
     draft: "Draft",
     verified: "Verified",
     inactive: "Inactive",
-    review: "Verification and correction actions are not yet available.",
+    review: "Read-only record view.",
+    duplicate:
+      "Possible duplicate: another visible record has the same name and location. Review the records separately; do not merge them automatically.",
   },
   si: {
     language: "භාෂාව",
@@ -75,7 +77,9 @@ const words = {
     draft: "කෙටුම්පත",
     verified: "තහවුරු කළ",
     inactive: "අක්‍රීය",
-    review: "තහවුරු කිරීමේ සහ නිවැරදි කිරීමේ ක්‍රියා තවම ලබාගත නොහැක.",
+    review: "කියවීමට පමණක් ඇති වාර්තා දසුනකි.",
+    duplicate:
+      "සමාන වාර්තාවක් තිබිය හැක: එකම නම සහ ස්ථානය සහිත තවත් අවසර ලත් වාර්තාවක් ඇත. වාර්තා වෙන වෙනම සමාලෝචනය කරන්න; ස්වයංක්‍රීයව ඒකාබද්ධ නොකරන්න.",
   },
 } as const;
 type Context = Awaited<ReturnType<PilotClient["context"]>>;
@@ -420,6 +424,7 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
       {selected && (
         <section aria-label={copy.detail}>
           <h2>{selected.fullName}</h2>
+          {selected.duplicateRisk && <p role="status">{copy.duplicate}</p>}
           <dl>
             <dt>{copy.location}</dt>
             <dd>{selected.geographyName}</dd>
