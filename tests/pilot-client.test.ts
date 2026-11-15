@@ -69,3 +69,53 @@ describe("browser registration transport", () => {
     });
   });
 });
+
+it("preserves pending sync on account/device/session changes and separates conflicts from rejected mutations", async () => {
+  const deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86";
+  const wrong = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json({ accountId, csrfToken, deviceId: accountId }),
+    );
+  await expect(
+    new PilotClient(wrong).sendRegistration(
+      accountId,
+      deviceId,
+      input.mutationId,
+      input.farmer,
+    ),
+  ).rejects.toMatchObject({ status: 401 });
+  expect(wrong).toHaveBeenCalledOnce();
+  for (const [status, result] of [
+    [403, "rejected"],
+    [400, "rejected"],
+    [409, "conflict"],
+  ] as const) {
+    const network = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ accountId, csrfToken, deviceId }))
+      .mockResolvedValueOnce(new Response(null, { status }));
+    expect(
+      await new PilotClient(network).sendRegistration(
+        accountId,
+        deviceId,
+        input.mutationId,
+        input.farmer,
+      ),
+    ).toEqual({ status: result });
+  }
+  for (const status of [401, 429, 503]) {
+    const network = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ accountId, csrfToken, deviceId }))
+      .mockResolvedValueOnce(new Response(null, { status }));
+    await expect(
+      new PilotClient(network).sendRegistration(
+        accountId,
+        deviceId,
+        input.mutationId,
+        input.farmer,
+      ),
+    ).rejects.toMatchObject({ status });
+  }
+});

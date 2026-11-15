@@ -1,3 +1,9 @@
+import {
+  farmerListQuerySchema,
+  farmerDetailQuerySchema,
+  farmerPageSchema,
+  farmerDetailSchema,
+} from "@agri/validation";
 /** Server route code only. Never import configured instances into client components. */
 export type BffConfig = {
   apiOrigin: string;
@@ -127,7 +133,7 @@ export function createBffHandler(
     }
     if (!response.ok)
       throw new Failure(
-        [400, 401, 403, 409, 429].includes(response.status)
+        [400, 401, 403, 404, 409, 429].includes(response.status)
           ? response.status
           : 503,
       );
@@ -149,7 +155,13 @@ export function createBffHandler(
             "farmers/register",
           ].includes(path)) ||
         (request.method === "GET" &&
-          ["auth/csrf", "registration/geographies"].includes(path));
+          [
+            "auth/csrf",
+            "farmers",
+            "farmers/detail",
+            "registration/geographies",
+            "registration/context",
+          ].includes(path));
       if (!allowed) return reply({ error: "Not found" }, 404);
       const origin = request.headers.get("origin");
       if (
@@ -203,8 +215,11 @@ export function createBffHandler(
         const result = (await call("auth/csrf", "POST", secret)) as {
           csrfToken?: unknown;
           accountId?: unknown;
+          deviceId?: unknown;
         };
         if (
+          typeof result.deviceId !== "string" ||
+          !uuid.test(result.deviceId) ||
           typeof result.accountId !== "string" ||
           !uuid.test(result.accountId) ||
           typeof result.csrfToken !== "string" ||
@@ -214,6 +229,7 @@ export function createBffHandler(
         return reply({
           csrfToken: result.csrfToken,
           accountId: result.accountId,
+          deviceId: result.deviceId,
         });
       }
       const csrf = request.headers.get("x-csrf-token") ?? "";
@@ -238,6 +254,82 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "farmers" || path === "farmers/detail") {
+        const params = new URL(request.url).searchParams;
+        const keys = Array.from(params.keys());
+        if (new Set(keys).size !== keys.length) throw new Failure(400);
+        const schema =
+          path === "farmers" ? farmerListQuerySchema : farmerDetailQuerySchema;
+        const query = schema.safeParse(Object.fromEntries(params));
+        if (!query.success) throw new Failure(400);
+        const safeParams = new URLSearchParams(
+          Object.entries(query.data).map(([key, value]) => [
+            key,
+            String(value),
+          ]),
+        );
+        const result = await call(
+          `${path}?${safeParams}`,
+          "GET",
+          undefined,
+          signed.accessToken,
+        );
+        const parsed = (
+          path === "farmers" ? farmerPageSchema : farmerDetailSchema
+        ).safeParse(result);
+        if (!parsed.success) throw new Failure(503);
+        return reply(parsed.data);
+      }
+      if (path === "registration/context") {
+        const result = (await call(
+          path,
+          "GET",
+          undefined,
+          signed.accessToken,
+        )) as {
+          accountId?: unknown;
+          deviceId?: unknown;
+          deviceKeyFingerprint?: unknown;
+          verifiedAt?: unknown;
+          offlineUntil?: unknown;
+          geographies?: unknown;
+        };
+        if (
+          typeof result?.accountId !== "string" ||
+          !uuid.test(result.accountId) ||
+          typeof result.deviceId !== "string" ||
+          !uuid.test(result.deviceId) ||
+          typeof result.deviceKeyFingerprint !== "string" ||
+          !/^[0-9a-f]{64}$/.test(result.deviceKeyFingerprint) ||
+          typeof result.verifiedAt !== "number" ||
+          !Number.isSafeInteger(result.verifiedAt) ||
+          typeof result.offlineUntil !== "number" ||
+          !Number.isSafeInteger(result.offlineUntil) ||
+          result.offlineUntil <= result.verifiedAt ||
+          result.offlineUntil - result.verifiedAt > 86400000 ||
+          !Array.isArray(result.geographies) ||
+          result.geographies.length > 10000 ||
+          result.geographies.some(
+            (value) =>
+              typeof value?.id !== "string" ||
+              !uuid.test(value.id) ||
+              typeof value?.name !== "string" ||
+              value.name.length > 1000,
+          )
+        )
+          throw new Failure(503);
+        return reply({
+          accountId: result.accountId,
+          deviceId: result.deviceId,
+          deviceKeyFingerprint: result.deviceKeyFingerprint,
+          verifiedAt: result.verifiedAt,
+          offlineUntil: result.offlineUntil,
+          geographies: result.geographies.map((value) => ({
+            id: value.id,
+            name: value.name,
+          })),
+        });
+      }
       if (path === "registration/geographies") {
         const result = await call(path, "GET", undefined, signed.accessToken);
         if (
@@ -284,11 +376,13 @@ export function createBffHandler(
               ? "Authentication required"
               : status === 403
                 ? "Action denied"
-                : status === 409
-                  ? "Conflict"
-                  : status === 400 || status === 413
-                    ? "Invalid request"
-                    : "Service unavailable",
+                : status === 404
+                  ? "Not found"
+                  : status === 409
+                    ? "Conflict"
+                    : status === 400 || status === 413
+                      ? "Invalid request"
+                      : "Service unavailable",
         },
         status,
       );

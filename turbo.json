@@ -16,6 +16,16 @@
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["API_PORT", "ENABLE_PILOT_AUTH", "PILOT_*"]
+    },
+    "@agri/admin-web#dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["PILOT_*"]
+    },
+    "@agri/field-pwa#dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["PILOT_*"]
     }
   },
   "globalEnv": ["DATABASE_URL", "NEXT_TELEMETRY_DISABLED"]

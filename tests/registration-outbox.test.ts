@@ -176,3 +176,67 @@ describe("encrypted registration outbox prototype", () => {
     await expect(box.list()).rejects.toThrow("locked");
   });
 });
+
+it("opens a legacy version-one vault with its original KDF and preserves its pending mutation during upgrade", async () => {
+  const name = `test-legacy-kdf-${cryptoApi.randomUUID()}`;
+  databases.push(name);
+  const salt = cryptoApi.getRandomValues(new Uint8Array(16));
+  const iv = cryptoApi.getRandomValues(new Uint8Array(12));
+  const material = await cryptoApi.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  const key = await cryptoApi.subtle.deriveKey(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 310000 },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+  const verifier = await cryptoApi.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode("agri-offline-vault-v1"),
+  );
+  const id = cryptoApi.randomUUID(),
+    draftIv = cryptoApi.getRandomValues(new Uint8Array(12));
+  const ciphertext = await cryptoApi.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv: draftIv,
+      additionalData: new TextEncoder().encode(id),
+    },
+    key,
+    new TextEncoder().encode(JSON.stringify(sample)),
+  );
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name, 10);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("config", { keyPath: "id" });
+      request.result
+        .createObjectStore("mutations", { keyPath: "id" })
+        .createIndex("status", "status");
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(["config", "mutations"], "readwrite");
+    transaction.objectStore("config").add({ id: "vault", salt, iv, verifier });
+    transaction
+      .objectStore("mutations")
+      .add({ id, status: "pending-sync", iv: draftIv, ciphertext });
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+  const upgraded = create(name).box;
+  await upgraded.unlock(passphrase);
+  expect(await upgraded.readDraft(id)).toEqual(sample);
+  expect(await upgraded.list()).toEqual([{ id, status: "pending-sync" }]);
+  await upgraded.recoverLegacyIndexes();
+  expect(await upgraded.saveDraft(sample)).toBe(id);
+});

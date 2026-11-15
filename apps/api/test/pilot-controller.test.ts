@@ -36,6 +36,7 @@ function fake(): PilotRuntime {
     csrf: vi.fn().mockResolvedValue({
       csrfToken: "synthetic",
       accountId: actor.accountId,
+      deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
     }),
     token: vi.fn().mockResolvedValue({ accessToken: "synthetic" }),
     logout: vi.fn(),
@@ -46,6 +47,9 @@ function fake(): PilotRuntime {
       return { farmerId: input.farmer.farmerId, replayed: false };
     }),
     geographies: vi.fn().mockResolvedValue([]),
+    context: vi.fn().mockResolvedValue({}),
+    listFarmers: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    farmerDetail: vi.fn().mockResolvedValue({}),
     close: vi.fn(),
   };
 }

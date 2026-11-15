@@ -1,5 +1,7 @@
 import {
   Body,
+  Query,
+  NotFoundException,
   Controller,
   Get,
   Headers,
@@ -68,7 +70,8 @@ export class PilotController {
       if (
         error instanceof UnauthorizedException ||
         error instanceof ForbiddenException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
       )
         throw error;
       const code = (error as { code?: unknown })?.code;
@@ -173,6 +176,48 @@ export class PilotController {
         ...(await runtime.register(actor, this.source(source), input)),
       };
     });
+  }
+  @Get("farmers")
+  listFarmers(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.listFarmers(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
+  @Get("farmers/detail")
+  farmerDetail(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.farmerDetail(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
+  @Get("registration/context")
+  context(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.context(
+        await runtime.authenticate(this.bearer(token)),
+        this.source(source),
+      ),
+    );
   }
   @Get("registration/geographies")
   geographies(

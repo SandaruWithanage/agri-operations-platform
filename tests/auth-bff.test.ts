@@ -150,12 +150,17 @@ describe("server-only authentication BFF", () => {
       Response.json({
         accountId,
         csrfToken: csrf,
+        deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
         sessionId: "private",
         secret: opaque,
       }),
     );
     const response = await createBffHandler(config, fetcher)(req("auth/csrf"));
-    expect(await response.json()).toEqual({ accountId, csrfToken: csrf });
+    expect(await response.json()).toEqual({
+      accountId,
+      csrfToken: csrf,
+      deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+    });
     const malformed = vi
       .fn()
       .mockResolvedValue(Response.json({ csrfToken: csrf }));
@@ -221,4 +226,101 @@ describe("server-only authentication BFF", () => {
       }),
     ).toThrow();
   });
+});
+
+it("returns only an actor-bound drafting context and no upstream role/token/record data", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2",
+    deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+    geographyId = "4e743f19-e3f7-4ed0-bdcc-29fe8e71ff0d";
+  const value = {
+    accountId,
+    deviceId,
+    deviceKeyFingerprint: "a".repeat(64),
+    verifiedAt: Date.now(),
+    offlineUntil: Date.now() + 3600000,
+    geographies: [{ id: geographyId, name: "Synthetic village" }],
+  };
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        ...value,
+        roles: ["not-authoritative"],
+        farmers: ["never cache"],
+        accessToken: "private",
+      }),
+    );
+  const response = await createBffHandler(
+    config,
+    network,
+  )(req("registration/context"));
+  expect(await response.json()).toEqual(value);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(network.mock.calls[1][1].headers.authorization).toBe(
+    "Bearer server-only",
+  );
+});
+
+it("forwards only bounded registry queries and strips non-public response fields", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const farmer = {
+    id: "06149451-4004-4a23-a5a2-64a24e485a82",
+    fullName: "Synthetic registry",
+    geographyId: "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9",
+    geographyName: "Synthetic village",
+    status: "pending-review",
+    createdAt: "2026-11-15T10:00:00.000Z",
+  };
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        items: [{ ...farmer, nic: "synthetic-sensitive-extra" }],
+        nextCursor: null,
+        secret: "synthetic-secret",
+      }),
+    );
+  const reply = await createBffHandler(config, network)(req("farmers?limit=1"));
+  expect(reply.status).toBe(200);
+  expect(reply.headers.get("cache-control")).toBe("no-store");
+  expect(await reply.json()).toEqual({
+    accountId,
+    items: [farmer],
+    nextCursor: null,
+  });
+  expect(String(network.mock.calls[1][0])).toBe(
+    "https://api.example.test/pilot/farmers?limit=1",
+  );
+  expect(network.mock.calls[1][1].headers.authorization).toBe(
+    "Bearer server-only-jwt",
+  );
+  for (const query of [
+    "limit=101",
+    "accountId=" + accountId,
+    "limit=1&limit=2",
+    "after=invalid",
+  ]) {
+    const calls = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect(
+      (await createBffHandler(config, calls)(req("farmers?" + query))).status,
+    ).toBe(400);
+    expect(calls).toHaveBeenCalledTimes(1);
+  }
+});
+it("does not distinguish unavailable registry records from nonexistent ones", async () => {
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(new Response(null, { status: 404 }));
+  const reply = await createBffHandler(
+    config,
+    network,
+  )(req("farmers/detail?id=06149451-4004-4a23-a5a2-64a24e485a82"));
+  expect(reply.status).toBe(404);
+  expect(await reply.json()).toEqual({ error: "Not found" });
 });

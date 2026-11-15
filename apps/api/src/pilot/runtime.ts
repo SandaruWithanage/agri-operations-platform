@@ -1,3 +1,4 @@
+import { FarmerRegistryService } from "../farmer/registry-service";
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import {
@@ -48,6 +49,12 @@ const configSchema = z.object({
   PILOT_JWT_ISSUER: z.string().min(1),
   PILOT_JWT_AUDIENCE: z.string().min(1),
   PILOT_ORIGINS: z.string(),
+  PILOT_OFFLINE_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86400)
+    .default(3600),
   PILOT_JWT_SECONDS: z.coerce.number().int().min(300).max(600).default(300),
   PILOT_IDLE_SECONDS: z.coerce.number().int().min(60).max(86400).default(1800),
   PILOT_ABSOLUTE_SECONDS: z.coerce
@@ -220,6 +227,19 @@ export async function createPilotRuntime(
       if (!session) throw new UnauthorizedException();
       return session;
     };
+    const deviceFor = async (actor: {
+      sessionId: string;
+      accountId: string;
+    }) => {
+      const result = await pool("agri_session_reader").query(
+        "SELECT device_id FROM authn.login_session WHERE id=$1 AND account_id=$2",
+        [actor.sessionId, actor.accountId],
+      );
+      const deviceId = result.rows[0]?.device_id;
+      if (typeof deviceId !== "string") throw new UnauthorizedException();
+      return deviceId;
+    };
+    const registry = new FarmerRegistryService(context);
     return {
       internalKey: c.PILOT_INTERNAL_KEY,
       deviceChallenge: (input, origin) =>
@@ -235,6 +255,7 @@ export async function createPilotRuntime(
         return {
           csrfToken: csrf.issue(session.sessionId),
           accountId: session.accountId,
+          deviceId: await deviceFor(session),
         };
       },
       token: async (secret) => {
@@ -299,6 +320,58 @@ export async function createPilotRuntime(
                 )
               ).rows as Array<{ id: string; name: string }>,
           );
+        } finally {
+          connection.release();
+        }
+      },
+      context: async (actor, source) => {
+        const deviceId = await deviceFor(actor);
+        const deviceKeyFingerprint = await devices.fingerprint(
+          actor.accountId,
+          deviceId,
+        );
+        if (!deviceKeyFingerprint) throw new UnauthorizedException();
+        const connection = await pool("agri_farmer_runtime").connect();
+        try {
+          return await context.run(connection, actor, async (db) => {
+            const check = await db.query("SELECT authz.actor() AS actor", []);
+            if (
+              (check.rows[0] as { actor?: unknown } | undefined)?.actor !==
+              actor.accountId
+            )
+              throw new ForbiddenException();
+            const geographies = (
+              await db.query(
+                "SELECT * FROM farm.registration_geographies($1)",
+                [source],
+              )
+            ).rows as Array<{ id: string; name: string }>;
+            const verifiedAt = Date.now();
+            return {
+              accountId: actor.accountId,
+              deviceId,
+              deviceKeyFingerprint,
+              verifiedAt,
+              offlineUntil: verifiedAt + c.PILOT_OFFLINE_SECONDS * 1000,
+              geographies,
+            };
+          });
+        } finally {
+          connection.release();
+        }
+      },
+      listFarmers: async (actor, input) => {
+        const connection = await pool("agri_farmer_runtime").connect();
+        try {
+          return await registry.list(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
+      farmerDetail: async (actor, input) => {
+        const connection = await pool("agri_farmer_runtime").connect();
+        try {
+          return await registry.detail(connection, actor, input);
         } finally {
           connection.release();
         }

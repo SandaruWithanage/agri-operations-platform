@@ -1,4 +1,7 @@
 // @vitest-environment node
+import "fake-indexeddb/auto";
+import { RegistrationOutbox, vaultName } from "../packages/sync-client/src";
+import { PilotClient } from "../apps/field-pwa/lib/pilot-client";
 import { readFileSync } from "node:fs";
 import { createHmac, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -151,6 +154,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     await client.query(
       readFileSync(
         "database/migrations/20261115_zzzzzz_device_proof/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzz_farmer_registry/up.sql",
         "utf8",
       ),
     );
@@ -1896,6 +1905,14 @@ suite("provisional authentication migration on PostgreSQL", () => {
           csrf.csrfToken,
         ),
       ).toThrow();
+      const contextResponse = await browser("registration/context");
+      expect(contextResponse.status).toBe(200);
+      const drafting = await contextResponse.json();
+      expect(drafting.accountId).toBe(account);
+      expect(drafting.deviceId).toBe(device);
+      expect(drafting.offlineUntil - drafting.verifiedAt).toBe(3600000);
+      expect(drafting.deviceKeyFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(drafting)).not.toContain("accessToken");
       const locationsResponse = await browser("registration/geographies");
       expect(locationsResponse.status).toBe(200);
       const locations = (await locationsResponse.json()) as Array<{
@@ -1928,6 +1945,228 @@ suite("provisional authentication migration on PostgreSQL", () => {
         farmerId,
         replayed: false,
       });
+      const dbName = vaultName(account, device);
+      let outbox = new RegistrationOutbox(dbName);
+      const fetcher: typeof fetch = async (path, init) =>
+        handler(
+          new Request(`https://field.example.test${String(path)}`, {
+            ...init,
+            headers: {
+              ...Object.fromEntries(new Headers(init?.headers)),
+              origin,
+              cookie: cookieHeader,
+            },
+          }),
+        );
+      const transport = new PilotClient(fetcher);
+      const draft = {
+        ...registration.farmer,
+        farmerId: randomUUID(),
+        fullName: "Synthetic offline retry",
+      };
+      try {
+        await outbox.initialize("synthetic-offline-integration-passphrase");
+        await outbox.writeContext(await transport.context());
+        const mutation = await outbox.saveDraft(draft);
+        await outbox.queue(mutation);
+        let lost = true;
+        const dropped: typeof fetch = async (path, init) => {
+          const response = await fetcher(path, init);
+          if (
+            String(path).endsWith("farmers/register") &&
+            response.ok &&
+            lost
+          ) {
+            lost = false;
+            throw new Error("Lost response after commit");
+          }
+          return response;
+        };
+        const retryClient = new PilotClient(dropped);
+        await expect(
+          outbox.syncPending((id, value) =>
+            retryClient.sendRegistration(account, device, id, value),
+          ),
+        ).rejects.toMatchObject({ status: 503 });
+        expect((await outbox.list())[0].status).toBe("pending-sync");
+        const archive = await outbox.exportAuthenticatedArchive();
+        outbox.close();
+        await new Promise<void>((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(dbName);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+        outbox = new RegistrationOutbox(dbName);
+        await outbox.initialize("synthetic-recovered-integration-passphrase");
+        await outbox.writeContext(await transport.context());
+        await outbox.importAuthenticatedArchive(
+          archive,
+          "synthetic-offline-integration-passphrase",
+        );
+        expect(await outbox.list()).toEqual([
+          { id: mutation, status: "saved-on-device" },
+        ]);
+        await outbox.queue(mutation);
+        await outbox.syncPending((id, value) =>
+          transport.sendRegistration(account, device, id, value),
+        );
+        expect((await outbox.list())[0].status).toBe("synced");
+        expect(
+          (
+            await client.query(
+              "SELECT count(*)::int AS count FROM farm.farmer WHERE id=$1",
+              [draft.farmerId],
+            )
+          ).rows[0].count,
+        ).toBe(1);
+        const denied = {
+          ...draft,
+          farmerId: randomUUID(),
+          fullName: "Synthetic revoked coverage",
+        };
+        const deniedId = await outbox.saveDraft(denied);
+        await outbox.queue(deniedId);
+        await client.query(
+          "UPDATE authz.assignment SET active=false WHERE account_id=$1",
+          [account],
+        );
+        await outbox.syncPending((id, value) =>
+          transport.sendRegistration(account, device, id, value),
+        );
+        expect(
+          (await outbox.list()).find((row) => row.id === deniedId)?.status,
+        ).toBe("rejected");
+        expect(
+          (
+            await client.query(
+              "SELECT count(*)::int AS count FROM farm.farmer WHERE id=$1",
+              [denied.farmerId],
+            )
+          ).rows[0].count,
+        ).toBe(0);
+        await client.query(
+          "UPDATE authz.assignment SET active=true WHERE account_id=$1",
+          [account],
+        );
+      } finally {
+        outbox.close();
+        await new Promise<void>((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(dbName);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE account_id=$1 AND permission='farmer.read'",
+        [account],
+      );
+      // Creation alone never grants existing-record read access.
+      const unreadable = await browser("farmers", "GET");
+      expect(unreadable.status).toBe(200);
+      expect(await unreadable.json()).toEqual({
+        accountId: account,
+        items: [],
+        nextCursor: null,
+      });
+      const unavailable = await browser(`farmers/detail?id=${farmerId}`, "GET");
+      const nonexistent = await browser(
+        `farmers/detail?id=${randomUUID()}`,
+        "GET",
+      );
+      expect(unavailable.status).toBe(404);
+      expect(nonexistent.status).toBe(404);
+      expect(await unavailable.json()).toEqual(await nonexistent.json());
+      const readGrant = randomUUID();
+      await client.query(
+        `INSERT INTO authz.permission_grant(id,account_id,organization_id,permission,coverage,geography_id,starts_at)
+        SELECT $1,$2,organization_id,'farmer.read','assigned',id,now()-interval '1 hour' FROM farm.geography WHERE id=$3`,
+        [readGrant, account, locations[0].id],
+      );
+      const hiddenId = randomUUID();
+      const otherGeo = randomUUID();
+      await client.query(
+        "INSERT INTO farm.geography(id,organization_id,name) SELECT $1,organization_id,'Synthetic uncovered village' FROM farm.geography WHERE id=$2",
+        [otherGeo, locations[0].id],
+      );
+      await client.query(
+        "INSERT INTO farm.farmer(id,geography_id,full_name,privacy_notice_provided,registration_source,created_by) VALUES($1,$2,'Synthetic forbidden registry record',true,'administrator',$3)",
+        [hiddenId, otherGeo, account],
+      );
+      const scopedConnection = new pg.Client({
+        connectionString: mappings.agri_farmer_runtime,
+      });
+      await scopedConnection.connect();
+      try {
+        const labels = await new TransactionActorContext(
+          Buffer.alloc(32, 42),
+        ).run(scopedConnection, identity, (db) =>
+          db.query(
+            "SELECT farm.farmer_geography_name($1) AS visible, farm.farmer_geography_name($2) AS hidden",
+            [locations[0].id, otherGeo],
+          ),
+        );
+        expect(labels.rows[0]).toEqual({
+          visible: locations[0].name,
+          hidden: null,
+        });
+      } finally {
+        await scopedConnection.end();
+      }
+      const pages = [];
+      let after: string | null = null;
+      do {
+        const page = await browser(
+          `farmers?limit=1${after ? `&after=${after}` : ""}`,
+          "GET",
+        );
+        expect(page.status).toBe(200);
+        const result = await page.json();
+        expect(result.items.length).toBeLessThanOrEqual(1);
+        pages.push(result);
+        if (result.nextCursor)
+          expect(result.nextCursor).toBe(result.items[0].id);
+        after = result.nextCursor;
+        expect(pages.length).toBeLessThan(20);
+      } while (after);
+      const visibleRows = pages.flatMap((page) => page.items);
+      expect(new Set(visibleRows.map((row) => row.id)).size).toBe(
+        visibleRows.length,
+      );
+      expect(visibleRows.some((row) => row.id === farmerId)).toBe(true);
+      expect(JSON.stringify(pages)).not.toContain(hiddenId);
+      expect(JSON.stringify(pages)).not.toContain(
+        "Synthetic forbidden registry record",
+      );
+      expect(JSON.stringify(pages)).not.toContain(
+        "Synthetic uncovered village",
+      );
+      expect(
+        visibleRows.every((row) => row.geographyName === locations[0].name),
+      ).toBe(true);
+      expect(
+        (await browser(`farmers/detail?id=${hiddenId}`, "GET")).status,
+      ).toBe(404);
+      const visible = await browser(`farmers/detail?id=${farmerId}`, "GET");
+      expect(visible.status).toBe(200);
+      expect((await visible.json()).farmer.fullName).toBe(
+        registration.farmer.fullName,
+      );
+      expect((await browser("farmers?limit=101", "GET")).status).toBe(400);
+      expect(
+        (await browser(`farmers?accountId=${account}`, "GET")).status,
+      ).toBe(400);
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [readGrant],
+      );
+      expect(await (await browser("farmers", "GET")).json()).toEqual({
+        accountId: account,
+        items: [],
+        nextCursor: null,
+      });
+      expect(
+        (await browser(`farmers/detail?id=${farmerId}`, "GET")).status,
+      ).toBe(404);
       const logout = await browser("auth/logout", "POST");
       expect(logout.status).toBe(200);
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");

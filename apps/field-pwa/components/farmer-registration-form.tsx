@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   farmerRegistrationSchema,
   type FarmerRegistration,
+  type WorkingRegistration,
 } from "@agri/validation";
 
 /** This form has no identity or authorization of its own. Mount only after the server verifies both. */
@@ -17,6 +18,8 @@ type Props = {
   enabled?: boolean;
   freezeAfterAttempt?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  initialDraft?: WorkingRegistration;
+  onDraftChange?: (value: WorkingRegistration) => void;
 };
 const messages = {
   en: {
@@ -57,18 +60,36 @@ export function FarmerRegistrationForm({
   enabled = true,
   freezeAfterAttempt = false,
   onDirtyChange,
+  initialDraft,
+  onDraftChange,
 }: Props) {
   const copy = messages[language];
-  const [fullName, setFullName] = useState("");
-  const [geographyId, setGeographyId] = useState("");
-  const [notice, setNotice] = useState(false);
+  const [fullName, setFullName] = useState(initialDraft?.fullName ?? "");
+  const [geographyId, setGeographyId] = useState(
+    initialDraft?.geographyId ?? "",
+  );
+  const [notice, setNotice] = useState(
+    initialDraft?.privacyNoticeProvided ?? false,
+  );
   const [error, setError] = useState<"validation" | "save" | null>(null);
   const [saving, setSaving] = useState(false);
   const [frozen, setFrozen] = useState(false);
   useEffect(() => {
     onDirtyChange?.(Boolean(fullName || geographyId || notice || frozen));
   }, [fullName, geographyId, notice, frozen, onDirtyChange]);
-  const pendingFarmerId = useRef<string | null>(null);
+  const pendingFarmerId = useRef<string | null>(initialDraft?.farmerId ?? null);
+  const draftRef = useRef<WorkingRegistration | null>(initialDraft ?? null);
+  function publish(patch: Partial<WorkingRegistration>) {
+    pendingFarmerId.current ??= crypto.randomUUID();
+    const previous = draftRef.current ?? {
+      farmerId: pendingFarmerId.current,
+      fullName,
+      geographyId,
+      privacyNoticeProvided: notice,
+    };
+    draftRef.current = { ...previous, ...patch };
+    onDraftChange?.(draftRef.current);
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving || !enabled) return;
@@ -92,6 +113,7 @@ export function FarmerRegistrationForm({
     try {
       await onSave(parsed.data);
       pendingFarmerId.current = null;
+      draftRef.current = null;
       setFullName("");
       setGeographyId("");
       setNotice(false);
@@ -109,7 +131,7 @@ export function FarmerRegistrationForm({
       noValidate
       aria-labelledby="farmer-form-heading"
     >
-      <h1 id="farmer-form-heading">{copy.heading}</h1>
+      <h2 id="farmer-form-heading">{copy.heading}</h2>
       {error && (
         <p role="alert">
           {error === "validation" ? copy.errors : copy.failure}
@@ -122,8 +144,13 @@ export function FarmerRegistrationForm({
         id="farmer-full-name"
         disabled={saving || frozen || !enabled}
         value={fullName}
-        onChange={(event) => setFullName(event.target.value)}
-        autoComplete="name"
+        onChange={(event) => {
+          setFullName(event.target.value);
+          publish({ fullName: event.target.value });
+        }}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
         required
         maxLength={200}
       />
@@ -132,7 +159,10 @@ export function FarmerRegistrationForm({
         id="farmer-geography"
         disabled={saving || frozen || !enabled}
         value={geographyId}
-        onChange={(event) => setGeographyId(event.target.value)}
+        onChange={(event) => {
+          setGeographyId(event.target.value);
+          publish({ geographyId: event.target.value });
+        }}
         required
       >
         <option value="">{copy.choose}</option>
@@ -147,7 +177,10 @@ export function FarmerRegistrationForm({
           type="checkbox"
           disabled={saving || frozen || !enabled}
           checked={notice}
-          onChange={(event) => setNotice(event.target.checked)}
+          onChange={(event) => {
+            setNotice(event.target.checked);
+            publish({ privacyNoticeProvided: event.target.checked });
+          }}
           required
         />{" "}
         {copy.notice}
