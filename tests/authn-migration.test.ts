@@ -232,6 +232,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261115_zzzzzzzzzzzz_farmer_review_queue/up.sql",
+        "utf8",
+      ),
+    );
     expect(await inspectUpgrade()).toEqual(historyUpgradeResult.after);
     await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
       upgradeFarmer,
@@ -2298,6 +2304,50 @@ suite("provisional authentication migration on PostgreSQL", () => {
         (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
           .status,
       ).toBe(403);
+      expect(
+        await (await browser("farmers?reviewable=true", "GET")).json(),
+      ).toEqual({
+        accountId: account,
+        filters: { reviewable: "true" },
+        items: [],
+        nextCursor: null,
+      });
+      const statusFixtures = new Map<string, string>();
+      for (const state of ["draft", "pending-review", "verified", "inactive"]) {
+        const id = randomUUID();
+        statusFixtures.set(state, id);
+        await client.query(
+          "INSERT INTO farm.farmer(id,geography_id,full_name,privacy_notice_provided,registration_source,created_by,status) VALUES($1,$2,$3,true,'administrator',$4,$5)",
+          [id, locations[0].id, `Synthetic queue ${state}`, account, state],
+        );
+      }
+      for (const [state, id] of statusFixtures) {
+        const response = await browser(`farmers?status=${state}`, "GET");
+        expect(response.status).toBe(200);
+        const page = await response.json();
+        expect(page.filters).toEqual({ status: state });
+        expect(page.items.some((row: { id: string }) => row.id === id)).toBe(
+          true,
+        );
+        expect(
+          page.items.every((row: { status: string }) => row.status === state),
+        ).toBe(true);
+        expect(JSON.stringify(page)).not.toContain(hiddenId);
+        expect("total" in page).toBe(false);
+      }
+      for (const id of statusFixtures.values()) {
+        await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
+          id,
+        ]);
+        await client.query("DELETE FROM farm.farmer WHERE id=$1", [id]);
+      }
+      for (const query of [
+        "status=unknown",
+        "reviewable=false",
+        "status=verified&reviewable=true",
+        "status=draft&status=verified",
+      ])
+        expect((await browser(`farmers?${query}`, "GET")).status).toBe(400);
       const verifyGrant = randomUUID(),
         correctGrant = randomUUID();
       await client.query(
@@ -2314,6 +2364,35 @@ suite("provisional authentication migration on PostgreSQL", () => {
           await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
         ).json(),
       ).toEqual({ accountId: account, farmerId, receipt: null });
+      const reviewPages = [];
+      let reviewCursor: string | null = null;
+      do {
+        const response = await browser(
+          `farmers?limit=1&status=pending-review&reviewable=true${reviewCursor ? `&after=${reviewCursor}` : ""}`,
+          "GET",
+        );
+        expect(response.status).toBe(200);
+        const page = await response.json();
+        expect(page.filters).toEqual({
+          status: "pending-review",
+          reviewable: "true",
+        });
+        expect(page.items.length).toBeLessThanOrEqual(1);
+        expect(
+          page.items.every(
+            (row: { status: string }) => row.status === "pending-review",
+          ),
+        ).toBe(true);
+        reviewPages.push(page);
+        reviewCursor = page.nextCursor;
+        expect(reviewPages.length).toBeLessThan(20);
+      } while (reviewCursor);
+      expect(
+        reviewPages
+          .flatMap((page) => page.items)
+          .some((row) => row.id === farmerId),
+      ).toBe(true);
+      expect(JSON.stringify(reviewPages)).not.toContain(hiddenId);
       const verified = await browser("farmers/change", "POST", verification);
       expect(verified.status).toBe(200);
       expect(await verified.json()).toEqual({
@@ -2322,6 +2401,19 @@ suite("provisional authentication migration on PostgreSQL", () => {
         replayed: false,
         duplicateRisk: false,
       });
+      const pendingAfterVerification = await (
+        await browser("farmers?status=pending-review&reviewable=true", "GET")
+      ).json();
+      expect(
+        pendingAfterVerification.items.some(
+          (row: { id: string }) => row.id === farmerId,
+        ),
+      ).toBe(false);
+      expect(
+        (
+          await (await browser("farmers?status=verified", "GET")).json()
+        ).items.some((row: { id: string }) => row.id === farmerId),
+      ).toBe(true);
       const ownReceipt = await (
         await browser(`farmers/verification-receipt?id=${farmerId}`, "GET")
       ).json();
@@ -2654,6 +2746,14 @@ suite("provisional authentication migration on PostgreSQL", () => {
         (await browser(`farmers/verification-receipt?id=${farmerId}`, "GET"))
           .status,
       ).toBe(403);
+      expect(
+        await (await browser("farmers?reviewable=true", "GET")).json(),
+      ).toEqual({
+        accountId: account,
+        filters: { reviewable: "true" },
+        items: [],
+        nextCursor: null,
+      });
       const rawReceipt = new pg.Client({
         connectionString: mappings.agri_farmer_runtime,
       });

@@ -597,6 +597,14 @@ try {
     .getByRole("button", { name: "Set up or unlock", exact: true })
     .click();
   await page.getByLabel("Full name", { exact: true }).waitFor();
+  // Unlock reveals the form before its automatic sync has claimed the busy
+  // guard. Recovery is another exclusive operation: wait for that sync to
+  // settle so the submit cannot be ignored while the guard is held.
+  await page
+    .getByText("Sync attempt finished. Check each registration status.", {
+      exact: true,
+    })
+    .waitFor();
   await page
     .getByText("Restore an authenticated archive", { exact: true })
     .click();

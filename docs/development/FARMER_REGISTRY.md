@@ -18,6 +18,10 @@ List requests use bounded UUID keyset pagination (1–100 rows, default 25). The
 
 Responses include the trusted request actor's account ID so a changed browser session cannot be shown under an earlier account context. The screen clears old data before another read, on a failed request, sign-out or hiding; a late response cannot repopulate a cleared view. A successful prior view is not server authorization for another request. Farmer data is kept only in memory, with no admin service worker or farmer IndexedDB/localStorage cache. Locale preference and the device authentication infrastructure are separate.
 
+## Review queue
+
+The [scoped review queue](FARMER_REVIEW_QUEUE.md) adds status and current verification-eligibility filtering, bounded cursor pages and shareable enum-only view selections. Apply index migration 16. It grants no verification rights and returns no hidden/global totals.
+
 ## Shared protocol runtime
 
 Browser/BFF bundles consume `@agri/validation` TypeScript sources. NestJS consumes its generated CommonJS build through the package's `require` export. Turborepo builds the shared package before the API; production artifacts must include that generated `dist` directory. The browser smoke test also starts the compiled API and checks health, verifying actual runtime module loading rather than compilation alone.

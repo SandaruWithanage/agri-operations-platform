@@ -16,6 +16,10 @@ import {
   farmerChangeResultSchema,
   type FarmerChange,
   farmerPageSchema,
+  farmerListQuerySchema,
+  farmerListFiltersSchema,
+  sameFarmerFilters,
+  type FarmerListFilters,
   farmerDetailSchema,
   farmerVerificationReceiptSchema,
 } from "@agri/validation";
@@ -295,15 +299,29 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async farmers(after?: string, signal?: AbortSignal) {
-    const query = new URLSearchParams({
-      limit: "25",
+  async farmers(
+    after?: string,
+    signal?: AbortSignal,
+    filters: FarmerListFilters = {},
+  ) {
+    const selected = farmerListFiltersSchema.safeParse(filters);
+    if (!selected.success) throw new PilotRequestError(400);
+    const parsed = farmerListQuerySchema.safeParse({
+      limit: 25,
       ...(after ? { after } : {}),
+      ...selected.data,
     });
+    if (!parsed.success) throw new PilotRequestError(400);
+    const query = new URLSearchParams(
+      Object.entries(parsed.data)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [key, String(value)]),
+    );
     const value = farmerPageSchema.safeParse(
       await this.request(`farmers?${query}`, undefined, undefined, signal),
     );
-    if (!value.success) throw new PilotRequestError(503);
+    if (!value.success || !sameFarmerFilters(parsed.data, value.data.filters))
+      throw new PilotRequestError(503);
     return value.data;
   }
   async farmer(id: string, signal?: AbortSignal) {

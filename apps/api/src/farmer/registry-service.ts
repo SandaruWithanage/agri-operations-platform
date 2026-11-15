@@ -38,12 +38,25 @@ export class FarmerRegistryService {
     return this.context.run(connection, actor, async (db) => {
       const rows = (
         await db.query(
-          `SELECT ${projection} FROM farm.farmer f WHERE authz.allowed(f.geography_id,'farmer.read',NULL) AND ($1::uuid IS NULL OR f.id > $1::uuid) ORDER BY f.id LIMIT $2`,
-          [query.after ?? null, query.limit + 1],
+          `SELECT ${projection} FROM farm.farmer f WHERE authz.allowed(f.geography_id,'farmer.read',NULL) AND ($1::uuid IS NULL OR f.id > $1::uuid) AND ($3::text IS NULL OR f.status=$3) AND (NOT $4::boolean OR (f.status='pending-review' AND authz.allowed(f.geography_id,'farmer.verify',NULL))) ORDER BY f.id LIMIT $2`,
+          [
+            query.after ?? null,
+            query.limit + 1,
+            query.status ?? null,
+            query.reviewable === "true",
+          ],
         )
       ).rows;
       const items = rows.slice(0, query.limit).map(project);
       return farmerPageSchema.parse({
+        ...(query.status || query.reviewable
+          ? {
+              filters: {
+                ...(query.status ? { status: query.status } : {}),
+                ...(query.reviewable ? { reviewable: query.reviewable } : {}),
+              },
+            }
+          : {}),
         accountId: actor.accountId,
         items,
         nextCursor:

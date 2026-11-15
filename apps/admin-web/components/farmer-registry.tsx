@@ -11,6 +11,8 @@ import { FarmerVerification } from "./farmer-verification";
 import { FarmerHistory } from "./farmer-history";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
+import { sameFarmerFilters, type FarmerListFilters } from "@agri/validation";
+import { readReviewFilters, reviewFilterUrl } from "../lib/review-filters";
 import type { FarmerSummary } from "@agri/validation";
 const words = {
   en: {
@@ -37,6 +39,15 @@ const words = {
     empty:
       "No farmer records are available within your current read permissions.",
     busy: "Please wait…",
+    filterTitle: "Review filters",
+    filterStatus: "Registration status",
+    allStatuses: "All statuses",
+    reviewable: "Only pending records I may verify",
+    filteredEmpty:
+      "No records match these filters within your current permissions.",
+    invalidFilters:
+      "The shared review filters are invalid. Reset them before loading records.",
+    resetFilters: "Reset filters",
     auth: "Sign in with your organization account, authenticator and approved device.",
     failure:
       "The request could not be completed. Check your connection, account and permissions, or contact your administrator.",
@@ -77,6 +88,14 @@ const words = {
     detail: "වාර්තාව බලන්න",
     empty: "ඔබගේ වත්මන් කියවීමේ අවසර යටතේ ගොවි වාර්තා නොමැත.",
     busy: "රැඳී සිටින්න…",
+    filterTitle: "සමාලෝචන පෙරහන්",
+    filterStatus: "ලියාපදිංචි තත්ත්වය",
+    allStatuses: "සියලු තත්ත්ව",
+    reviewable: "මට තහවුරු කළ හැකි සමාලෝචනයට නියමිත වාර්තා පමණි",
+    filteredEmpty: "වත්මන් අවසර සහ තෝරාගත් පෙරහන් යටතේ වාර්තා නොමැත.",
+    invalidFilters:
+      "බෙදාගත් සමාලෝචන පෙරහන් වලංගු නැත. වාර්තා පූරණයට පෙර ඒවා යළි සකසන්න.",
+    resetFilters: "පෙරහන් යළි සකසන්න",
     auth: "ආයතනික ගිණුම, සත්‍යාපකය සහ අනුමත උපාංගයෙන් පුරන්න.",
     failure:
       "ඉල්ලීම සම්පූර්ණ කළ නොහැකි විය. සම්බන්ධතාව, ගිණුම හා අවසර පරීක්ෂා කරන්න හෝ පරිපාලක අමතන්න.",
@@ -99,9 +118,11 @@ type Context = Pick<
   "accountId" | "deviceId"
 >;
 type Domain = "farmers" | "land";
-type ReadRequest = { epoch: number; domain: Domain } & (
-  { kind: "list"; cursor?: string } | { kind: "detail"; id: string }
-);
+type ReadRequest = {
+  epoch: number;
+  domain: Domain;
+  filters?: FarmerListFilters;
+} & ({ kind: "list"; cursor?: string } | { kind: "detail"; id: string });
 let nextRegistryBoundary = 0;
 export function FarmerRegistry(props: { client?: PilotClient }) {
   return (
@@ -131,6 +152,8 @@ function RegistryView({ client }: { client: PilotClient }) {
   const copy = words[language];
   const landCopy = landWords[language];
   const [domain, setDomain] = useState<Domain>("farmers");
+  const [filters, setFilters] = useState<FarmerListFilters>({});
+  const [invalidFilters, setInvalidFilters] = useState(false);
   const [context, setContext] = useState<Context | null>(null);
   const [request, setRequest] = useState<ReadRequest | null>(null);
   const queries = useQueryClient();
@@ -158,7 +181,11 @@ function RegistryView({ client }: { client: PilotClient }) {
       request?.domain,
       request?.kind,
       request?.kind === "list"
-        ? { limit: 25, after: request.cursor ?? null }
+        ? {
+            limit: 25,
+            after: request.cursor ?? null,
+            ...(request.domain === "farmers" ? request.filters : {}),
+          }
         : request?.kind === "detail"
           ? { id: request.id }
           : null,
@@ -171,7 +198,11 @@ function RegistryView({ client }: { client: PilotClient }) {
           ? request.kind === "list"
             ? {
                 kind: "farmer-list" as const,
-                value: await client.farmers(request.cursor, signal),
+                value: await client.farmers(
+                  request.cursor,
+                  signal,
+                  request.filters,
+                ),
               }
             : {
                 kind: "farmer-detail" as const,
@@ -187,6 +218,11 @@ function RegistryView({ client }: { client: PilotClient }) {
                 value: await client.landIdentification(request.id, signal),
               };
       signal.throwIfAborted();
+      if (
+        result.kind === "farmer-list" &&
+        !sameFarmerFilters(request.filters ?? {}, result.value.filters)
+      )
+        throw new PilotRequestError(503);
       if (result.value.accountId !== context.accountId)
         throw new PilotRequestError(401);
       return result;
@@ -229,8 +265,22 @@ function RegistryView({ client }: { client: PilotClient }) {
     cursor?: string,
     history: Array<string | undefined> = [undefined],
     nextDomain: Domain = domain,
+    nextFilters: FarmerListFilters = filters,
   ) {
     setDomain(nextDomain);
+    setInvalidFilters(false);
+    if (nextDomain === "farmers") {
+      setFilters(nextFilters);
+      try {
+        const target = reviewFilterUrl(
+          new URL(window.location.href),
+          nextFilters,
+        );
+        window.history.replaceState(window.history.state, "", target);
+      } catch {
+        /* Optional shareable view selection; no protected data is persisted. */
+      }
+    }
     clear();
     const generation = sequence.current;
     setBusy(true);
@@ -247,6 +297,7 @@ function RegistryView({ client }: { client: PilotClient }) {
         cursor,
         epoch: generation,
         domain: nextDomain,
+        ...(nextDomain === "farmers" ? { filters: nextFilters } : {}),
       });
     } catch (error) {
       if (active.current && generation === sequence.current) report(error);
@@ -256,7 +307,18 @@ function RegistryView({ client }: { client: PilotClient }) {
   }
   useEffect(() => {
     active.current = true;
-    void load();
+    const restoreFilters = () => {
+      const restored = readReviewFilters(new URL(window.location.href));
+      if (restored === null) {
+        clear();
+        setInvalidFilters(true);
+        setBusy(false);
+        return;
+      }
+      void load(undefined, [undefined], "farmers", restored);
+    };
+    restoreFilters();
+    window.addEventListener("popstate", restoreFilters);
     const hidden = () => {
       if (document.visibilityState === "hidden") {
         clear();
@@ -271,6 +333,7 @@ function RegistryView({ client }: { client: PilotClient }) {
       void queries.cancelQueries();
       queries.clear();
       document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("popstate", restoreFilters);
     };
   }, [client]);
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -347,6 +410,16 @@ function RegistryView({ client }: { client: PilotClient }) {
         </button>
       </nav>
       <h1>{domain === "farmers" ? copy.title : landCopy.title}</h1>
+      {invalidFilters && (
+        <div role="alert">
+          <p>{copy.invalidFilters}</p>
+          <button
+            onClick={() => void load(undefined, [undefined], "farmers", {})}
+          >
+            {copy.resetFilters}
+          </button>
+        </div>
+      )}
       <p>{domain === "farmers" ? copy.scope : landCopy.scope}</p>
       {message && (
         <p role={message === "prepared" ? "status" : "alert"}>
@@ -469,68 +542,130 @@ function RegistryView({ client }: { client: PilotClient }) {
           )}
         </form>
       )}
-      {domain === "farmers" && context && !busy && !selected && (
-        <>
-          {rows.length === 0 ? (
-            <p role="status">{copy.empty}</p>
-          ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">{copy.name}</th>
-                    <th scope="col">{copy.location}</th>
-                    <th scope="col">{copy.status}</th>
-                    <th scope="col">{copy.created}</th>
-                    <th scope="col">{copy.detail}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.fullName}</td>
-                      <td>{row.geographyName}</td>
-                      <td>{status(row.status)}</td>
-                      <td>
-                        {new Date(row.createdAt).toLocaleDateString(
-                          language === "si" ? "si-LK" : "en-GB",
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          onClick={() => void detail(row.id)}
-                          aria-label={`${copy.detail}: ${row.fullName}`}
-                        >
-                          {copy.detail}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className="actions">
-            <button
-              disabled={cursors.length < 2}
-              onClick={() => {
-                const history = cursors.slice(0, -1);
-                void load(history[history.length - 1], history);
+      {domain === "farmers" &&
+        context &&
+        !selected &&
+        request?.kind !== "detail" &&
+        !invalidFilters && (
+          <div
+            role="group"
+            className="review-filters"
+            aria-label={copy.filterTitle}
+          >
+            <label htmlFor="registry-status-filter">{copy.filterStatus}</label>
+            <select
+              id="registry-status-filter"
+              value={filters.status ?? "all"}
+              disabled={authBusy}
+              onChange={(event) => {
+                const chosen = event.target.value as
+                  "all" | FarmerSummary["status"];
+                void load(undefined, [undefined], "farmers", {
+                  ...(chosen !== "all" ? { status: chosen } : {}),
+                  ...(chosen === "pending-review" && filters.reviewable
+                    ? { reviewable: "true" }
+                    : {}),
+                });
               }}
             >
-              {copy.back}
-            </button>
-            <button
-              disabled={!next}
-              onClick={() => {
-                if (next) void load(next, [...cursors, next]);
-              }}
-            >
-              {copy.next}
-            </button>
+              <option value="all">{copy.allStatuses}</option>
+              <option value="draft">{copy.draft}</option>
+              <option value="pending-review">{copy.pending}</option>
+              <option value="verified">{copy.verified}</option>
+              <option value="inactive">{copy.inactive}</option>
+            </select>
+            <label className="review-confirmation">
+              <input
+                type="checkbox"
+                checked={filters.reviewable === "true"}
+                disabled={authBusy}
+                onChange={(event) =>
+                  void load(
+                    undefined,
+                    [undefined],
+                    "farmers",
+                    event.target.checked
+                      ? { status: "pending-review", reviewable: "true" }
+                      : {
+                          ...(filters.status ? { status: filters.status } : {}),
+                        },
+                  )
+                }
+              />
+              {copy.reviewable}
+            </label>
           </div>
-        </>
-      )}
+        )}
+      {domain === "farmers" &&
+        context &&
+        !busy &&
+        !selected &&
+        !invalidFilters && (
+          <>
+            {rows.length === 0 ? (
+              <p role="status">
+                {filters.status || filters.reviewable
+                  ? copy.filteredEmpty
+                  : copy.empty}
+              </p>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">{copy.name}</th>
+                      <th scope="col">{copy.location}</th>
+                      <th scope="col">{copy.status}</th>
+                      <th scope="col">{copy.created}</th>
+                      <th scope="col">{copy.detail}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.fullName}</td>
+                        <td>{row.geographyName}</td>
+                        <td>{status(row.status)}</td>
+                        <td>
+                          {new Date(row.createdAt).toLocaleDateString(
+                            language === "si" ? "si-LK" : "en-GB",
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => void detail(row.id)}
+                            aria-label={`${copy.detail}: ${row.fullName}`}
+                          >
+                            {copy.detail}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="actions">
+              <button
+                disabled={cursors.length < 2}
+                onClick={() => {
+                  const history = cursors.slice(0, -1);
+                  void load(history[history.length - 1], history);
+                }}
+              >
+                {copy.back}
+              </button>
+              <button
+                disabled={!next}
+                onClick={() => {
+                  if (next) void load(next, [...cursors, next]);
+                }}
+              >
+                {copy.next}
+              </button>
+            </div>
+          </>
+        )}
       {domain === "land" && context && !busy && (
         <LandDirectory
           language={language}
