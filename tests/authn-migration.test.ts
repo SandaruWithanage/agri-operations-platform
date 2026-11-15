@@ -1,6 +1,6 @@
 // @vitest-environment node
 import "fake-indexeddb/auto";
-import { RegistrationOutbox } from "../packages/sync-client/src";
+import { RegistrationOutbox, vaultName } from "../packages/sync-client/src";
 import { PilotClient } from "../apps/field-pwa/lib/pilot-client";
 import { readFileSync } from "node:fs";
 import { createHmac, generateKeyPairSync, randomUUID, sign } from "node:crypto";
@@ -1939,8 +1939,8 @@ suite("provisional authentication migration on PostgreSQL", () => {
         farmerId,
         replayed: false,
       });
-      const dbName = `synthetic-offline-integration-${randomUUID()}`;
-      const outbox = new RegistrationOutbox(dbName);
+      const dbName = vaultName(account, device);
+      let outbox = new RegistrationOutbox(dbName);
       const fetcher: typeof fetch = async (path, init) =>
         handler(
           new Request(`https://field.example.test${String(path)}`, {
@@ -1960,6 +1960,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       };
       try {
         await outbox.initialize("synthetic-offline-integration-passphrase");
+        await outbox.writeContext(await transport.context());
         const mutation = await outbox.saveDraft(draft);
         await outbox.queue(mutation);
         let lost = true;
@@ -1982,6 +1983,24 @@ suite("provisional authentication migration on PostgreSQL", () => {
           ),
         ).rejects.toMatchObject({ status: 503 });
         expect((await outbox.list())[0].status).toBe("pending-sync");
+        const archive = await outbox.exportAuthenticatedArchive();
+        outbox.close();
+        await new Promise<void>((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(dbName);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+        outbox = new RegistrationOutbox(dbName);
+        await outbox.initialize("synthetic-recovered-integration-passphrase");
+        await outbox.writeContext(await transport.context());
+        await outbox.importAuthenticatedArchive(
+          archive,
+          "synthetic-offline-integration-passphrase",
+        );
+        expect(await outbox.list()).toEqual([
+          { id: mutation, status: "saved-on-device" },
+        ]);
+        await outbox.queue(mutation);
         await outbox.syncPending((id, value) =>
           transport.sendRegistration(account, device, id, value),
         );

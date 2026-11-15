@@ -226,6 +226,38 @@ export class OfflineWorkspace {
       throw error;
     }
   }
+  async importArchive(
+    raw: string,
+    passphrase: string,
+    transport: OfflineTransport,
+  ): Promise<void> {
+    await this.flush();
+    try {
+      await this.refresh(this.binding(await transport.context()));
+      if (!this.canAccess())
+        throw new OfflineAuthorizationRequired(
+          "Current approved device login required",
+        );
+      await this.outbox.importAuthenticatedArchive(raw, passphrase);
+    } catch (error) {
+      if ([401, 403].includes((error as { status?: number })?.status ?? 0)) {
+        this.blocked = true;
+        await this.catalog.suspend(this.accountId, this.deviceId);
+      }
+      throw error;
+    }
+  }
+
+  async activateRecovered(slot: string): Promise<WorkingRegistration> {
+    await this.flush();
+    if (!this.canCreate())
+      throw new OfflineAuthorizationRequired(
+        "Current drafting window required",
+      );
+    const value = await this.outbox.activateRecovered(slot);
+    this.revision = 1;
+    return value;
+  }
   async lock(): Promise<void> {
     try {
       await this.flush();

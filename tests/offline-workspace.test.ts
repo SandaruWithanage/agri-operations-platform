@@ -246,3 +246,25 @@ it("does not let stale context or login completion undo a newer local suspension
   ).toBe(true);
   expect(await catalog.blocked(accountId, deviceId)).toBe(false);
 });
+
+it("requires current online authorization before importing and suspends local access on revocation", async () => {
+  const { workspace, context, catalog, accountId, deviceId } = await setup();
+  await workspace.unlock(passphrase, context);
+  await workspace.capture(farmer);
+  const saved = await workspace.outbox.readWorking();
+  const transport = {
+    context: vi.fn().mockRejectedValue({ status: 401 }),
+    sendRegistration: vi.fn(),
+  };
+  await expect(
+    workspace.importArchive(
+      "not decrypted before authorization",
+      "synthetic-archive-passphrase",
+      transport,
+    ),
+  ).rejects.toMatchObject({ status: 401 });
+  expect(await catalog.blocked(accountId, deviceId)).toBe(true);
+  expect(workspace.canAccess()).toBe(false);
+  expect(await workspace.outbox.readWorking()).toEqual(saved);
+  expect(transport.sendRegistration).not.toHaveBeenCalled();
+});

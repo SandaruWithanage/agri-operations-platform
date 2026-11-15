@@ -74,6 +74,20 @@ const words = {
     syncDone: "Sync attempt finished. Check each registration status.",
     restore: "Recovered draft",
     savedLabel: "Device storage",
+    importTitle: "Restore an authenticated archive",
+    importHelp:
+      "Sign in online with the original account on this approved device. The target vault must be empty. Keep the original file: recovery never deletes it. Completed submissions require fresh sync confirmation; conflicts and rejections remain for review.",
+    importFile: "Encrypted archive file (version 2)",
+    sourcePass: "Original archive passphrase",
+    importConfirm:
+      "I kept the original archive and want to restore into this empty vault.",
+    importAction: "Restore archive",
+    importDone:
+      "Archive restored. Review recovered drafts and use Sync Now for completed submissions.",
+    recoveredList: "Recovered incomplete drafts",
+    activate: "Continue this draft",
+    legacyHelp:
+      "Locked export preserves ciphertext in the legacy format. For supported recovery, unlock the original vault and export a version 2 authenticated archive. Lost-passphrase recovery is unavailable.",
   },
   si: {
     shell:
@@ -126,6 +140,18 @@ const words = {
     syncDone: "සමමුහුර්ත උත්සාහය අවසන්. එක් එක් ලියාපදිංචියේ තත්ත්වය බලන්න.",
     restore: "නැවත ලබාගත් කෙටුම්පත",
     savedLabel: "උපාංග ගබඩාව",
+    importTitle: "සත්‍යාපිත සංකේතනය කළ පිටපත නැවත ලබාගන්න",
+    importHelp:
+      "මෙම අනුමත උපාංගයෙන් මුල් ගිණුමට මාර්ගගතව පුරන්න. ඉලක්ක ගබඩාව හිස් විය යුතුය. මුල් ගොනුව තබාගන්න: එය මකා නොදමයි. සම්පූර්ණ ලියාපදිංචි නැවත සමමුහුර්ත කර තහවුරු කළ යුතුය. ගැටුම් සහ ප්‍රතික්ෂේප සමාලෝචනය සඳහා රඳවා ඇත.",
+    importFile: "සංකේතනය කළ ගොනුව (අනුවාදය 2)",
+    sourcePass: "මුල් පිටපතේ මුරවැකිය",
+    importConfirm: "මුල් ගොනුව තබාගෙන මෙම හිස් ගබඩාවට දත්ත නැවත ලබාගැනීමට එකඟ වෙමි.",
+    importAction: "පිටපත නැවත ලබාගන්න",
+    importDone: "පිටපත නැවත ලබාගත්තා. කෙටුම්පත් පරීක්ෂා කර සම්පූර්ණ ලියාපදිංචි සමමුහුර්ත කරන්න.",
+    recoveredList: "නැවත ලබාගත් අසම්පූර්ණ කෙටුම්පත්",
+    activate: "මෙම කෙටුම්පත දිගටම සකසන්න",
+    legacyHelp:
+      "අගුළු දැමූ පිටපත පැරණි ආකෘතියෙන් දත්ත රඳවා ගනී. නැවත ලබාගැනීමට මුල් ගබඩාව විවෘත කර අනුවාදය 2 පිටපතක් බාගන්න. අමතක වූ මුරවැකියක් නැවත ලබාගත නොහැක.",
   },
 } as const;
 type Entry = { id: string; status: LocalStatus; farmer: FarmerRegistration };
@@ -153,13 +179,22 @@ export function OfflineWorkspacePage() {
   const [context, setContext] = useState<OfflineReferenceContext | null>(null);
   const [working, setWorking] = useState<WorkingRegistration | undefined>();
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [recovered, setRecovered] = useState<
+    Array<{ slot: string; value: WorkingRegistration }>
+  >([]);
   const [dirty, setDirty] = useState(false);
   const writes = useRef(0);
   const [saveState, setSaveState] = useState<
     "saving" | "saved" | "error" | null
   >(null);
   const [message, setMessage] = useState<
-    "failure" | "auth" | "single" | "prepared" | "syncDone" | null
+    | "failure"
+    | "auth"
+    | "single"
+    | "prepared"
+    | "syncDone"
+    | "importDone"
+    | null
   >(null);
   const [editable, setEditable] = useState(false);
   const clear = useCallback(() => {
@@ -169,6 +204,7 @@ export function OfflineWorkspacePage() {
     setContext(null);
     setWorking(undefined);
     setEntries([]);
+    setRecovered([]);
     setEditable(false);
     release.current?.();
     release.current = null;
@@ -304,7 +340,10 @@ export function OfflineWorkspacePage() {
       clear();
       return;
     }
-    const rows = await current.entries();
+    const [rows, recoveredRows] = await Promise.all([
+      current.entries(),
+      current.outbox.recoveredWorking(),
+    ]);
     if (
       version !== generation.current ||
       model.current !== current ||
@@ -313,6 +352,7 @@ export function OfflineWorkspacePage() {
       return;
     setContext(current.context);
     setEntries(rows);
+    setRecovered(recoveredRows);
     setEditable(
       current.canCreate() &&
         editorLock.current &&
@@ -496,6 +536,50 @@ export function OfflineWorkspacePage() {
       clearTimeout(timer);
     };
   }, [online, unlocked]);
+  async function restoreArchive(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      busyRef.current ||
+      !model.current?.isUnlocked ||
+      !editorLock.current ||
+      !durableStorage.current ||
+      !shellReady.current
+    )
+      return;
+    const form = event.currentTarget;
+    const password = form.elements.namedItem(
+      "sourcePassphrase",
+    ) as HTMLInputElement;
+    const fileInput = form.elements.namedItem(
+      "archiveFile",
+    ) as HTMLInputElement;
+    const confirmation = form.elements.namedItem(
+      "confirmImport",
+    ) as HTMLInputElement;
+    const file = fileInput.files?.[0];
+    if (!file || !confirmation.checked) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage(null);
+    try {
+      if (file.size > 10000000) throw new Error("Archive size limit exceeded");
+      await model.current.importArchive(
+        await file.text(),
+        password.value,
+        client,
+      );
+      await reload();
+      setMessage("importDone");
+    } catch {
+      setMessage("failure");
+      if (!model.current?.canAccess()) await lock();
+    } finally {
+      password.value = "";
+      fileInput.value = "";
+      confirmation.checked = false;
+      setBusy(false);
+    }
+  }
   const statuses: Record<LocalStatus, string> = {
     "saved-on-device": c.saved,
     "pending-sync": c.pending,
@@ -540,7 +624,9 @@ export function OfflineWorkspacePage() {
       {message && (
         <p
           role={
-            message === "prepared" || message === "syncDone"
+            message === "prepared" ||
+            message === "syncDone" ||
+            message === "importDone"
               ? "status"
               : "alert"
           }
@@ -611,6 +697,7 @@ export function OfflineWorkspacePage() {
                   {c.export}
                 </button>
               )}
+              {selected && <p>{c.legacyHelp}</p>}
               {vaults.length === 0 ? (
                 <p>{c.none}</p>
               ) : (
@@ -663,8 +750,9 @@ export function OfflineWorkspacePage() {
                   disabled={busy}
                   onClick={async () => {
                     try {
+                      await model.current!.flush().catch(() => {});
                       const archive =
-                        await model.current!.outbox.exportEncryptedArchive();
+                        await model.current!.outbox.exportAuthenticatedArchive();
                       const url = URL.createObjectURL(
                         new Blob([archive], { type: "application/json" }),
                       );
@@ -720,6 +808,75 @@ export function OfflineWorkspacePage() {
                 freezeAfterAttempt
               />
               {working && <p>{c.restore}</p>}
+              {recovered.length > 0 && (
+                <section aria-label={c.recoveredList}>
+                  <h2>{c.recoveredList}</h2>
+                  <ul>
+                    {recovered.map((row) => (
+                      <li key={row.slot}>
+                        <p>{row.value.fullName || c.working}</p>
+                        <button
+                          disabled={busy || !editable}
+                          onClick={async () => {
+                            try {
+                              const draft =
+                                await model.current!.activateRecovered(
+                                  row.slot,
+                                );
+                              setWorking(draft);
+                              setSaveState("saved");
+                              setDirty(false);
+                              await reload();
+                            } catch {
+                              setMessage("failure");
+                            }
+                          }}
+                        >
+                          {c.activate}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              <details>
+                <summary>{c.importTitle}</summary>
+                <p>{c.importHelp}</p>
+                <form className="registration-form" onSubmit={restoreArchive}>
+                  <label htmlFor="archive-file">{c.importFile}</label>
+                  <input
+                    id="archive-file"
+                    name="archiveFile"
+                    type="file"
+                    accept="application/json,.json"
+                    required
+                    disabled={busy}
+                  />
+                  <label htmlFor="archive-passphrase">{c.sourcePass}</label>
+                  <input
+                    id="archive-passphrase"
+                    name="sourcePassphrase"
+                    type="password"
+                    autoComplete="off"
+                    minLength={12}
+                    maxLength={256}
+                    required
+                    disabled={busy}
+                  />
+                  <label>
+                    <input
+                      name="confirmImport"
+                      type="checkbox"
+                      required
+                      disabled={busy}
+                    />{" "}
+                    {c.importConfirm}
+                  </label>
+                  <button type="submit" disabled={busy || !online || !editable}>
+                    {c.importAction}
+                  </button>
+                </form>
+              </details>
               <h2>{c.saved}</h2>
               {entries.length === 0 ? (
                 <p>{c.empty}</p>

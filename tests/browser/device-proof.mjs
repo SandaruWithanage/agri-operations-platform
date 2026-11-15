@@ -537,8 +537,110 @@ try {
     .getByRole("button", { name: "Remove synced local copy", exact: true })
     .click();
   await page.getByText("No saved registrations.", { exact: true }).waitFor();
+  // Preserve an incomplete draft alongside the confirmed submission, then recover
+  // after simulated loss of this synthetic vault (the device-key store survives).
+  await page
+    .getByLabel("Full name", { exact: true })
+    .fill("Synthetic archive unfinished");
+  await page
+    .getByRole("status", { name: "Device storage", exact: true })
+    .filter({ hasText: "Saved on Device" })
+    .waitFor();
+  const [archiveDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page
+      .getByRole("button", { name: "Export encrypted archive", exact: true })
+      .click(),
+  ]);
+  const archivePath = join(scratch, "authenticated-recovery.json");
+  await archiveDownload.saveAs(archivePath);
+  const archived = JSON.parse(await readFile(archivePath, "utf8"));
+  assert.equal(archived.version, 2);
+  assert.equal(
+    JSON.stringify(archived).includes("Synthetic archive unfinished"),
+    false,
+  );
+  await page
+    .getByRole("button", { name: "Lock workspace", exact: true })
+    .click();
+  await page.goto(origin);
+  await page.evaluate(
+    async ({ accountId, deviceId }) => {
+      await new Promise((resolve, reject) => {
+        const request = window.indexedDB.deleteDatabase(
+          `agri-registration-v1-${accountId}-${deviceId}`,
+        );
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () =>
+          reject(new Error("Synthetic vault still open"));
+      });
+    },
+    { accountId, deviceId },
+  );
+  await page.goto(`${origin}/offline-workspace`);
+  await page
+    .getByLabel("Offline passphrase", { exact: true })
+    .fill("synthetic-new-recovery-passphrase");
+  await page
+    .getByRole("button", { name: "Set up or unlock", exact: true })
+    .click();
+  await page.getByLabel("Full name", { exact: true }).waitFor();
+  await page
+    .getByText("Restore an authenticated archive", { exact: true })
+    .click();
+  await page
+    .getByLabel("Encrypted archive file (version 2)", { exact: true })
+    .setInputFiles(archivePath);
+  await page
+    .getByLabel("Original archive passphrase", { exact: true })
+    .fill("synthetic-offline-browser-passphrase");
+  await page
+    .getByLabel(
+      "I kept the original archive and want to restore into this empty vault.",
+      { exact: true },
+    )
+    .check();
+  await page
+    .getByRole("button", { name: "Restore archive", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Archive restored. Review recovered drafts and use Sync Now for completed submissions.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(
+    await page
+      .getByLabel("Original archive passphrase", { exact: true })
+      .inputValue(),
+    "",
+  );
+  await page
+    .getByRole("button", { name: "Continue this draft", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      document.getElementById("farmer-full-name")?.value ===
+      "Synthetic archive unfinished",
+  );
+  assert.equal(
+    await page.getByLabel("Full name", { exact: true }).inputValue(),
+    "Synthetic archive unfinished",
+  );
+  assert.equal(
+    await page
+      .getByLabel("GN division or village", { exact: true })
+      .inputValue(),
+    "",
+  );
+  assert.equal(
+    await page.getByLabel("I provided the required privacy notice").isChecked(),
+    false,
+  );
+  assert.equal(mutationRecords.size, 1);
   console.log(
-    "Chromium passed: secure-context key preparation, non-exportability, browser restart persistence, signed login, offline process restart/draft recovery, reauthentication, safe sync retry, local cleanup and no private HTTP caching.",
+    "Chromium passed: secure-context key preparation, non-exportability, browser restart persistence, signed login, offline process restart/draft recovery, reauthentication, safe sync retry, local cleanup, authenticated archive recovery and no private HTTP caching.",
   );
 } catch (error) {
   const diagnostic = context?.pages().at(-1);

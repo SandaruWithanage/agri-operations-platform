@@ -1,3 +1,5 @@
+import { openArchive, sealArchive } from "./vault-archive";
+import { deriveVaultKey } from "./vault-crypto";
 import Dexie, { type Table } from "dexie";
 import {
   farmerRegistrationSchema,
@@ -100,33 +102,7 @@ export class RegistrationOutbox {
     salt: Uint8Array,
     iterations = 600_000,
   ): Promise<CryptoKey> {
-    if (passphrase.length < 12 || passphrase.length > 256)
-      throw new Error("Passphrase must be 12 to 256 characters");
-    if (
-      !Number.isSafeInteger(iterations) ||
-      iterations < 310_000 ||
-      iterations > 2_000_000
-    )
-      throw new Error("Invalid vault derivation policy");
-    const material = await this.crypto.subtle.importKey(
-      "raw",
-      encoder.encode(passphrase),
-      "PBKDF2",
-      false,
-      ["deriveKey"],
-    );
-    return this.crypto.subtle.deriveKey(
-      {
-        name: "PBKDF2",
-        hash: "SHA-256",
-        salt: new Uint8Array(salt),
-        iterations,
-      },
-      material,
-      { name: "AES-GCM", length: 256 },
-      false,
-      ["encrypt", "decrypt"],
-    );
+    return deriveVaultKey(this.crypto, passphrase, salt, iterations);
   }
   private unlocked(): CryptoKey {
     if (!this.key) throw new Error("Vault locked");
@@ -392,6 +368,117 @@ export class RegistrationOutbox {
             ),
           }
         : value,
+    );
+  }
+  /** Fully authenticated archive. Locked export above remains a preservation-only legacy format. */
+  async exportAuthenticatedArchive(): Promise<string> {
+    const key = this.unlocked();
+    const raw = await this.exportEncryptedArchive();
+    const sealed = await sealArchive(raw, key, this.crypto);
+    if (this.key !== key) throw new Error("Vault locked");
+    return sealed;
+  }
+  async recoveredWorking(): Promise<
+    Array<{ slot: string; value: WorkingRegistration }>
+  > {
+    const result = [];
+    for (const row of await this.db.working.toArray()) {
+      if (row.id.startsWith("recovered-"))
+        result.push({
+          slot: row.id,
+          value: workingRegistrationSchema.parse(await this.decryptValue(row)),
+        });
+    }
+    return result;
+  }
+  async activateRecovered(slot: string): Promise<WorkingRegistration> {
+    const key = this.unlocked();
+    if (!slot.startsWith("recovered-") || this.recovery)
+      throw new Error("Working draft requires attention");
+    const original = await this.db.working.get(slot);
+    if (!original) throw new Error("Recovery draft missing");
+    const value = workingRegistrationSchema.parse(
+      await this.decryptValue(original),
+    );
+    const row = await this.encryptValue("current", 1, value);
+    await this.db.transaction("rw", this.db.working, async () => {
+      if (this.key !== key || (await this.db.working.get("current")))
+        throw new Error("Existing working draft retained");
+      const latest = await this.db.working.get(slot);
+      if (!latest || latest.revision !== original.revision)
+        throw new Error("Recovery draft changed");
+      await this.db.working.add(row);
+      await this.db.working.delete(slot);
+    });
+    return value;
+  }
+  /** Empty-target-only atomic import; original archive is never altered or removed. */
+  async importAuthenticatedArchive(
+    raw: string,
+    sourcePassphrase: string,
+  ): Promise<void> {
+    const key = this.unlocked();
+    const context = await this.readContext();
+    if (!context) throw new Error("Verified target context required");
+    const archive = await openArchive(raw, sourcePassphrase, this.crypto);
+    if (archive.accountId !== context.accountId)
+      throw new Error("Original account required");
+    const config = await this.db.config.get("vault");
+    if (!config) throw new Error("Vault not initialized");
+    const mutations: Mutation[] = [];
+    for (const item of archive.mutations) {
+      const iv = this.crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await this.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv, additionalData: encoder.encode(item.id) },
+        key,
+        encoder.encode(JSON.stringify(item.farmer)),
+      );
+      mutations.push({
+        id: item.id,
+        iv,
+        ciphertext,
+        // Old Synced is not evidence of a fresh server confirmation on this device.
+        status: ["conflict", "rejected"].includes(item.status)
+          ? item.status
+          : "saved-on-device",
+        fingerprint: await this.fingerprint(item.farmer.farmerId, config.salt),
+      });
+    }
+    const working: EncryptedValue[] = [];
+    for (const item of archive.working)
+      working.push(
+        await this.encryptValue(
+          `recovered-${this.crypto.randomUUID()}`,
+          1,
+          item,
+        ),
+      );
+    await this.db.transaction(
+      "rw",
+      this.db.config,
+      this.db.mutations,
+      this.db.working,
+      this.db.metadata,
+      async () => {
+        if (this.key !== key || this.recovery)
+          throw new Error("Vault locked or recovery pending");
+        if (
+          (await this.db.mutations.count()) ||
+          (await this.db.working.count())
+        )
+          throw new Error("Import requires an empty target vault");
+        const latest = await this.db.config.get("vault");
+        const references = await this.db.metadata.get("references");
+        if (
+          !latest ||
+          !references ||
+          JSON.stringify(Array.from(latest.salt)) !==
+            JSON.stringify(Array.from(config.salt))
+        )
+          throw new Error("Target vault changed");
+        await this.db.mutations.bulkAdd(mutations);
+        await this.db.working.bulkAdd(working);
+      },
     );
   }
   async saveDraft(input: FarmerRegistration): Promise<string> {
