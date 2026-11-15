@@ -5,6 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createProtectedQueryClient } from "../lib/protected-query";
+import { LandDirectory, landWords } from "./land-directory";
 import { FarmerHistory } from "./farmer-history";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
@@ -95,7 +96,8 @@ type Context = Pick<
   Awaited<ReturnType<PilotClient["context"]>>,
   "accountId" | "deviceId"
 >;
-type ReadRequest = { epoch: number } & (
+type Domain = "farmers" | "land";
+type ReadRequest = { epoch: number; domain: Domain } & (
   { kind: "list"; cursor?: string } | { kind: "detail"; id: string }
 );
 let nextRegistryBoundary = 0;
@@ -118,6 +120,8 @@ export function FarmerRegistry({ client: supplied }: { client?: PilotClient }) {
 function RegistryView({ client }: { client: PilotClient }) {
   const [language, setLanguage] = useState<"en" | "si">("en");
   const copy = words[language];
+  const landCopy = landWords[language];
+  const [domain, setDomain] = useState<Domain>("farmers");
   const [context, setContext] = useState<Context | null>(null);
   const [request, setRequest] = useState<ReadRequest | null>(null);
   const queries = useQueryClient();
@@ -142,7 +146,7 @@ function RegistryView({ client }: { client: PilotClient }) {
         deviceId: context?.deviceId,
         authorizationEpoch: request?.epoch,
       },
-      "farmers",
+      request?.domain,
       request?.kind,
       request?.kind === "list"
         ? { limit: 25, after: request.cursor ?? null }
@@ -154,15 +158,25 @@ function RegistryView({ client }: { client: PilotClient }) {
     queryFn: async ({ signal }) => {
       if (!context || !request) throw new Error("No active read context");
       const result =
-        request.kind === "list"
-          ? {
-              kind: "list" as const,
-              value: await client.farmers(request.cursor, signal),
-            }
-          : {
-              kind: "detail" as const,
-              value: await client.farmer(request.id, signal),
-            };
+        request.domain === "farmers"
+          ? request.kind === "list"
+            ? {
+                kind: "farmer-list" as const,
+                value: await client.farmers(request.cursor, signal),
+              }
+            : {
+                kind: "farmer-detail" as const,
+                value: await client.farmer(request.id, signal),
+              }
+          : request.kind === "list"
+            ? {
+                kind: "land-list" as const,
+                value: await client.land(request.cursor, signal),
+              }
+            : {
+                kind: "land-detail" as const,
+                value: await client.landIdentification(request.id, signal),
+              };
       signal.throwIfAborted();
       if (result.value.accountId !== context.accountId)
         throw new PilotRequestError(401);
@@ -172,11 +186,14 @@ function RegistryView({ client }: { client: PilotClient }) {
   const busy = authBusy || (request !== null && query.isFetching);
   const data =
     request !== null && !busy && !query.isError ? query.data : undefined;
-  const rows = data?.kind === "list" ? data.value.items : [];
-  const next = data?.kind === "list" ? data.value.nextCursor : null;
-  const selected = data?.kind === "detail" ? data.value.farmer : null;
+  const rows = data?.kind === "farmer-list" ? data.value.items : [];
+  const next =
+    data?.kind === "farmer-list" || data?.kind === "land-list"
+      ? data.value.nextCursor
+      : null;
+  const selected = data?.kind === "farmer-detail" ? data.value.farmer : null;
   const canViewAudit =
-    data?.kind === "detail" && data.value.access?.viewAudit === true;
+    data?.kind === "farmer-detail" && data.value.access?.viewAudit === true;
   function clear() {
     sequence.current++;
     authRequest.current?.abort();
@@ -202,7 +219,9 @@ function RegistryView({ client }: { client: PilotClient }) {
   async function load(
     cursor?: string,
     history: Array<string | undefined> = [undefined],
+    nextDomain: Domain = domain,
   ) {
+    setDomain(nextDomain);
     clear();
     const generation = sequence.current;
     setBusy(true);
@@ -214,7 +233,12 @@ function RegistryView({ client }: { client: PilotClient }) {
       if (!active.current || generation !== sequence.current) return;
       setContext({ accountId: current.accountId, deviceId: current.deviceId });
       setCursors(history);
-      setRequest({ kind: "list", cursor, epoch: generation });
+      setRequest({
+        kind: "list",
+        cursor,
+        epoch: generation,
+        domain: nextDomain,
+      });
     } catch (error) {
       if (active.current && generation === sequence.current) report(error);
     } finally {
@@ -276,7 +300,8 @@ function RegistryView({ client }: { client: PilotClient }) {
   function detail(id: string) {
     clear();
     setMessage(null);
-    if (context) setRequest({ kind: "detail", id, epoch: sequence.current });
+    if (context)
+      setRequest({ kind: "detail", id, epoch: sequence.current, domain });
   }
   useEffect(() => {
     if (request && query.isError) report(query.error);
@@ -309,11 +334,32 @@ function RegistryView({ client }: { client: PilotClient }) {
           </button>
         ))}
       </nav>
-      <h1>{copy.title}</h1>
-      <p>{copy.scope}</p>
+      <nav
+        className="actions"
+        aria-label={language === "en" ? "Records" : "වාර්තා"}
+      >
+        <button
+          disabled={authBusy}
+          aria-pressed={domain === "farmers"}
+          onClick={() => void load(undefined, [undefined], "farmers")}
+        >
+          {language === "en" ? "Farmers" : "ගොවීන්"}
+        </button>
+        <button
+          disabled={authBusy}
+          aria-pressed={domain === "land"}
+          onClick={() => void load(undefined, [undefined], "land")}
+        >
+          {landCopy.tab}
+        </button>
+      </nav>
+      <h1>{domain === "farmers" ? copy.title : landCopy.title}</h1>
+      <p>{domain === "farmers" ? copy.scope : landCopy.scope}</p>
       {message && (
         <p role={message === "prepared" ? "status" : "alert"}>
-          {copy[message]}
+          {message === "missing" && domain === "land"
+            ? landCopy.missing
+            : copy[message]}
         </p>
       )}
       {busy && <p role="status">{copy.busy}</p>}
@@ -430,7 +476,7 @@ function RegistryView({ client }: { client: PilotClient }) {
           )}
         </form>
       )}
-      {context && !busy && !selected && (
+      {domain === "farmers" && context && !busy && !selected && (
         <>
           {rows.length === 0 ? (
             <p role="status">{copy.empty}</p>
@@ -492,7 +538,24 @@ function RegistryView({ client }: { client: PilotClient }) {
           </div>
         </>
       )}
-      {selected && (
+      {domain === "land" && context && !busy && (
+        <LandDirectory
+          language={language}
+          page={data?.kind === "land-list" ? data.value : undefined}
+          detail={data?.kind === "land-detail" ? data.value : undefined}
+          canBack={cursors.length > 1}
+          onOpen={detail}
+          onClose={() => void load()}
+          onBack={() => {
+            const history = cursors.slice(0, -1);
+            void load(history[history.length - 1], history);
+          }}
+          onNext={() => {
+            if (next) void load(next, [...cursors, next]);
+          }}
+        />
+      )}
+      {domain === "farmers" && selected && (
         <section aria-label={copy.detail}>
           <h2>{selected.fullName}</h2>
           {selected.duplicateRisk && <p role="status">{copy.duplicate}</p>}

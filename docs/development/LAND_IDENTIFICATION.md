@@ -9,6 +9,10 @@ This is an online backend foundation, not the completed farmer/land workflow or 
 3. Provision a ninth independent LOGIN inheriting only `agri_land_runtime`, and add its URL to `PILOT_DATABASE_URLS`. Follow [runtime provisioning](PILOT_AUTH_RUNTIME.md), including verified database TLS in production. Deploy the new API only after the migration and connection are ready. No permission grants are seeded automatically.
 4. Through the controlled IAM process, grant scoped `land.create` with the appropriate registration source and active assignments. Grant `land.read` separately for existing record/location access. Farmer permissions do not grant land access, and creation does not grant read access.
 
+## Online directory
+
+The admin [Reported land directory](LAND_DIRECTORY.md) provides bilingual scoped list/detail reads. It shares the authenticated shell with the farmer registry and uses TanStack Query with cancellation and no persistent records. Capture/maps, relationships and offline land storage remain unfinished.
+
 ## Protocol
 
 - `GET /api/pilot/land/geographies`: authorized configured creation choices, bound to the current account and trusted application source.

@@ -49,7 +49,7 @@ Field registrations use the [encrypted offline workspace](docs/development/OFFLI
 
 The admin app provides a [scoped farmer registry](docs/development/FARMER_REGISTRY.md). It lists only records permitted by explicit read grants and assignments; creation alone grants no read access. A separately authorized [audit history view](docs/development/FARMER_AUDIT_HISTORY.md) is available. The review/correction editor and remaining Phase 1 domains are still unfinished.
 
-The [reported land identification API](docs/development/LAND_IDENTIFICATION.md) uses PostGIS with separate creation/read permissions. GPS, accuracy and reported hectares are optional. Farmer relationships, capture/map UI and offline GPS are still under development; identification points are not legal surveys.
+The [reported land identification API](docs/development/LAND_IDENTIFICATION.md) uses PostGIS with separate creation/read permissions. GPS, accuracy and reported hectares are optional. The admin [Reported land directory](docs/development/LAND_DIRECTORY.md) provides bilingual scoped list/detail viewing with no browser record persistence. Farmer relationships, capture/map UI and offline GPS are still under development; identification points are not legal surveys.
 
 For the Chromium field/admin browser checks, follow [browser test setup](docs/development/DEVICE_ENROLLMENT.md#automated-browser-check), then run `pnpm test:browser` after building. CI also runs it.
 

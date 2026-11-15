@@ -2,9 +2,11 @@
 
 This is an implementation inventory, not client approval or production certification. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
 
+The current [rough engineering delivery estimate](DELIVERY_ESTIMATE.md) is about 45% complete / 55% remaining for Phase 1, not production certification.
+
 ## Accepted architecture versus implementation
 
-The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is accepted architecture. PostgreSQL authority and encrypted Dexie farmer persistence are implemented; reported PostGIS land-identification APIs are tested, while farmer/land relationships, capture/map UI and offline GPS remain unfinished. TanStack Query now owns admin registry/detail/audit online reads with isolated, cancellable in-memory queries. Field online reads and future domain mutations still require migration. Zustand is not yet integrated; Redis remains optional and absent. The [roadmap](ROADMAP.md) places the frontend migration at current M2, and Redis only at M3+ for a confirmed use case.
+The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is accepted architecture. PostgreSQL authority and encrypted Dexie farmer persistence are implemented; reported PostGIS land-identification APIs and a bilingual scoped online directory are tested, while farmer/land relationships, capture/map UI and offline GPS remain unfinished. TanStack Query now owns admin registry/detail/audit online reads with isolated, cancellable in-memory queries. Field online reads and future domain mutations still require migration. Zustand is not yet integrated; Redis remains optional and absent. The [roadmap](ROADMAP.md) places the frontend migration at current M2, and Redis only at M3+ for a confirmed use case.
 
 ## Implemented and verified with synthetic data
 
@@ -19,6 +21,7 @@ The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is
 - Online versioned farmer correction/record-verification API with separate permissions, original/destination coverage, idempotency, duplicate-risk flagging and atomic audit. The editor and full lifecycle/reassignment remain unfinished.
 - [TanStack Query admin read integration](PROTECTED_ONLINE_QUERIES.md) with account/lifecycle-bound keys, cancellation, no persistence, denied-read cleanup and late-response/cache-isolation tests. Field online operations and shared UI state still need migration.
 - Separately authorized bilingual audit history with snapshot geography checks, exact microsecond cursors, no hidden-event totals and stale-response cleanup. Retention and privileged audit administration remain unfinished.
+- [Bilingual scoped online land directory](LAND_DIRECTORY.md) with optional-coordinate detail, bounded pagination, domain/account-bound TanStack Query reads, cancellation and denial/logout/hidden-view cleanup. Capture, mapping and offline GPS remain unfinished.
 - Reported PostGIS land identification APIs with independent create/read permissions, optional WGS84 point/accuracy and reported area, scoped coordinate visibility, stable mutation IDs and atomic audit. Relationships and UI/offline work remain incomplete.
 - Scoped bilingual admin farmer list/detail with bounded pagination, separate read permission, actor-bound sanitized replies and no browser farmer persistence.
 - Native SQL manifest, checksum/history validation, one transaction per file, concurrent-run lock, failure rollback and refusal of untracked database adoption.

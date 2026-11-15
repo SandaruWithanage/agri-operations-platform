@@ -144,3 +144,31 @@ it("does not acknowledge another land identifier or expose an inconsistent detai
     new PilotClient(detail).landIdentification(landId),
   ).rejects.toMatchObject({ status: 503 });
 });
+
+it.each(["list", "detail"] as const)(
+  "cancels the %s land transport at fetch",
+  async (kind) => {
+    let sent!: AbortSignal;
+    const network = vi
+      .fn()
+      .mockImplementation((_path: string, input: RequestInit) => {
+        sent = input.signal as AbortSignal;
+        return new Promise((_resolve, reject) =>
+          sent.addEventListener("abort", () => reject(sent.reason), {
+            once: true,
+          }),
+        );
+      });
+    const client = new PilotClient(network),
+      controller = new AbortController();
+    const result =
+      kind === "list"
+        ? client.land(undefined, controller.signal)
+        : client.landIdentification(landId, controller.signal);
+    const pending = expect(result).rejects.toMatchObject({ status: 503 });
+    controller.abort();
+    await pending;
+    expect(sent.aborted).toBe(true);
+    expect(network).toHaveBeenCalledOnce();
+  },
+);

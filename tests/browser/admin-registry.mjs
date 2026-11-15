@@ -108,7 +108,20 @@ try {
   const context = await browser.newContext();
   let authorized = true,
     readable = true,
-    auditable = true;
+    auditable = true,
+    landReadable = true;
+  const landRows = ids.map((id, index) => ({
+    id,
+    label: `Synthetic browser land ${index + 1}`,
+    geographyId: rows[0].geographyId,
+    geographyName: rows[0].geographyName,
+    point:
+      index === 2 ? null : { longitude: 80.25, latitude: 8.3, accuracyM: 0 },
+    reportedAreaHectares: index === 2 ? null : 0,
+    createdAt: rows[0].createdAt,
+    version: 1,
+    identificationOnly: true,
+  }));
   await context.route("**/api/pilot/**", async (route) => {
     const url = new URL(route.request().url()),
       path = url.pathname.replace("/api/pilot/", "");
@@ -129,6 +142,24 @@ try {
         offlineUntil: Date.now() + 3600000,
         geographies: [],
       });
+    if (path === "land")
+      return reply({
+        accountId,
+        items: landReadable
+          ? url.searchParams.has("after")
+            ? landRows.slice(2)
+            : landRows.slice(0, 2)
+          : [],
+        nextCursor:
+          landReadable && !url.searchParams.has("after") ? ids[1] : null,
+      });
+    if (path === "land/detail") {
+      if (!landReadable) return reply({ error: "Not available" }, 404);
+      return reply({
+        accountId,
+        land: landRows.find((row) => row.id === url.searchParams.get("id")),
+      });
+    }
     if (path === "farmers")
       return reply({
         accountId,
@@ -280,6 +311,59 @@ try {
   await page.getByRole("button", { name: "සිංහල", exact: true }).click();
   await page.getByRole("heading", { name: "ගොවි ලේඛනය", exact: true }).waitFor();
   await page.getByRole("button", { name: "English", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reported land", exact: true })
+    .click();
+  await page.getByText(landRows[0].label, { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText(rows[0].fullName, { exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Next page", exact: true }).click();
+  await page.getByText(landRows[2].label, { exact: true }).waitFor();
+  await page
+    .getByRole("button", {
+      name: `View land: ${landRows[2].label} (${ids[2]})`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("heading", { name: landRows[2].label, exact: true })
+    .waitFor();
+  await page.getByText("GPS not recorded", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close land", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: `View land: ${landRows[0].label} (${ids[0]})`,
+      exact: true,
+    })
+    .click();
+  await page.getByText("Latitude", { exact: true }).waitFor();
+  await page.getByText("80.25", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "වාර්තා කළ ඉඩම් ලේඛනය", exact: true })
+    .waitFor();
+  await page.getByText("අක්ෂාංශ", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page.getByRole("button", { name: "Close land", exact: true }).click();
+  await page.getByText(landRows[0].label, { exact: true }).waitFor();
+  landReadable = false;
+  await page
+    .getByRole("button", {
+      name: `View land: ${landRows[0].label} (${ids[0]})`,
+      exact: true,
+    })
+    .click();
+  await page.getByRole("main").getByRole("alert").waitFor();
+  assert.equal(await page.getByText("80.25", { exact: true }).count(), 0);
+  for (const record of landRows)
+    assert.equal(
+      await page.getByText(record.label, { exact: true }).count(),
+      0,
+    );
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   readable = false;
   await page
     .getByRole("button", { name: "Check session and refresh", exact: true })
@@ -330,7 +414,7 @@ try {
     false,
   );
   console.log(
-    "Chromium passed: compiled API startup, admin pagination/detail/history, bilingual controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin farmer/land pagination/detail/history, bilingual controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();
