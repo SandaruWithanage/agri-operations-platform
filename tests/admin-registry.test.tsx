@@ -387,3 +387,89 @@ it("does not restart a private read when login finishes after the view was hidde
   expect(api.context).toHaveBeenCalledOnce();
   expect(api.farmers).not.toHaveBeenCalled();
 });
+
+it("exposes verification only after a server capability and reloads the record after acknowledgement", async () => {
+  const api = client();
+  vi.mocked(api.farmer)
+    .mockResolvedValueOnce({
+      accountId,
+      farmer,
+      access: { viewAudit: false, verify: true },
+    })
+    .mockResolvedValueOnce({
+      accountId,
+      farmer: { ...farmer, version: 2, status: "verified" },
+      access: { viewAudit: false, verify: true },
+    });
+  vi.spyOn(api, "changeFarmer").mockResolvedValue({
+    farmerId: farmer.id,
+    version: 2,
+    replayed: false,
+    duplicateRisk: false,
+  });
+  const factory = vi.spyOn(protectedQueries, "createProtectedQueryClient");
+  render(<FarmerRegistry client={api} />);
+  await screen.findByText(farmer.fullName);
+  await userEvent.click(
+    screen.getByRole("button", { name: `View record: ${farmer.fullName}` }),
+  );
+  await screen.findByText("Staff record review");
+  await userEvent.click(screen.getByRole("checkbox"));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Confirm record review" }),
+  );
+  await screen.findByText("Verified");
+  expect(api.farmer).toHaveBeenCalledTimes(2);
+  expect(
+    factory.mock.results[0].value.getMutationCache().getAll(),
+  ).toHaveLength(0);
+  expect(
+    screen.queryByRole("button", { name: "Confirm record review" }),
+  ).toBeNull();
+});
+it("clears pending verification and ignores its late acknowledgement when the view is hidden", async () => {
+  const api = client();
+  vi.mocked(api.farmer).mockResolvedValue({
+    accountId,
+    farmer,
+    access: { viewAudit: false, verify: true },
+  });
+  let finish!: (value: {
+    farmerId: string;
+    version: number;
+    replayed: boolean;
+    duplicateRisk: boolean;
+  }) => void;
+  vi.spyOn(api, "changeFarmer").mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const factory = vi.spyOn(protectedQueries, "createProtectedQueryClient");
+  render(<FarmerRegistry client={api} />);
+  await screen.findByText(farmer.fullName);
+  await userEvent.click(
+    screen.getByRole("button", { name: `View record: ${farmer.fullName}` }),
+  );
+  await screen.findByText("Staff record review");
+  await userEvent.click(screen.getByRole("checkbox"));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Confirm record review" }),
+  );
+  await screen.findByText("Saving review…");
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  finish({
+    farmerId: farmer.id,
+    version: 2,
+    replayed: false,
+    duplicateRisk: false,
+  });
+  await waitFor(() =>
+    expect(
+      factory.mock.results[0].value.getMutationCache().getAll(),
+    ).toHaveLength(0),
+  );
+  expect(api.farmer).toHaveBeenCalledOnce();
+  expect(screen.queryByText(farmer.fullName)).toBeNull();
+});

@@ -18,6 +18,7 @@ import {
   farmerDetailQuerySchema,
   farmerPageSchema,
   farmerDetailSchema,
+  farmerVerificationReceiptSchema,
 } from "@agri/validation";
 /** Server route code only. Never import configured instances into client components. */
 export type BffConfig = {
@@ -177,6 +178,7 @@ export function createBffHandler(
             "farmers",
             "farmers/detail",
             "farmers/history",
+            "farmers/verification-receipt",
             "land",
             "land/detail",
             "land/geographies",
@@ -350,7 +352,14 @@ export function createBffHandler(
         if (!result.success) throw new Failure(503);
         return reply(result.data);
       }
-      if (["farmers", "farmers/detail", "farmers/history"].includes(path)) {
+      if (
+        [
+          "farmers",
+          "farmers/detail",
+          "farmers/history",
+          "farmers/verification-receipt",
+        ].includes(path)
+      ) {
         const params = new URL(request.url).searchParams;
         const keys = Array.from(params.keys());
         if (new Set(keys).size !== keys.length) throw new Failure(400);
@@ -379,11 +388,13 @@ export function createBffHandler(
             ? farmerPageSchema
             : path === "farmers/history"
               ? farmerHistoryPageSchema
-              : farmerDetailSchema
+              : path === "farmers/verification-receipt"
+                ? farmerVerificationReceiptSchema
+                : farmerDetailSchema
         ).safeParse(result);
         if (!parsed.success) throw new Failure(503);
         if (
-          path === "farmers/history" &&
+          ["farmers/history", "farmers/verification-receipt"].includes(path) &&
           (!("farmerId" in parsed.data) ||
             !("id" in query.data) ||
             parsed.data.farmerId !== query.data.id)

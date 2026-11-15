@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { createProtectedQueryClient } from "../lib/protected-query";
 import { LandDirectory, landWords } from "./land-directory";
+import { FarmerVerification } from "./farmer-verification";
 import { FarmerHistory } from "./farmer-history";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
@@ -48,7 +49,7 @@ const words = {
     draft: "Draft",
     verified: "Verified",
     inactive: "Inactive",
-    review: "Read-only record view.",
+    review: "Core registration record.",
     history: "Show record history",
     duplicate:
       "Possible duplicate: another visible record has the same name and location. Review the records separately; do not merge them automatically.",
@@ -87,7 +88,7 @@ const words = {
     draft: "කෙටුම්පත",
     verified: "තහවුරු කළ",
     inactive: "අක්‍රීය",
-    review: "කියවීමට පමණක් ඇති වාර්තා දසුනකි.",
+    review: "මූලික ලියාපදිංචි වාර්තාව.",
     history: "වාර්තා ඉතිහාසය පෙන්වන්න",
     duplicate:
       "සමාන වාර්තාවක් තිබිය හැක: එකම නම සහ ස්ථානය සහිත තවත් අවසර ලත් වාර්තාවක් ඇත. වාර්තා වෙන වෙනම සමාලෝචනය කරන්න; ස්වයංක්‍රීයව ඒකාබද්ධ නොකරන්න.",
@@ -207,7 +208,7 @@ function RegistryView({ client }: { client: PilotClient }) {
     authRequest.current?.abort();
     authRequest.current = null;
     void queries.cancelQueries();
-    queries.removeQueries();
+    queries.clear();
     setRequest(null);
     setShowHistory(false);
   }
@@ -564,6 +565,21 @@ function RegistryView({ client }: { client: PilotClient }) {
             </dd>
           </dl>
           <p>{copy.review}</p>
+          {data?.kind === "farmer-detail" &&
+            data.value.access?.verify === true &&
+            context && (
+              <FarmerVerification
+                client={client}
+                accountId={context.accountId}
+                farmerId={selected.id}
+                version={selected.version}
+                status={selected.status}
+                authorizationEpoch={sequence.current}
+                language={language}
+                onRefresh={() => detail(selected.id)}
+                onFailure={report}
+              />
+            )}
           {canViewAudit && !showHistory && (
             <button onClick={() => setShowHistory(true)}>{copy.history}</button>
           )}

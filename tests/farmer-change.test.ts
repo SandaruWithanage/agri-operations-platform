@@ -80,3 +80,53 @@ it("does not acknowledge a malformed or unexpected server revision", async () =>
     new PilotClient(network).changeFarmer(accountId, input),
   ).rejects.toMatchObject({ status: 503 });
 });
+
+it("binds a verification receipt to the requested record and strips journal extras", async () => {
+  const receipt = {
+    mutationId: input.mutationId,
+    version: 2,
+    occurredAt: "2026-11-15T20:00:00.123456Z",
+  };
+  const network = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        farmerId: input.farmerId,
+        receipt: { ...receipt, sessionId: "synthetic-private" },
+        actorEmail: "synthetic-private",
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ accountId, farmerId: accountId, receipt }),
+    );
+  expect(
+    await new PilotClient(network).farmerVerificationReceipt(input.farmerId),
+  ).toEqual({ accountId, farmerId: input.farmerId, receipt });
+  await expect(
+    new PilotClient(network).farmerVerificationReceipt(input.farmerId),
+  ).rejects.toMatchObject({ status: 503 });
+});
+it("cancels receipt reads at the fetch boundary", async () => {
+  let signal!: AbortSignal;
+  const network = vi
+    .fn()
+    .mockImplementation((_path: string, options: RequestInit) => {
+      signal = options.signal as AbortSignal;
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        }),
+      );
+    });
+  const controller = new AbortController();
+  const result = expect(
+    new PilotClient(network).farmerVerificationReceipt(
+      input.farmerId,
+      controller.signal,
+    ),
+  ).rejects.toMatchObject({ status: 503 });
+  controller.abort();
+  await result;
+  expect(signal.aborted).toBe(true);
+});

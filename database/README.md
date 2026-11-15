@@ -31,3 +31,7 @@ Do not run draft reference SQL from uploaded documents. Do not add destructive d
 ## PostGIS land identification
 
 Manifest entry 14 requires PostGIS available in the `public` schema and provisions independent `agri_land_function_owner`/`agri_land_runtime` groups. The API requires a ninth restricted LOGIN URL for that runtime; never assign the owner group to an application login. Apply migrations and provision the URL before deploying the new API. Existing registration/read behavior is retained. The Compose/CI PostGIS image is pinned to a verified digest; review and retest digest changes. See [land setup](../docs/development/LAND_IDENTIFICATION.md).
+
+## Staff verification receipts
+
+Manifest entry 15 adds an index and restricted own-verification receipt function, preserving existing farmer/audit records and role connections. Apply it before the updated verification API/UI. No business grants or new roles are seeded. See [staff verification setup](../docs/development/FARMER_VERIFICATION.md).
