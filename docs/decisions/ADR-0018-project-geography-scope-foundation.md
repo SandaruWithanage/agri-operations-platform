@@ -26,4 +26,6 @@ NestJS `ProjectScopePolicy` fixes the requested action through separate read/cre
 - The conservative requirement for an explicit scoped assignment is provisional and does not settle the client matrix or administrator exceptions.
 - Synthetic direct-RLS fixtures verify predicate behavior; they are not a deployed enrollment schema or production security review.
 
+Update: [ADR 0019](ADR-0019-provisional-project-enrollment.md) adds `enrollment.withdraw` and the first provisional enrollment records.
+
 See [implementation/setup](../development/PROJECT_SCOPES.md), the [living task register](../development/PROJECT_HANDOVER.md) and [remaining client decisions](../requirements/OPEN_DECISIONS.md).

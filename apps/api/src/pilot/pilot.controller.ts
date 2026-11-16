@@ -78,6 +78,9 @@ export class PilotController {
       const code = (error as { code?: unknown })?.code;
       if (code === "22023") throw new BadRequestException("Invalid input");
       if (code === "42501") throw new ForbiddenException("Action denied");
+      // Provisional enrollment eligibility/state conflicts (inactive, already enrolled, not current).
+      if (code === "55000")
+        throw new ConflictException("Enrollment state conflict");
       if (code === "23505" || code === "40001")
         throw new ConflictException("Mutation conflict");
       throw new ServiceUnavailableException("Request could not be completed");
@@ -273,6 +276,68 @@ export class PilotController {
       projectOrganizationsQuerySchema.parse(query);
       return runtime.projectOrganizations(actor, this.source(source));
     });
+  }
+  @Post("enrollments/enroll")
+  @HttpCode(200)
+  enrollFarmer(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.enrollFarmer(actor, this.source(source), input);
+    });
+  }
+  @Post("enrollments/withdraw")
+  @HttpCode(200)
+  withdrawEnrollment(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.withdrawEnrollment(actor, this.source(source), input);
+    });
+  }
+  @Get("enrollments")
+  listEnrollments(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.listEnrollments(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
+  @Get("enrollments/detail")
+  enrollmentDetail(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.enrollmentDetail(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
   }
   @Post("land/register")
   @HttpCode(200)

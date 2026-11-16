@@ -1,4 +1,7 @@
 import type {
+  EnrollmentDetail,
+  EnrollmentPage,
+  EnrollmentResult,
   ProjectChangeResult,
   ProjectPage,
   ProjectDetail,
@@ -131,6 +134,24 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<ProjectOrganizations>;
+  enrollFarmer(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<EnrollmentResult>;
+  withdrawEnrollment(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<EnrollmentResult>;
+  listEnrollments(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<EnrollmentPage>;
+  enrollmentDetail(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<EnrollmentDetail>;
   readiness(): Promise<boolean>;
   close(): Promise<void>;
 }

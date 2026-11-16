@@ -59,3 +59,7 @@ Apply entry 20 before deploying project editing. It extends the existing project
 ## Project/geography scope prerequisite (manifest entry 21)
 
 Apply entry 21 before deploying the updated enabled runtime. Separate typed project permission/assignment rows and a fixed predicate enforce matching project AND geography/unit scope. Existing records/catalog grants and ten runtime connections are preserved. The new scope owner is NOLOGIN; direct scope-table access and scope-owner membership are forbidden to API logins and checked at startup. No grants, roles for business users, enrollment records or administration endpoints are seeded/exposed. The internal NestJS policy is a prerequisite; future enrollment record RLS/native commands must enforce it independently. See [provisioning boundaries and remaining work](../docs/development/PROJECT_SCOPES.md).
+
+## Provisional explicit enrollment (manifest entry 22)
+
+Apply entry 22 before deploying the updated enabled runtime. It adds `operations.enrollment` (FORCE RLS), a private idempotency journal/audit, the `enrollment.withdraw` project-scope action and the fixed `enroll_farmer`/`withdraw_enrollment` functions. Existing grants/assignments and the ten runtime connections are preserved; the new `agri_enrollment_owner` is NOLOGIN and must never be granted to an application login. Rules are provisional pending DEC-04; see [enrollment guide](../docs/development/PROJECT_ENROLLMENT.md).
