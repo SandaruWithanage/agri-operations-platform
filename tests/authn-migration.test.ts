@@ -1439,11 +1439,43 @@ suite("provisional authentication migration on PostgreSQL", () => {
         [account, org],
       );
       await client.query("SET LOCAL SESSION AUTHORIZATION agri_farmer_runtime");
-      await client.query(
+      const registered = await client.query<{ farmer_id: string }>(
         "SELECT * FROM farm.register_farmer(gen_random_uuid(),gen_random_uuid(),$1,'Synthetic admin registration',true,'administrator')",
         [geoB],
       );
+      expect(registered.rowCount).toBe(1);
+      // Creating within the organization does not grant read access to the result.
+      expect(
+        (
+          await client.query("SELECT id FROM farm.farmer WHERE id=$1", [
+            registered.rows[0].farmer_id,
+          ])
+        ).rowCount,
+      ).toBe(0);
       await client.query("RESET SESSION AUTHORIZATION");
+      expect(
+        (
+          await client.query(
+            "SELECT status,registration_source,created_by,privacy_notice_provided FROM farm.farmer WHERE id=$1",
+            [registered.rows[0].farmer_id],
+          )
+        ).rows,
+      ).toEqual([
+        {
+          status: "pending-review",
+          registration_source: "administrator",
+          created_by: account,
+          privacy_notice_provided: true,
+        },
+      ]);
+      expect(
+        (
+          await client.query(
+            "SELECT actor_id,action FROM farm.farmer_audit WHERE farmer_id=$1",
+            [registered.rows[0].farmer_id],
+          )
+        ).rows,
+      ).toEqual([{ actor_id: account, action: "registration" }]);
       await client.query(
         "UPDATE farm.organizational_unit SET parent_id=$1 WHERE id=$2",
         [child, parent],
