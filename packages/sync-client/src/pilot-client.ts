@@ -214,10 +214,20 @@ export class PilotClient {
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
   }
-  async registerLand(accountId: string, input: LandRegistration) {
+  async registerLand(
+    accountId: string,
+    input: LandRegistration,
+    expectedDeviceId?: string,
+  ) {
+    if (expectedDeviceId !== undefined && !uuid.test(expectedDeviceId))
+      throw new PilotRequestError(400);
     const value = landRegistrationSchema.parse(input);
     const session = await this.session();
-    if (session.accountId !== accountId) throw new PilotRequestError(401);
+    if (
+      session.accountId !== accountId ||
+      (expectedDeviceId !== undefined && session.deviceId !== expectedDeviceId)
+    )
+      throw new PilotRequestError(401);
     const result = landRegistrationResultSchema.safeParse(
       await this.request("land/register", value, session.csrfToken),
     );
@@ -251,9 +261,9 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async landGeographies() {
+  async landGeographies(signal?: AbortSignal) {
     const result = landGeographiesSchema.safeParse(
-      await this.request("land/geographies"),
+      await this.request("land/geographies", undefined, undefined, signal),
     );
     if (!result.success) throw new PilotRequestError(503);
     return result.data;

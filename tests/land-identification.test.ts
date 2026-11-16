@@ -172,3 +172,45 @@ it.each(["list", "detail"] as const)(
     expect(network).toHaveBeenCalledOnce();
   },
 );
+
+it("binds a retained land submission to its original approved device before posting", async () => {
+  const deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86";
+  for (const sessionDevice of [undefined, landId]) {
+    const network = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ accountId, csrfToken, deviceId: sessionDevice }),
+      );
+    await expect(
+      new PilotClient(network).registerLand(accountId, input, deviceId),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(network).toHaveBeenCalledOnce();
+  }
+  for (const invalid of ["invalid", ""]) {
+    const network = vi.fn();
+    await expect(
+      new PilotClient(network).registerLand(accountId, input, invalid),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(network).not.toHaveBeenCalled();
+  }
+});
+it("cancels the land-create catalog fetch", async () => {
+  const controller = new AbortController();
+  let sent!: AbortSignal;
+  const network = vi
+    .fn()
+    .mockImplementation((_path: string, options: RequestInit) => {
+      sent = options.signal as AbortSignal;
+      return new Promise((_resolve, reject) =>
+        sent.addEventListener("abort", () => reject(sent.reason), {
+          once: true,
+        }),
+      );
+    });
+  const pending = expect(
+    new PilotClient(network).landGeographies(controller.signal),
+  ).rejects.toMatchObject({ status: 503 });
+  controller.abort();
+  await pending;
+  expect(sent.aborted).toBe(true);
+});

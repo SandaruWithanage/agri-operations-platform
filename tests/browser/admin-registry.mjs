@@ -122,6 +122,8 @@ try {
   });
   const context = await browser.newContext();
   let correctionAllowed = true;
+  let landRegistrationCalls = 0,
+    landRegistrationPayload = null;
   let registrationCalls = 0,
     registrationPayload = null;
   let correctionCalls = 0,
@@ -166,6 +168,37 @@ try {
         offlineUntil: Date.now() + 3600000,
         geographies: [{ id: rows[0].geographyId, name: rows[0].geographyName }],
       });
+    if (path === "land/geographies")
+      return reply({
+        accountId,
+        geographies: [{ id: rows[0].geographyId, name: rows[0].geographyName }],
+      });
+    if (path === "land/register") {
+      const input = route.request().postDataJSON();
+      assert.deepEqual(Object.keys(input).sort(), [
+        "geographyId",
+        "label",
+        "landId",
+        "mutationId",
+        "point",
+        "reportedAreaHectares",
+      ]);
+      assert.equal(input.geographyId, rows[0].geographyId);
+      assert.equal(input.label, "Synthetic browser captured land");
+      assert.deepEqual(input.point, {
+        longitude: 80.25,
+        latitude: 8.3,
+        accuracyM: 12,
+      });
+      assert.equal(input.reportedAreaHectares, null);
+      landRegistrationCalls++;
+      if (!landRegistrationPayload) {
+        landRegistrationPayload = input;
+        return route.abort("failed");
+      }
+      assert.deepEqual(input, landRegistrationPayload);
+      return reply({ status: "synced", landId: input.landId, replayed: true });
+    }
     if (path === "farmers/register") {
       const input = route.request().postDataJSON();
       assert.deepEqual(Object.keys(input).sort(), ["farmer", "mutationId"]);
@@ -838,6 +871,91 @@ try {
     .getByRole("button", { name: "Check session and refresh", exact: true })
     .click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  await context.grantPermissions(["geolocation"], { origin });
+  await context.setGeolocation({
+    latitude: 8.3,
+    longitude: 80.25,
+    accuracy: 12,
+  });
+  await page
+    .getByRole("button", { name: "Reported land", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Record land identification", exact: true })
+    .click();
+  try {
+    await page
+      .getByLabel("GN division or village", { exact: true })
+      .selectOption(rows[0].geographyId, { timeout: 10000 });
+  } catch (error) {
+    console.error(
+      "Synthetic land form diagnostic",
+      await page.locator("h2, form label, [role=alert]").allTextContents(),
+    );
+    throw error;
+  }
+  await page
+    .getByLabel("Land label (optional)", { exact: true })
+    .fill("Synthetic browser captured land");
+  await page
+    .getByRole("button", { name: "Use current GPS location", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll("input")).some(
+        (input) => input.value === "8.3",
+      ),
+    undefined,
+    { timeout: 15000 },
+  );
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  assert.equal(
+    await page.getByLabel("අක්ෂාංශ (විකල්ප)", { exact: true }).inputValue(),
+    "8.3",
+  );
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Land draft locked", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Latitude (optional)", { exact: true }).count(),
+    0,
+  );
+  await page
+    .getByRole("button", { name: "Check access and reopen land", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Latitude (optional)", { exact: true }).inputValue(),
+    "8.3",
+  );
+  await page
+    .getByRole("button", { name: "Save reported land", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Could not confirm the land registration. Keep this tab open and retry the same request.",
+      { exact: true },
+    )
+    .waitFor();
+  landReadable = false;
+  await page
+    .getByRole("button", { name: "Save reported land", exact: true })
+    .click();
+  await page.getByText(/Land identification accepted/).waitFor();
+  await page
+    .getByText(
+      "No land records are available within your current read permissions.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(landRegistrationCalls, 2);
+  assert.equal(
+    await page.getByLabel("Latitude (optional)", { exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   authorized = false;
   await page
     .getByRole("button", {
@@ -880,7 +998,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, administrator registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

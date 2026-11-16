@@ -12,6 +12,8 @@ import {
   FarmerRegistrationEditor,
   type RegistrationDraft,
 } from "./farmer-registration";
+import { LandRegistrationEditor } from "./land-registration";
+import { landRegistrationWords } from "./land-registration-words";
 import { registrationWords } from "./registration-words";
 import { correctionWords } from "./correction-words";
 import { FarmerCorrectionReceipt } from "./farmer-correction-receipt";
@@ -145,6 +147,7 @@ type RegistryControl = {
   action: "refresh" | "clear" | "failure";
   error?: unknown;
   recordId?: string;
+  domain?: Domain;
 };
 export function FarmerRegistry(props: { client?: PilotClient }) {
   return (
@@ -169,9 +172,10 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [registration, setRegistration] = useState<RegistrationDraft | null>(
     null,
   );
-  const [saved, setSaved] = useState<"correction" | "registration" | null>(
-    null,
-  );
+  const [landDraft, setLandDraft] = useState<RegistrationDraft | null>(null);
+  const [saved, setSaved] = useState<
+    "correction" | "registration" | "land" | null
+  >(null);
   const [control, setControl] = useState<RegistryControl>({
     id: 0,
     action: "clear",
@@ -198,7 +202,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
         <p className="correction-saved" role="status">
           {saved === "correction"
             ? correctionWords[language].saved
-            : registrationWords[language].saved}
+            : saved === "registration"
+              ? registrationWords[language].saved
+              : landRegistrationWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -207,9 +213,21 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
       >
         <RegistryView
           client={client}
-          correctionOpen={draft !== null || registration !== null}
+          correctionOpen={
+            draft !== null || registration !== null || landDraft !== null
+          }
+          onRegisterLand={(owner) => {
+            if (draft || registration || landDraft) return;
+            setSaved(null);
+            setLandDraft({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+            });
+          }}
           onRegister={(owner) => {
-            if (draft || registration) return;
+            if (draft || registration || landDraft) return;
             setSaved(null);
             setRegistration({
               ...owner,
@@ -221,7 +239,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           onProtectedClear={lockDraft}
           control={control}
           onCorrect={(source, owner) => {
-            if (draft || registration) return;
+            if (draft || registration || landDraft) return;
             setSaved(null);
             setDraft({
               ...owner,
@@ -238,6 +256,30 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {landDraft && (
+        <LandRegistrationEditor
+          key={`land:${landDraft.id}`}
+          draft={landDraft}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setLandDraft(null)}
+          onSaved={() => {
+            setLandDraft(null);
+            setSaved("land");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "land",
+            }));
+          }}
+        />
+      )}
       {registration && (
         <FarmerRegistrationEditor
           key={`registration:${registration.id}`}
@@ -290,6 +332,7 @@ function RegistryView({
   correctionOpen,
   onCorrect,
   onRegister,
+  onRegisterLand,
   onProtectedClear,
   control,
 }: {
@@ -297,6 +340,7 @@ function RegistryView({
   correctionOpen: boolean;
   onCorrect: (source: FarmerSummary, owner: Context) => void;
   onRegister: (owner: Context) => void;
+  onRegisterLand: (owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -535,7 +579,13 @@ function RegistryView({
   useEffect(() => {
     if (!control.id) return;
     if (control.action === "refresh")
-      void load(undefined, [undefined], "farmers", filters, control.recordId);
+      void load(
+        undefined,
+        [undefined],
+        control.domain ?? "farmers",
+        filters,
+        control.recordId,
+      );
     else if (control.action === "failure") report(control.error);
     else {
       clear();
@@ -606,6 +656,14 @@ function RegistryView({
         <button disabled={busy} onClick={() => void load()}>
           {copy.refresh}
         </button>
+        {context && domain === "land" && (
+          <button
+            disabled={busy || correctionOpen}
+            onClick={() => onRegisterLand(context)}
+          >
+            {landRegistrationWords[language].start}
+          </button>
+        )}
         {context && (
           <button
             disabled={busy || correctionOpen}
