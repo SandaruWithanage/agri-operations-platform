@@ -296,6 +296,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
       ),
     );
 
+    await client.query(
+      readFileSync("database/migrations/20261116_project_scope/up.sql", "utf8"),
+    );
+
     const upgradeAudit = (
       await client.query(
         "SELECT record_version,change_id FROM operations.audit WHERE project_id=$1",
@@ -380,10 +384,10 @@ suite("provisional authentication migration on PostgreSQL", () => {
           "DROP SCHEMA operations, land, farm, authz, authz_crypto, authn CASCADE",
         );
         await client.query(
-          "DROP OWNED BY agri_project_function_owner,agri_project_runtime,agri_land_function_owner,agri_land_runtime",
+          "DROP OWNED BY agri_project_scope_owner,agri_project_function_owner,agri_project_runtime,agri_land_function_owner,agri_land_runtime",
         );
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8, agri_project_function_owner, agri_project_runtime, agri_test_login_9",
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8, agri_project_function_owner, agri_project_runtime, agri_test_login_9, agri_project_scope_owner",
         );
       } else await client.query("ROLLBACK");
       await client.end();

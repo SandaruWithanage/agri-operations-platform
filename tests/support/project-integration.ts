@@ -1,3 +1,4 @@
+import { verifyProjectScopes } from "./project-scope-integration";
 import { verifyProjectEditing } from "./project-edit-integration";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
@@ -437,6 +438,16 @@ export async function verifyProjectCatalog({
     accountId: actor.accountId,
     items: [],
     nextCursor: null,
+  });
+  await verifyProjectScopes({
+    owner,
+    actor,
+    organizationId,
+    geographyId,
+    projectId: value.projectId,
+    otherProjectId: second.projectId,
+    runtimeUrl,
+    runtimeEnv,
   });
   await verifyProjectEditing({
     owner,
