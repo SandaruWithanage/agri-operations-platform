@@ -1,4 +1,6 @@
 import type {
+  EnrollmentPolicyDetail,
+  EnrollmentPolicyResult,
   EnrollmentDetail,
   EnrollmentPage,
   EnrollmentResult,
@@ -144,6 +146,15 @@ export interface PilotRuntime {
     source: RegistrationSource,
     input: unknown,
   ): Promise<EnrollmentResult>;
+  setEnrollmentPolicy(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<EnrollmentPolicyResult>;
+  enrollmentPolicy(
+    actor: VerifiedActor,
+    input: unknown,
+  ): Promise<EnrollmentPolicyDetail>;
   listEnrollments(
     actor: VerifiedActor,
     input: unknown,

@@ -1,5 +1,6 @@
 import { ProjectCatalogService } from "../project/catalog-service";
 import { ProjectEnrollmentService } from "../project/enrollment-service";
+import { EnrollmentPolicyService } from "../project/enrollment-policy-service";
 import { RuntimeReadiness } from "./readiness";
 import { LandIdentificationService } from "../land/identification-service";
 import { FarmerHistoryService } from "../farmer/history-service";
@@ -164,7 +165,7 @@ export async function createPilotRuntime(
       );
       pools.set(role, pool);
       const check = await pool.query(
-        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_project_scope_owner','MEMBER') OR pg_has_role(current_user,'agri_enrollment_owner','MEMBER') OR pg_has_role(current_user,'agri_project_function_owner','MEMBER') OR pg_has_role(current_user,'agri_land_function_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('farm','land','operations') AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk','audit','project_mutation','project_change','enrollment_mutation','enrollment_audit') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname IN ('project_permission_grant','project_assignment') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='operations' AND c.relname='enrollment' AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS scope_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
+        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_project_scope_owner','MEMBER') OR pg_has_role(current_user,'agri_enrollment_owner','MEMBER') OR pg_has_role(current_user,'agri_project_function_owner','MEMBER') OR pg_has_role(current_user,'agri_land_function_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('farm','land','operations') AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk','audit','project_mutation','project_change','enrollment_mutation','enrollment_audit','enrollment_policy_change','enrollment_policy_audit') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname IN ('project_permission_grant','project_assignment') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='operations' AND c.relname='enrollment' AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS scope_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
         [role],
       );
       const row = check.rows[0];
@@ -203,7 +204,7 @@ export async function createPilotRuntime(
       }
       if (role === "agri_project_runtime") {
         const enrollment = await pool.query(
-          "SELECT has_function_privilege(current_user,to_regprocedure('operations.enroll_farmer(uuid,uuid,uuid,uuid,text)'),'EXECUTE') AND has_function_privilege(current_user,to_regprocedure('operations.withdraw_enrollment(uuid,uuid,integer,text)'),'EXECUTE') AS ready",
+          "SELECT has_function_privilege(current_user,to_regprocedure('operations.enroll_farmer(uuid,uuid,uuid,uuid,text)'),'EXECUTE') AND has_function_privilege(current_user,to_regprocedure('operations.withdraw_enrollment(uuid,uuid,integer,text)'),'EXECUTE') AND has_function_privilege(current_user,to_regprocedure('operations.set_enrollment_policy(uuid,uuid,integer,boolean,text[],text)'),'EXECUTE') AND has_function_privilege(current_user,to_regprocedure('operations.enrollment_policy_admin(uuid)'),'EXECUTE') AS ready",
         );
         if (enrollment.rows[0]?.ready !== true)
           throw new Error(
@@ -285,6 +286,7 @@ export async function createPilotRuntime(
     const land = new LandIdentificationService(context);
     const projects = new ProjectCatalogService(context);
     const enrollments = new ProjectEnrollmentService(context);
+    const enrollmentPolicies = new EnrollmentPolicyService(context);
     const changes = new FarmerChangeService(context);
     const readiness = new RuntimeReadiness(
       Array.from(pools.values(), (database) => async () => {
@@ -502,6 +504,22 @@ export async function createPilotRuntime(
         const connection = await pool("agri_project_runtime").connect();
         try {
           return await enrollments.withdraw(connection, actor, source, input);
+        } finally {
+          connection.release();
+        }
+      },
+      setEnrollmentPolicy: async (actor, source, input) => {
+        const connection = await pool("agri_project_runtime").connect();
+        try {
+          return await enrollmentPolicies.set(connection, actor, source, input);
+        } finally {
+          connection.release();
+        }
+      },
+      enrollmentPolicy: async (actor, input) => {
+        const connection = await pool("agri_project_runtime").connect();
+        try {
+          return await enrollmentPolicies.detail(connection, actor, input);
         } finally {
           connection.release();
         }

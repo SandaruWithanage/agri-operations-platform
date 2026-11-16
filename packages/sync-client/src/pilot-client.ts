@@ -11,6 +11,21 @@ import {
   type ProjectRegistration,
 } from "@agri/validation";
 import {
+  enrollmentCreateSchema,
+  enrollmentWithdrawSchema,
+  enrollmentResultSchema,
+  enrollmentQuerySchema,
+  enrollmentPageSchema,
+  enrollmentDetailSchema,
+  enrollmentPolicySetSchema,
+  enrollmentPolicyQuerySchema,
+  enrollmentPolicyResultSchema,
+  enrollmentPolicyDetailSchema,
+  type EnrollmentCreate,
+  type EnrollmentWithdraw,
+  type EnrollmentPolicySet,
+} from "@agri/validation";
+import {
   landRegistrationSchema,
   landRegistrationResultSchema,
   landPageSchema,
@@ -310,6 +325,155 @@ export class PilotClient {
       ),
     );
     if (!result.success) throw new PilotRequestError(503);
+    return result.data;
+  }
+  private async command<S extends { parse(input: unknown): unknown }>(
+    accountId: string,
+    expectedDeviceId: string,
+    schema: S,
+    input: unknown,
+  ) {
+    if (!uuid.test(expectedDeviceId)) throw new PilotRequestError(400);
+    const value = schema.parse(input),
+      session = await this.session();
+    if (
+      session.accountId !== accountId ||
+      session.deviceId !== expectedDeviceId.toLowerCase()
+    )
+      throw new PilotRequestError(401);
+    return { value, csrf: session.csrfToken };
+  }
+  async enrollFarmer(
+    accountId: string,
+    input: EnrollmentCreate,
+    expectedDeviceId: string,
+  ) {
+    const { value, csrf } = await this.command(
+      accountId,
+      expectedDeviceId,
+      enrollmentCreateSchema,
+      input,
+    );
+    const sent = value as ReturnType<typeof enrollmentCreateSchema.parse>;
+    const result = enrollmentResultSchema.safeParse(
+      await this.request("enrollments/enroll", sent, csrf),
+    );
+    if (
+      !result.success ||
+      result.data.enrollmentId !== sent.enrollmentId ||
+      result.data.version !== 1
+    )
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async withdrawEnrollment(
+    accountId: string,
+    input: EnrollmentWithdraw,
+    expectedDeviceId: string,
+  ) {
+    const { value, csrf } = await this.command(
+      accountId,
+      expectedDeviceId,
+      enrollmentWithdrawSchema,
+      input,
+    );
+    const sent = value as ReturnType<typeof enrollmentWithdrawSchema.parse>;
+    const result = enrollmentResultSchema.safeParse(
+      await this.request("enrollments/withdraw", sent, csrf),
+    );
+    if (
+      !result.success ||
+      result.data.enrollmentId !== sent.enrollmentId ||
+      result.data.version !== sent.expectedVersion + 1
+    )
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async setEnrollmentPolicy(
+    accountId: string,
+    input: EnrollmentPolicySet,
+    expectedDeviceId: string,
+  ) {
+    const { value, csrf } = await this.command(
+      accountId,
+      expectedDeviceId,
+      enrollmentPolicySetSchema,
+      input,
+    );
+    const sent = value as ReturnType<typeof enrollmentPolicySetSchema.parse>;
+    const result = enrollmentPolicyResultSchema.safeParse(
+      await this.request("enrollment-policies/set", sent, csrf),
+    );
+    if (
+      !result.success ||
+      result.data.projectId !== sent.projectId ||
+      result.data.version !== sent.expectedVersion + 1
+    )
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async enrollments(
+    filters: { projectId?: string; farmerId?: string; status?: string } = {},
+    after?: string,
+    signal?: AbortSignal,
+  ) {
+    const query = enrollmentQuerySchema.safeParse({
+      limit: 25,
+      ...filters,
+      ...(after ? { after } : {}),
+    });
+    if (!query.success) throw new PilotRequestError(400);
+    const params = new URLSearchParams(
+      Object.entries(query.data).map(([key, value]) => [key, String(value)]),
+    );
+    const result = enrollmentPageSchema.safeParse(
+      await this.request(`enrollments?${params}`, undefined, undefined, signal),
+    );
+    if (
+      !result.success ||
+      result.data.items.length > query.data.limit ||
+      result.data.items.some(
+        (row) =>
+          (query.data.projectId && row.projectId !== query.data.projectId) ||
+          (query.data.farmerId && row.farmerId !== query.data.farmerId) ||
+          (query.data.status && row.status !== query.data.status),
+      )
+    )
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async enrollment(id: string, signal?: AbortSignal) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = enrollmentDetailSchema.safeParse(
+      await this.request(
+        `enrollments/detail?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success || result.data.enrollment.id !== id.toLowerCase())
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async enrollmentPolicy(projectId: string, signal?: AbortSignal) {
+    const query = enrollmentPolicyQuerySchema.safeParse({ projectId });
+    if (!query.success) throw new PilotRequestError(400);
+    const result = enrollmentPolicyDetailSchema.safeParse(
+      await this.request(
+        `enrollment-policies?projectId=${encodeURIComponent(query.data.projectId)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (
+      !result.success ||
+      result.data.projectId !== query.data.projectId ||
+      (result.data.policy !== null &&
+        result.data.policy.projectId !== query.data.projectId)
+    )
+      throw new PilotRequestError(503);
     return result.data;
   }
   async registerLand(
