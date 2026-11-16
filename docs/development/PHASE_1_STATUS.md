@@ -2,7 +2,7 @@
 
 Use the [living project handover](PROJECT_HANDOVER.md) for the stable delivered/pending task register, implementation methods, evidence, completion log and concrete remaining steps. Update it with this summary whenever a pending task is completed.
 
-This is an implementation inventory, not client approval or production certification. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
+This is an implementation inventory, not client approval or production certification. The proposed lean-P1 [execution board and gap matrix](PHASE_1_EXECUTION_BOARD.md) maps the current code and tests to the P1 acceptance cases; it records no approval. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
 
 The current [rough engineering delivery estimate](DELIVERY_ESTIMATE.md) is about 55% complete / 45% remaining for Phase 1, not production certification.
 
