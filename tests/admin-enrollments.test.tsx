@@ -208,3 +208,47 @@ it("fails closed when the enrollment is already withdrawn or the account changed
   await waitFor(() => expect(g.props.onFailure).toHaveBeenCalled());
   expect(g.client.withdrawEnrollment).not.toHaveBeenCalled();
 });
+it("refuses a list or detail that belongs to another account and renders none of it", async () => {
+  const f = setup();
+  vi.mocked(f.client.enrollments).mockResolvedValue({
+    accountId: projectId,
+    items: [enrollment],
+    nextCursor: null,
+  });
+  render(<FarmerRegistry client={f.client} />);
+  await screen.findByText(
+    "No farmer records are available within your current read permissions.",
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Enrollments", exact: true }),
+  );
+  await waitFor(() => expect(f.client.enrollments).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByText(farmerId)).toBeNull());
+  expect(screen.queryByText(projectId)).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: `View enrollment: ${id}` }),
+  ).toBeNull();
+  cleanup();
+  const g = setup();
+  vi.mocked(g.client.enrollment).mockResolvedValue({
+    accountId: projectId,
+    enrollment,
+  });
+  render(<FarmerRegistry client={g.client} />);
+  await screen.findByText(
+    "No farmer records are available within your current read permissions.",
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Enrollments", exact: true }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: `View enrollment: ${id}` }),
+  );
+  await waitFor(() => expect(g.client.enrollment).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Withdraw enrollment" }),
+    ).toBeNull(),
+  );
+  expect(screen.queryByText("Record version")).toBeNull();
+});

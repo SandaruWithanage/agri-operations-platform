@@ -860,3 +860,91 @@ it("rejects enrollment list rows that violate the requested filters or limit", a
     ).status,
   ).toBe(503);
 });
+
+it("never forwards browser-supplied identity, source or authorization on enrollment routes", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const fetcher = bffSession().mockResolvedValueOnce(
+    Response.json({ accountId, items: [], nextCursor: null }),
+  );
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(
+    req("enrollments?limit=5", "GET", undefined, {
+      authorization: "Bearer browser-chosen-token",
+      "x-agri-source": "administrator",
+      "x-agri-bff-key": "browser-chosen-key",
+      "x-agri-session": "browser-chosen-session",
+      "x-agri-actor": enrollmentIds.farmerId,
+    }),
+  );
+  expect(response.status).toBe(200);
+  const [, upstream] = fetcher.mock.calls[1];
+  expect(upstream.headers.authorization).toBe("Bearer server-only-jwt");
+  expect(upstream.headers["x-agri-source"]).toBe("field_officer");
+  expect(upstream.headers["x-agri-bff-key"]).toBe(internal);
+  expect(upstream.headers["x-agri-session"]).toBeUndefined();
+  expect(upstream.headers["x-agri-actor"]).toBeUndefined();
+  expect(JSON.stringify(fetcher.mock.calls)).not.toContain("browser-chosen");
+});
+
+it("keeps two officers' concurrent enrollment requests on separate server-issued tokens", async () => {
+  const secretA = "A".repeat(43),
+    secretB = "D".repeat(43);
+  const seen: Array<{ path: string; session?: string; auth?: string }> = [];
+  const fetcher = vi.fn(
+    async (url: URL, init: { headers: Record<string, string> }) => {
+      const path = url.pathname.replace("/pilot/", "");
+      seen.push({
+        path,
+        session: init.headers["x-agri-session"],
+        auth: init.headers.authorization,
+      });
+      // The slower officer's exchange resolves last to expose any shared state.
+      if (path === "auth/token") {
+        const slow = init.headers["x-agri-session"] === secretA;
+        await new Promise((resolve) => setTimeout(resolve, slow ? 20 : 1));
+        return Response.json({
+          accessToken: slow ? "token-for-officer-a" : "token-for-officer-b",
+        });
+      }
+      return Response.json({
+        accountId: enrollmentIds.farmerId,
+        items: [],
+        nextCursor: null,
+      });
+    },
+  );
+  const handler = createBffHandler(config, fetcher as never);
+  const asOfficer = (secret: string) =>
+    new Request(`${origin}/api/pilot/enrollments?limit=5`, {
+      headers: { origin, cookie: `__Host-agri_session=${secret}` },
+    });
+  // Sequentially, officer B must not inherit anything officer A's request produced.
+  expect((await handler(asOfficer(secretA))).status).toBe(200);
+  expect((await handler(asOfficer(secretB))).status).toBe(200);
+  const sequential = seen.filter((call) => call.path === "enrollments");
+  expect(sequential.map((call) => call.auth)).toEqual([
+    "Bearer token-for-officer-a",
+    "Bearer token-for-officer-b",
+  ]);
+  seen.length = 0;
+  const [a, b] = await Promise.all([
+    handler(asOfficer(secretA)),
+    handler(asOfficer(secretB)),
+  ]);
+  expect([a.status, b.status]).toEqual([200, 200]);
+  const apiCalls = seen.filter((call) => call.path === "enrollments");
+  expect(apiCalls.map((call) => call.auth).sort()).toEqual([
+    "Bearer token-for-officer-a",
+    "Bearer token-for-officer-b",
+  ]);
+  // The API call never carries the opaque session secret; only the token exchange does.
+  expect(apiCalls.every((call) => call.session === undefined)).toBe(true);
+  expect(
+    seen
+      .filter((call) => call.path === "auth/token")
+      .map((call) => call.session)
+      .sort(),
+  ).toEqual([secretA, secretB].sort());
+});

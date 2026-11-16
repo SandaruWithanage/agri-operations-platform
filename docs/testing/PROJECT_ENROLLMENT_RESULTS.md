@@ -13,6 +13,8 @@ Date: 16 November 2026. Scope: native migration 22, `ProjectEnrollmentService`, 
 
 - 2026-11-16 PRJ-04B (Officer A/B isolation): native two-officer matrix added to the migration suite and mutation-checked; see the handover task row. Full-suite and CI results are recorded in the PR.
 
+- 2026-11-16 PRJ-04C: BFF header/token isolation tests (sequential and concurrent officers, mutation-checked) and admin-shell wrong-account refusal tests added. Full-suite and CI results are recorded in the PR.
+
 ## Native scenarios exercised
 
 No grants → denied, empty lists, 404 detail · project scope without `farmer.read` denied · `farmer.read` without scope denied · explicit enroll v1 with journal+audit · detail/list (keyset, status filter) · exact replay (no second row/audit) · changed intent under same mutation → 23505 · replay under another source denied · duplicate current enrollment → 23505 · uncovered/foreign/unknown farmer or project → indistinguishable 42501 · inactive farmer/project → 55000 · revoked `farmer.read` and expired enrollment read hide rows immediately · withdrawal needs its own grant, source, current version (40001) · replay · already-withdrawn → 55000 · re-enrollment creates a new row · runtime INSERT/UPDATE/DELETE and journal/audit reads → 42501 · owner role cannot DELETE or change immutable columns · no signed actor → empty/denied · farmer geography change committed while enrollment waits on the farmer lock → re-authorized and denied · two concurrent enrollments → exactly one succeeds · failed command leaves no journal/audit residue · startup rejects direct write, audit read, owner membership and a revoked execute grant.
