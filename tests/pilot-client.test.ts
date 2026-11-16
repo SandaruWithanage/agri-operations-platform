@@ -119,3 +119,30 @@ it("preserves pending sync on account/device/session changes and separates confl
     ).rejects.toMatchObject({ status });
   }
 });
+
+it("returns only account/device metadata from a cancellable online session identity read", async () => {
+  const deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+    accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const network = vi.fn().mockResolvedValue(
+    Response.json({
+      accountId,
+      deviceId,
+      csrfToken: `${"B".repeat(43)}.${"C".repeat(43)}`,
+      accessToken: "private",
+      sessionId: "private",
+    }),
+  );
+  expect(await new PilotClient(network).sessionIdentity()).toEqual({
+    accountId,
+    deviceId,
+  });
+  const legacy = vi.fn().mockResolvedValue(
+    Response.json({
+      accountId,
+      csrfToken: `${"B".repeat(43)}.${"C".repeat(43)}`,
+    }),
+  );
+  await expect(new PilotClient(legacy).sessionIdentity()).rejects.toMatchObject(
+    { status: 401 },
+  );
+});

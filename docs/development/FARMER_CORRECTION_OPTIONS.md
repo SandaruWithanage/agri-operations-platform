@@ -2,7 +2,7 @@
 
 The online correction API now has a bounded location-choice read:
 `GET /pilot/farmers/correction-geographies?id=<farmer UUID>&limit=50&after=<optional geography UUID>`.
-The same-origin browser route is under `/api/pilot/`. `PilotClient.farmerCorrectionGeographies` validates and sanitizes replies, supports cancellation and requests 50 choices per page. This prepares the correction editor; it does not expose a correction form or add offline correction storage.
+The same-origin browser route is under `/api/pilot/`. `PilotClient.farmerCorrectionGeographies` validates and sanitizes replies, supports cancellation and requests 50 choices per page. The [bounded online correction editor](FARMER_CORRECTION_EDITOR.md) uses this read without adding offline correction storage.
 
 Both NestJS and PostgreSQL require current `farmer.read` and `farmer.correct` coverage on the source farmer. Only active configured destinations with both permissions are returned. Creation or verification authority alone grants no correction choices. The database function locks the source row while obtaining its version and geography, uses signed transaction actor context, and does not grant runtime access to the geography table. No business roles, assignments or organization values are seeded by this change.
 
@@ -14,4 +14,4 @@ Apply native migration 17 through the documented manifest runner before deployin
 
 Synthetic live PostgreSQL tests cover eligible/ineligible/inactive destinations, cursor pages, source and destination permission revocation, source version refresh, unknown records, invalid limits and missing actor context. They also prove the restricted runtime still cannot select the geography table directly. Transport tests cover strict queries, sanitized no-store replies, requested page limits, mismatched farmer IDs, malformed cursors/duplicate choices and cancellation.
 
-The existing farmer-detail capability response includes an optional `correct` hint, retaining compatibility with older replies. It is presentation information only. The editor still needs safe unsaved-change handling, version-conflict review, submission/retry/receipt recovery, bilingual presentation and query isolation tests. No additional farmer fields, device data, project enrollment or lifecycle transitions are implemented here. Registration and verification criteria remain provisional.
+The existing farmer-detail capability response includes an optional `correct` hint, retaining compatibility with older replies. It is presentation information only. The bounded online editor now provides tab-memory preservation/locking, version-conflict handling, immutable submission/retry, bilingual presentation and query isolation tests; durable crash/reload recovery remains unfinished. No additional farmer fields, device data, project enrollment or lifecycle transitions are implemented here. Registration and verification criteria remain provisional.

@@ -130,3 +130,23 @@ it("cancels receipt reads at the fetch boundary", async () => {
   await result;
   expect(signal.aborted).toBe(true);
 });
+
+it("binds an online retained correction to the expected approved device", async () => {
+  const deviceId = "38f0dbdd-85db-4c75-bced-066e8ea54b86";
+  for (const actualDevice of [undefined, input.farmerId]) {
+    const network = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ accountId, csrfToken, deviceId: actualDevice }),
+      );
+    await expect(
+      new PilotClient(network).changeFarmer(accountId, input, deviceId),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(network).toHaveBeenCalledOnce();
+  }
+  const network = vi.fn();
+  await expect(
+    new PilotClient(network).changeFarmer(accountId, input, "invalid"),
+  ).rejects.toMatchObject({ status: 400 });
+  expect(network).not.toHaveBeenCalled();
+});

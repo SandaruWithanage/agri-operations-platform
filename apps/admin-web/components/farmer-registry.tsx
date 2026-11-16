@@ -7,10 +7,19 @@ import {
 } from "@tanstack/react-query";
 import { createProtectedQueryClient } from "../lib/protected-query";
 import { LandDirectory, landWords } from "./land-directory";
+import { FarmerCorrection, type CorrectionDraft } from "./farmer-correction";
+import { correctionWords } from "./correction-words";
 import { FarmerCorrectionReceipt } from "./farmer-correction-receipt";
 import { FarmerVerification } from "./farmer-verification";
 import { FarmerHistory } from "./farmer-history";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import { sameFarmerFilters, type FarmerListFilters } from "@agri/validation";
 import { readReviewFilters, reviewFilterUrl } from "../lib/review-filters";
@@ -125,6 +134,13 @@ type ReadRequest = {
   filters?: FarmerListFilters;
 } & ({ kind: "list"; cursor?: string } | { kind: "detail"; id: string });
 let nextRegistryBoundary = 0;
+let nextCorrectionDraft = 0;
+type RegistryControl = {
+  id: number;
+  action: "refresh" | "clear" | "failure";
+  error?: unknown;
+  recordId?: string;
+};
 export function FarmerRegistry(props: { client?: PilotClient }) {
   return (
     <LocaleProvider initial="en">
@@ -142,13 +158,104 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     }),
     [client],
   );
+  const [language] = useLocale();
+  const [draft, setDraft] = useState<CorrectionDraft | null>(null);
+  const [lockEpoch, setLockEpoch] = useState(0);
+  const [saved, setSaved] = useState(false);
+  const [control, setControl] = useState<RegistryControl>({
+    id: 0,
+    action: "clear",
+  });
+  const draftLock = useRef<(() => void) | null>(null);
+  const lockDraft = useCallback(() => {
+    draftLock.current?.();
+    setLockEpoch((value) => value + 1);
+  }, []);
+  const registerLock = useCallback((lock: () => void) => {
+    draftLock.current = lock;
+    return () => {
+      if (draftLock.current === lock) draftLock.current = null;
+    };
+  }, []);
+  const failure = useCallback(
+    (error: unknown) =>
+      setControl((value) => ({ id: value.id + 1, action: "failure", error })),
+    [],
+  );
   return (
-    <QueryClientProvider key={boundary.id} client={boundary.queries}>
-      <RegistryView client={client} />
-    </QueryClientProvider>
+    <>
+      {saved && (
+        <p className="correction-saved" role="status">
+          {correctionWords[language].saved}
+        </p>
+      )}
+      <QueryClientProvider
+        key={`registry:${boundary.id}`}
+        client={boundary.queries}
+      >
+        <RegistryView
+          client={client}
+          correctionOpen={draft !== null}
+          onProtectedClear={lockDraft}
+          control={control}
+          onCorrect={(source, owner) => {
+            if (draft) return;
+            setSaved(false);
+            setDraft({
+              ...owner,
+              id: ++nextCorrectionDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+              source: {
+                id: source.id,
+                fullName: source.fullName,
+                geographyId: source.geographyId,
+                version: source.version,
+              },
+            });
+          }}
+        />
+      </QueryClientProvider>
+      {draft && (
+        <FarmerCorrection
+          key={`correction:${draft.id}`}
+          draft={draft}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setDraft(null)}
+          onSaved={() => {
+            setDraft(null);
+            setSaved(true);
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              recordId: draft.source.id,
+            }));
+          }}
+        />
+      )}
+    </>
   );
 }
-function RegistryView({ client }: { client: PilotClient }) {
+function RegistryView({
+  client,
+  correctionOpen,
+  onCorrect,
+  onProtectedClear,
+  control,
+}: {
+  client: PilotClient;
+  correctionOpen: boolean;
+  onCorrect: (source: FarmerSummary, owner: Context) => void;
+  onProtectedClear: () => void;
+  control: RegistryControl;
+}) {
   const [language, setLanguage] = useLocale();
   const copy = words[language];
   const landCopy = landWords[language];
@@ -241,6 +348,7 @@ function RegistryView({ client }: { client: PilotClient }) {
   const canViewAudit =
     data?.kind === "farmer-detail" && data.value.access?.viewAudit === true;
   function clear() {
+    onProtectedClear();
     sequence.current++;
     authRequest.current?.abort();
     authRequest.current = null;
@@ -267,6 +375,7 @@ function RegistryView({ client }: { client: PilotClient }) {
     history: Array<string | undefined> = [undefined],
     nextDomain: Domain = domain,
     nextFilters: FarmerListFilters = filters,
+    recordId?: string,
   ) {
     setDomain(nextDomain);
     setInvalidFilters(false);
@@ -293,13 +402,22 @@ function RegistryView({ client }: { client: PilotClient }) {
       if (!active.current || generation !== sequence.current) return;
       setContext({ accountId: current.accountId, deviceId: current.deviceId });
       setCursors(history);
-      setRequest({
-        kind: "list",
-        cursor,
-        epoch: generation,
-        domain: nextDomain,
-        ...(nextDomain === "farmers" ? { filters: nextFilters } : {}),
-      });
+      setRequest(
+        recordId
+          ? {
+              kind: "detail",
+              id: recordId,
+              epoch: generation,
+              domain: "farmers",
+            }
+          : {
+              kind: "list",
+              cursor,
+              epoch: generation,
+              domain: nextDomain,
+              ...(nextDomain === "farmers" ? { filters: nextFilters } : {}),
+            },
+      );
     } catch (error) {
       if (active.current && generation === sequence.current) report(error);
     } finally {
@@ -370,6 +488,16 @@ function RegistryView({ client }: { client: PilotClient }) {
   useEffect(() => {
     if (request && query.isError) report(query.error);
   }, [query.isError, query.error, request]);
+  useEffect(() => {
+    if (!control.id) return;
+    if (control.action === "refresh")
+      void load(undefined, [undefined], "farmers", filters, control.recordId);
+    else if (control.action === "failure") report(control.error);
+    else {
+      clear();
+      setBusy(false);
+    }
+  }, [control.id]);
   const status = (value: FarmerSummary["status"]) =>
     value === "pending-review"
       ? copy.pending
@@ -715,6 +843,19 @@ function RegistryView({ client }: { client: PilotClient }) {
                 onRefresh={() => detail(selected.id)}
                 onFailure={report}
               />
+            )}
+          {data?.kind === "farmer-detail" &&
+            data.value.access?.correct === true &&
+            context && (
+              <>
+                <button
+                  disabled={correctionOpen}
+                  onClick={() => onCorrect(selected, context)}
+                >
+                  {correctionWords[language].start}
+                </button>
+                {correctionOpen && <p>{correctionWords[language].occupied}</p>}
+              </>
             )}
           {data?.kind === "farmer-detail" &&
             data.value.access?.correct === true &&

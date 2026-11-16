@@ -122,6 +122,9 @@ try {
   });
   const context = await browser.newContext();
   let correctionAllowed = true;
+  let correctionCalls = 0,
+    correctionPayload = null,
+    correctionReceipt = null;
   let authorized = true,
     readable = true,
     auditable = true,
@@ -186,6 +189,39 @@ try {
         csrfToken: `${"B".repeat(43)}.${"C".repeat(43)}`,
       });
     if (path === "farmers/change") {
+      const change = route.request().postDataJSON();
+      if (change.action === "correction") {
+        if (!correctionAllowed || !readable)
+          return reply({ error: "Denied" }, 403);
+        correctionCalls++;
+        assert.equal(change.farmerId, ids[0]);
+        assert.equal(change.expectedVersion, 2);
+        assert.equal(change.fullName, "Synthetic browser corrected farmer");
+        assert.equal(change.geographyId, rows[0].geographyId);
+        assert.equal(
+          change.reason,
+          "Staff corrected the displayed farmer name and configured geography after review.",
+        );
+        if (!correctionPayload) {
+          correctionPayload = change;
+          rows[0].fullName = change.fullName;
+          rows[0].version = 3;
+          rows[0].status = "pending-review";
+          correctionReceipt = {
+            mutationId: change.mutationId,
+            version: 3,
+            occurredAt: "2026-11-16T02:00:00.123456Z",
+          };
+          return route.abort("failed");
+        }
+        assert.deepEqual(change, correctionPayload);
+        return reply({
+          farmerId: ids[0],
+          version: 3,
+          replayed: true,
+          duplicateRisk: false,
+        });
+      }
       if (!verifyAllowed) return reply({ error: "Denied" }, 403);
       const input = route.request().postDataJSON();
       assert.equal(input.action, "verification");
@@ -210,12 +246,28 @@ try {
         duplicateRisk: false,
       });
     }
+    if (path === "farmers/correction-geographies") {
+      if (!correctionAllowed || !readable)
+        return reply({ error: "Denied" }, 403);
+      const farmer = rows.find(
+        (value) => value.id === url.searchParams.get("id"),
+      );
+      if (!farmer) return reply({ error: "Not available" }, 404);
+      return reply({
+        accountId,
+        farmerId: farmer.id,
+        farmerVersion: farmer.version,
+        sourceGeographyId: farmer.geographyId,
+        geographies: [{ id: farmer.geographyId, name: farmer.geographyName }],
+        nextCursor: null,
+      });
+    }
     if (path === "farmers/correction-receipt") {
       if (!correctionAllowed) return reply({ error: "Denied" }, 403);
       return reply({
         accountId,
         farmerId: url.searchParams.get("id"),
-        receipt: {
+        receipt: correctionReceipt ?? {
           mutationId: ids[1],
           version: 3,
           occurredAt: "2026-11-16T00:00:00.123456Z",
@@ -621,6 +673,81 @@ try {
     .getByRole("button", { name: "Check session and refresh", exact: true })
     .click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  correctionAllowed = true;
+  await page.goto(origin);
+  await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Correct record", exact: true })
+    .click();
+  await page
+    .getByLabel("Corrected full name", { exact: true })
+    .fill("Synthetic browser corrected farmer");
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  try {
+    assert.equal(
+      await page.getByLabel("නිවැරදි කළ සම්පූර්ණ නම", { exact: true }).inputValue(),
+      "Synthetic browser corrected farmer",
+    );
+  } catch (error) {
+    console.error(
+      "Synthetic correction locale diagnostic",
+      await page.locator("body").innerText(),
+    );
+    throw error;
+  }
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reported land", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Correction draft locked", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Corrected full name", { exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    (await page.locator("body").innerText()).includes(
+      "Synthetic browser corrected farmer",
+    ),
+    false,
+  );
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen correction",
+      exact: true,
+    })
+    .click();
+  assert.equal(
+    await page.getByLabel("Corrected full name", { exact: true }).inputValue(),
+    "Synthetic browser corrected farmer",
+  );
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Save correction", exact: true })
+    .click();
+  await page.getByText(/The outcome is uncertain/).waitFor();
+  await page
+    .getByRole("button", { name: "Retry the same correction", exact: true })
+    .click();
+  await page
+    .getByRole("heading", {
+      name: "Synthetic browser corrected farmer",
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(correctionCalls, 2);
+  assert.equal(
+    await page.getByLabel("Corrected full name", { exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   authorized = false;
   await page
     .getByRole("button", {
@@ -663,7 +790,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, verification/lost-acknowledgement recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

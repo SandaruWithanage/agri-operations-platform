@@ -106,8 +106,13 @@ export class PilotClient {
       throw new PilotRequestError(503);
     }
   }
-  private async session() {
-    const value = (await this.request("auth/csrf")) as {
+  private async session(signal?: AbortSignal) {
+    const value = (await this.request(
+      "auth/csrf",
+      undefined,
+      undefined,
+      signal,
+    )) as {
       accountId?: unknown;
       csrfToken?: unknown;
       deviceId?: unknown;
@@ -127,6 +132,12 @@ export class PilotClient {
           ? value.deviceId
           : undefined,
     };
+  }
+  /** Fresh authenticated account/device only; never returns the CSRF/session secret. */
+  async sessionIdentity(signal?: AbortSignal) {
+    const session = await this.session(signal);
+    if (!session.deviceId) throw new PilotRequestError(401);
+    return { accountId: session.accountId, deviceId: session.deviceId };
   }
   async login(input: {
     loginName: string;
@@ -331,10 +342,20 @@ export class PilotClient {
       throw new PilotRequestError(503);
     return result.data;
   }
-  async changeFarmer(accountId: string, input: FarmerChange) {
+  async changeFarmer(
+    accountId: string,
+    input: FarmerChange,
+    expectedDeviceId?: string,
+  ) {
     const value = farmerChangeSchema.parse(input);
+    if (expectedDeviceId !== undefined && !uuid.test(expectedDeviceId))
+      throw new PilotRequestError(400);
     const session = await this.session();
-    if (session.accountId !== accountId) throw new PilotRequestError(401);
+    if (
+      session.accountId !== accountId ||
+      (expectedDeviceId !== undefined && session.deviceId !== expectedDeviceId)
+    )
+      throw new PilotRequestError(401);
     const result = farmerChangeResultSchema.safeParse(
       await this.request("farmers/change", value, session.csrfToken),
     );
