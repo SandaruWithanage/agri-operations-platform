@@ -108,6 +108,11 @@ export async function verifyProjectEnrollment({
         "INSERT INTO operations.project(id,organization_id,name,active,created_by) VALUES($1,$2,$3,$4,$5)",
         [projectId, org, name, active, actor.accountId],
       );
+    // Only `project` has an enabled policy; `otherProject` and the foreign project stay default-deny.
+    await owner.query(
+      "INSERT INTO operations.enrollment_policy(project_id,enabled,eligible_farmer_statuses) VALUES($1,true,ARRAY['draft','pending-review','verified'])",
+      [project],
+    );
     for (const [farmerId, geo, name, status] of [
       [farmer, geographyId, "Synthetic Enrollment Farmer", "pending-review"],
       [inactiveFarmer, geographyId, "Synthetic Inactive Farmer", "inactive"],
@@ -230,6 +235,25 @@ export async function verifyProjectEnrollment({
     await owner.query("UPDATE operations.project SET active=true WHERE id=$1", [
       project,
     ]);
+    // Default-deny policy: a disabled policy blocks enrollment; the catalog active flag never enables it.
+    await owner.query(
+      "UPDATE operations.enrollment_policy SET enabled=false WHERE project_id=$1",
+      [project],
+    );
+    await expect(enroll(create())).rejects.toMatchObject({ code: "55000" });
+    await owner.query(
+      "UPDATE operations.enrollment_policy SET enabled=true WHERE project_id=$1",
+      [project],
+    );
+    // The policy version used is recorded on each enrollment.
+    expect(
+      (
+        await owner.query(
+          "SELECT DISTINCT policy_version FROM operations.enrollment WHERE project_id=$1",
+          [project],
+        )
+      ).rows,
+    ).toEqual([{ policy_version: 1 }]);
 
     // 6. Each prerequisite is independently required and revocation takes effect immediately.
     await owner.query(
@@ -515,6 +539,10 @@ export async function verifyProjectEnrollment({
     );
     await owner.query(
       "DELETE FROM operations.enrollment WHERE project_id=ANY($1::uuid[])",
+      [[project, otherProject, foreignProject]],
+    );
+    await owner.query(
+      "DELETE FROM operations.enrollment_policy WHERE project_id=ANY($1::uuid[])",
       [[project, otherProject, foreignProject]],
     );
     await owner.query(

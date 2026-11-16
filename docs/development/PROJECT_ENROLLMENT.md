@@ -10,11 +10,11 @@ Migration **22**, `20261116_project_enrollment/up.sql`, adds the first explicit 
 
 ## Behaviour
 
-| Action                                  | Requirements                                                                                                                                                     | Result                                                                                                                                                  |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST pilot/enrollments/enroll`         | CSRF, trusted source header, `enrollment.read`+`enrollment.create` on the farmer's **current** geography, `farmer.read`; active project; farmer not inactive     | New row (`enrolled`, version 1), private idempotency journal and audit row in one transaction. Exact retry replays; changed payload → 409               |
-| `POST pilot/enrollments/withdraw`       | CSRF, source, `enrollment.read`+`enrollment.withdraw`, `farmer.read`, original `expectedVersion`                                                                 | `enrolled → withdrawn`, version +1, audit. Stale version → 409; already withdrawn → 409. A later enrollment is a **new row**                            |
-| `GET pilot/enrollments`, `…/detail?id=` | Rows filtered by RLS (`enrollment.read` scope **and** `farmer.read` per row); keyset `after`, `limit ≤ 100`, optional `projectId`/`farmerId`/`status`; no totals | IDs/status/version/timestamps only. Unreadable and missing records are indistinguishable (404); no farmer names, actor IDs or journal data are returned |
+| Action                                  | Requirements                                                                                                                                                                                                 | Result                                                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST pilot/enrollments/enroll`         | CSRF, trusted source header, `enrollment.read`+`enrollment.create` on the farmer's **current** geography, `farmer.read`; enabled project policy; active project; farmer status in the policy's eligible list | New row (`enrolled`, version 1), private idempotency journal and audit row in one transaction. Exact retry replays; changed payload → 409               |
+| `POST pilot/enrollments/withdraw`       | CSRF, source, `enrollment.read`+`enrollment.withdraw`, `farmer.read`, original `expectedVersion`                                                                                                             | `enrolled → withdrawn`, version +1, audit. Stale version → 409; already withdrawn → 409. A later enrollment is a **new row**                            |
+| `GET pilot/enrollments`, `…/detail?id=` | Rows filtered by RLS (`enrollment.read` scope **and** `farmer.read` per row); keyset `after`, `limit ≤ 100`, optional `projectId`/`farmerId`/`status`; no totals                                             | IDs/status/version/timestamps only. Unreadable and missing records are indistinguishable (404); no farmer names, actor IDs or journal data are returned |
 
 HTTP mapping: 403 denied, 409 duplicate/idempotency/version/provisional-eligibility conflict, 400 invalid input. SQLSTATE `55000` marks provisional state conflicts.
 
@@ -24,7 +24,8 @@ HTTP mapping: 403 denied, 409 duplicate/idempotency/version/provisional-eligibil
 
 ## Known limitations
 
-- DEC-04 unresolved: active-project and non-inactive-farmer requirements, re-enrollment as a new row and the absence of cycles/effective dates are engineering defaults, not client rules.
+- Enrollment is disabled for every project until a database-owner-provisioned `enrollment_policy` row enables it; no policy-administration API/UI exists yet (pending).
+- DEC-04 unresolved: active-project requirement, per-project eligible statuses, unrestricted coexistence, re-enrollment as a new row and the absence of cycles/effective dates are engineering defaults, not client rules.
 - No BFF/UI/offline/sync, bulk enrollment, role or scope administration, reports, exports or maps (RPT-01 must recheck scopes and must not count enrollments from privileged queries).
 - Per-row predicate evaluation takes a short organizational-unit lock; list capacity is bounded but unmeasured (OPS-05).
 - Evidence is synthetic PostgreSQL/PostGIS 16 locally and does not cover production, devices or client acceptance. See [results](../testing/PROJECT_ENROLLMENT_RESULTS.md).

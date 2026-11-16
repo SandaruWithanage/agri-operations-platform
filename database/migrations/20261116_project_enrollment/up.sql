@@ -79,6 +79,24 @@ GRANT SELECT(id,geography_id,status,version),UPDATE(id) ON farm.farmer TO agri_e
 CREATE POLICY farmer_enrollment_read ON farm.farmer FOR SELECT TO agri_enrollment_owner USING(authz.allowed(geography_id,'farmer.read',NULL));
 CREATE POLICY farmer_enrollment_lock ON farm.farmer FOR UPDATE TO agri_enrollment_owner USING(authz.allowed(geography_id,'farmer.read',NULL)) WITH CHECK(false);
 
+-- Default-deny: a project accepts enrollments only after an explicit policy row exists and is enabled.
+-- The catalog `active` flag is metadata and never enables enrollment. No client rule is encoded here (DEC-04 open);
+-- the eligible farmer statuses are data chosen per project. Policy administration has no API yet (pending task).
+CREATE TABLE operations.enrollment_policy (
+  project_id uuid PRIMARY KEY REFERENCES operations.project(id),
+  enabled boolean NOT NULL DEFAULT false,
+  eligible_farmer_statuses text[] NOT NULL CHECK(cardinality(eligible_farmer_statuses)>0
+    AND eligible_farmer_statuses <@ ARRAY['draft','pending-review','verified','inactive']::text[]),
+  version integer NOT NULL DEFAULT 1 CHECK(version>0 AND version<2147483647),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+REVOKE ALL ON operations.enrollment_policy FROM PUBLIC;
+ALTER TABLE operations.enrollment_policy ENABLE ROW LEVEL SECURITY;
+ALTER TABLE operations.enrollment_policy FORCE ROW LEVEL SECURITY;
+GRANT SELECT,UPDATE(version) ON operations.enrollment_policy TO agri_enrollment_owner;
+CREATE POLICY enrollment_policy_read ON operations.enrollment_policy FOR SELECT TO agri_enrollment_owner USING(true);
+CREATE POLICY enrollment_policy_lock ON operations.enrollment_policy FOR UPDATE TO agri_enrollment_owner USING(true) WITH CHECK(false);
+
 CREATE TABLE operations.enrollment (
   id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,
@@ -86,6 +104,7 @@ CREATE TABLE operations.enrollment (
   farmer_id uuid NOT NULL REFERENCES farm.farmer(id),
   status text NOT NULL CHECK(status IN ('enrolled','withdrawn')),
   version integer NOT NULL DEFAULT 1 CHECK(version>0 AND version<2147483647),
+  policy_version integer NOT NULL CHECK(policy_version>0),
   enrolled_by uuid NOT NULL DEFAULT authz.actor() REFERENCES authn.account(id),
   enrolled_source text NOT NULL CHECK(enrolled_source IN ('administrator','field_officer')),
   enrolled_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -148,7 +167,7 @@ CREATE TRIGGER enrollment_transition_guard BEFORE UPDATE ON operations.enrollmen
   FOR EACH ROW EXECUTE FUNCTION operations.enrollment_transition_guard();
 GRANT SELECT(id,organization_id,project_id,farmer_id,status,version,enrolled_at,withdrawn_at) ON operations.enrollment TO agri_project_runtime;
 GRANT SELECT ON operations.enrollment TO agri_enrollment_owner;
-GRANT INSERT(id,organization_id,project_id,farmer_id,status,enrolled_source) ON operations.enrollment TO agri_enrollment_owner;
+GRANT INSERT(id,organization_id,project_id,farmer_id,status,policy_version,enrolled_source) ON operations.enrollment TO agri_enrollment_owner;
 GRANT UPDATE(status,version,withdrawn_by,withdrawn_source,withdrawn_at) ON operations.enrollment TO agri_enrollment_owner;
 
 -- Private idempotency journal and audit; unreachable by any API login.
@@ -183,7 +202,7 @@ GRANT INSERT ON operations.enrollment_audit TO agri_enrollment_owner;
 CREATE FUNCTION operations.enroll_farmer(p_mutation uuid,p_enrollment uuid,p_project uuid,p_farmer uuid,p_source text)
 RETURNS TABLE(enrollment_id uuid,version integer,replayed boolean)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $$
-DECLARE actor uuid; organization uuid; signing_key bytea; payload bytea; prior record; farmer_row record; project_row record; denied constant text:='Enrollment denied';
+DECLARE actor uuid; organization uuid; signing_key bytea; payload bytea; prior record; farmer_row record; project_row record; policy_row record; denied constant text:='Enrollment denied';
 BEGIN
   actor:=authz.actor();
   IF actor IS NULL OR p_mutation IS NULL OR p_enrollment IS NULL OR p_project IS NULL OR p_farmer IS NULL
@@ -214,12 +233,14 @@ BEGIN
   IF authz.actor() IS DISTINCT FROM actor
      OR operations.enrollment_permitted(p_project,p_farmer,'enrollment.read',NULL) IS DISTINCT FROM true
      OR operations.enrollment_permitted(p_project,p_farmer,'enrollment.create',p_source) IS DISTINCT FROM true THEN RAISE EXCEPTION '%',denied USING ERRCODE='42501'; END IF;
-  -- Provisional eligibility (DEC-04 open): active project, non-inactive farmer. Not a client-approved rule.
+  -- Default-deny policy (DEC-04 open): an explicit enabled per-project policy decides eligibility; its version is stored.
+  SELECT pol.enabled,pol.eligible_farmer_statuses,pol.version INTO policy_row FROM operations.enrollment_policy pol WHERE pol.project_id=p_project FOR SHARE;
+  IF NOT FOUND OR policy_row.enabled IS DISTINCT FROM true THEN RAISE EXCEPTION 'Enrollment is not enabled for this project' USING ERRCODE='55000'; END IF;
   IF project_row.active IS DISTINCT FROM true THEN RAISE EXCEPTION 'Project is not accepting enrollments' USING ERRCODE='55000'; END IF;
-  IF farmer_row.status='inactive' THEN RAISE EXCEPTION 'Farmer is not eligible for enrollment' USING ERRCODE='55000'; END IF;
+  IF NOT (farmer_row.status = ANY(policy_row.eligible_farmer_statuses)) THEN RAISE EXCEPTION 'Farmer is not eligible for enrollment' USING ERRCODE='55000'; END IF;
   IF EXISTS(SELECT 1 FROM operations.enrollment e WHERE e.project_id=p_project AND e.farmer_id=p_farmer AND e.status='enrolled') THEN
     RAISE EXCEPTION 'Farmer is already enrolled' USING ERRCODE='23505'; END IF;
-  INSERT INTO operations.enrollment(id,organization_id,project_id,farmer_id,status,enrolled_source) VALUES(p_enrollment,organization,p_project,p_farmer,'enrolled',p_source);
+  INSERT INTO operations.enrollment(id,organization_id,project_id,farmer_id,status,policy_version,enrolled_source) VALUES(p_enrollment,organization,p_project,p_farmer,'enrolled',policy_row.version,p_source);
   INSERT INTO operations.enrollment_mutation(id,actor_id,kind,enrollment_id,payload_mac,result_version) VALUES(p_mutation,actor,'enroll',p_enrollment,payload,1);
   INSERT INTO operations.enrollment_audit(enrollment_id,project_id,farmer_id,actor_id,session_id,action,record_version,mutation_id)
     VALUES(p_enrollment,p_project,p_farmer,actor,current_setting('agri.session',true)::uuid,'enrollment.create',1,p_mutation);

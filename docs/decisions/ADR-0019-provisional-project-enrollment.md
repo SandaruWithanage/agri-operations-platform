@@ -9,7 +9,8 @@ Add an explicit, versioned `operations.enrollment` record linking one farmer to 
 Provisional rules, each isolated in one function so the client can change them without re-architecting:
 
 - A farmer may hold enrollments in several projects. At most one `enrolled` row exists per farmer and project (partial unique index). After withdrawal, a later enrollment is a **new row** (history is preserved, rows are never reopened).
-- Creating an enrollment requires an **active** project (catalog flag used as a conservative guard, not as authorization) and a farmer that is **not inactive**. No verified-farmer prerequisite, cycle, effective-date or approval step is invented.
+- **Default deny:** a project accepts enrollments only when an explicit `operations.enrollment_policy` row exists with `enabled=true`; the catalog `active` flag is metadata and never enables enrollment. The policy lists the farmer statuses eligible for that project (data, not code), and its version is stored on every enrollment. There is no policy-administration API yet, so policies are provisioned only by the database owner (pending task). A project must also be active (conservative guard, not authorization). Coexistence with other projects is currently unrestricted; whether it should be limited is part of DEC-04.
+- The earlier hardcoded "non-inactive farmer" default was replaced by the per-project eligible-status list after review against the owner's planning notes (project policy must default to denial; never invent client rules). No verified-farmer prerequisite, cycle, effective-date or approval step is invented.
 - Withdrawal is allowed regardless of project/farmer status, needs the original row version and moves only `enrolled → withdrawn`.
 - Cycles/seasons are deliberately absent; a nullable cycle reference can be added later without rewriting rows.
 
