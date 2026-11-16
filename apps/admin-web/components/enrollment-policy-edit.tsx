@@ -127,6 +127,10 @@ function PolicyForm({
     value.enabled !== initial.enabled ||
     value.eligibleFarmerStatuses.join() !==
       initial.eligibleFarmerStatuses.join();
+  // Register the working draft immediately so a first policy can be saved without touching a field.
+  useEffect(() => {
+    onDraftChange?.(value);
+  }, []);
   useEffect(() => {
     onDirtyChange?.(changed || frozen);
   }, [changed, frozen, onDirtyChange]);

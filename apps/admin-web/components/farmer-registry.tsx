@@ -5,6 +5,12 @@ import {
   type EnrollmentPolicyDraft,
 } from "./enrollment-policy-edit";
 import { enrollmentPolicyWords } from "./enrollment-policy-words";
+import { EnrollmentDirectory } from "./enrollment-directory";
+import {
+  EnrollmentWithdrawEditor,
+  type EnrollmentWithdrawDraft,
+} from "./enrollment-withdraw";
+import { enrollmentWithdrawWords, enrollmentWords } from "./enrollment-words";
 import { projectEditWords } from "./project-edit-words";
 import { ProjectDirectory } from "./project-directory";
 import { ProjectRegistrationEditor } from "./project-registration";
@@ -144,7 +150,7 @@ type Context = Pick<
   Awaited<ReturnType<PilotClient["context"]>>,
   "accountId" | "deviceId"
 >;
-type Domain = "farmers" | "land" | "projects";
+type Domain = "farmers" | "land" | "projects" | "enrollments";
 type ReadRequest = {
   epoch: number;
   domain: Domain;
@@ -190,6 +196,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [policyEdit, setPolicyEdit] = useState<EnrollmentPolicyDraft | null>(
     null,
   );
+  const [withdrawal, setWithdrawal] = useState<EnrollmentWithdrawDraft | null>(
+    null,
+  );
   const [saved, setSaved] = useState<
     | "correction"
     | "registration"
@@ -197,6 +206,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     | "project"
     | "project-edit"
     | "policy"
+    | "withdrawal"
     | null
   >(null);
   const [control, setControl] = useState<RegistryControl>({
@@ -233,7 +243,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
                   ? projectCreationWords[language].saved
                   : saved === "policy"
                     ? enrollmentPolicyWords[language].saved
-                    : projectEditWords[language].saved}
+                    : saved === "withdrawal"
+                      ? enrollmentWithdrawWords[language].saved
+                      : projectEditWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -248,8 +260,34 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             landDraft !== null ||
             projectDraft !== null ||
             projectEdit !== null ||
-            policyEdit !== null
+            policyEdit !== null ||
+            withdrawal !== null
           }
+          onWithdrawEnrollment={(source, owner) => {
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit ||
+              policyEdit ||
+              withdrawal
+            )
+              return;
+            setSaved(null);
+            setWithdrawal({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+              source: {
+                id: source.id,
+                projectId: source.projectId,
+                farmerId: source.farmerId,
+                version: source.version,
+              },
+            });
+          }}
           onEditPolicy={(source, owner) => {
             if (
               draft ||
@@ -257,7 +295,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -294,7 +333,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -319,7 +359,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -337,7 +378,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -355,7 +397,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -375,7 +418,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               landDraft ||
               projectDraft ||
               projectEdit ||
-              policyEdit
+              policyEdit ||
+              withdrawal
             )
               return;
             setSaved(null);
@@ -394,6 +438,31 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {withdrawal && (
+        <EnrollmentWithdrawEditor
+          key={`enrollment-withdraw:${withdrawal.id}`}
+          draft={withdrawal}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setWithdrawal(null)}
+          onSaved={(enrollmentId) => {
+            setWithdrawal(null);
+            setSaved("withdrawal");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "enrollments",
+              recordId: enrollmentId,
+            }));
+          }}
+        />
+      )}
       {policyEdit && (
         <EnrollmentPolicyEditor
           key={`enrollment-policy:${policyEdit.id}`}
@@ -548,6 +617,7 @@ function RegistryView({
   onRegisterProject,
   onEditProject,
   onEditPolicy,
+  onWithdrawEnrollment,
   onProtectedClear,
   control,
 }: {
@@ -559,6 +629,10 @@ function RegistryView({
   onRegisterProject: (owner: Context) => void;
   onEditProject: (source: ProjectEditDraft["source"], owner: Context) => void;
   onEditPolicy: (source: { id: string; name: string }, owner: Context) => void;
+  onWithdrawEnrollment: (
+    source: EnrollmentWithdrawDraft["source"],
+    owner: Context,
+  ) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -571,7 +645,9 @@ function RegistryView({
       ? copy
       : domain === "land"
         ? landCopy
-        : projectWords[language];
+        : domain === "enrollments"
+          ? enrollmentWords[language]
+          : projectWords[language];
   const [filters, setFilters] = useState<FarmerListFilters>({});
   const [invalidFilters, setInvalidFilters] = useState(false);
   const [context, setContext] = useState<Context | null>(null);
@@ -614,39 +690,49 @@ function RegistryView({
     queryFn: async ({ signal }) => {
       if (!context || !request) throw new Error("No active read context");
       const result =
-        request.domain === "projects"
+        request.domain === "enrollments"
           ? request.kind === "list"
             ? {
-                kind: "project-list" as const,
-                value: await client.projects(request.cursor, signal),
+                kind: "enrollment-list" as const,
+                value: await client.enrollments({}, request.cursor, signal),
               }
             : {
-                kind: "project-detail" as const,
-                value: await client.project(request.id, signal),
+                kind: "enrollment-detail" as const,
+                value: await client.enrollment(request.id, signal),
               }
-          : request.domain === "farmers"
+          : request.domain === "projects"
             ? request.kind === "list"
               ? {
-                  kind: "farmer-list" as const,
-                  value: await client.farmers(
-                    request.cursor,
-                    signal,
-                    request.filters,
-                  ),
+                  kind: "project-list" as const,
+                  value: await client.projects(request.cursor, signal),
                 }
               : {
-                  kind: "farmer-detail" as const,
-                  value: await client.farmer(request.id, signal),
+                  kind: "project-detail" as const,
+                  value: await client.project(request.id, signal),
                 }
-            : request.kind === "list"
-              ? {
-                  kind: "land-list" as const,
-                  value: await client.land(request.cursor, signal),
-                }
-              : {
-                  kind: "land-detail" as const,
-                  value: await client.landIdentification(request.id, signal),
-                };
+            : request.domain === "farmers"
+              ? request.kind === "list"
+                ? {
+                    kind: "farmer-list" as const,
+                    value: await client.farmers(
+                      request.cursor,
+                      signal,
+                      request.filters,
+                    ),
+                  }
+                : {
+                    kind: "farmer-detail" as const,
+                    value: await client.farmer(request.id, signal),
+                  }
+              : request.kind === "list"
+                ? {
+                    kind: "land-list" as const,
+                    value: await client.land(request.cursor, signal),
+                  }
+                : {
+                    kind: "land-detail" as const,
+                    value: await client.landIdentification(request.id, signal),
+                  };
       signal.throwIfAborted();
       if (
         result.kind === "farmer-list" &&
@@ -665,7 +751,8 @@ function RegistryView({
   const next =
     data?.kind === "farmer-list" ||
     data?.kind === "land-list" ||
-    data?.kind === "project-list"
+    data?.kind === "project-list" ||
+    data?.kind === "enrollment-list"
       ? data.value.nextCursor
       : null;
   const selected = data?.kind === "farmer-detail" ? data.value.farmer : null;
@@ -873,6 +960,13 @@ function RegistryView({
           onClick={() => void load(undefined, [undefined], "projects")}
         >
           {projectWords[language].tab}
+        </button>
+        <button
+          disabled={authBusy}
+          aria-pressed={domain === "enrollments"}
+          onClick={() => void load(undefined, [undefined], "enrollments")}
+        >
+          {enrollmentWords[language].tab}
         </button>
       </nav>
       <h1>{domainCopy.title}</h1>
@@ -1159,6 +1253,27 @@ function RegistryView({
           language={language}
           page={data?.kind === "land-list" ? data.value : undefined}
           detail={data?.kind === "land-detail" ? data.value : undefined}
+          canBack={cursors.length > 1}
+          onOpen={detail}
+          onClose={() => void load()}
+          onBack={() => {
+            const history = cursors.slice(0, -1);
+            void load(history[history.length - 1], history);
+          }}
+          onNext={() => {
+            if (next) void load(next, [...cursors, next]);
+          }}
+        />
+      )}
+      {domain === "enrollments" && context && !busy && (
+        <EnrollmentDirectory
+          language={language}
+          withdrawDisabled={correctionOpen}
+          onWithdraw={(source) => {
+            if (context) onWithdrawEnrollment(source, context);
+          }}
+          page={data?.kind === "enrollment-list" ? data.value : undefined}
+          detail={data?.kind === "enrollment-detail" ? data.value : undefined}
           canBack={cursors.length > 1}
           onOpen={detail}
           onClose={() => void load()}

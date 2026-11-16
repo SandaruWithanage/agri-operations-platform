@@ -155,3 +155,11 @@ it("renders Sinhala labels and fails closed when the account changes", async () 
     screen.queryByLabelText("Allow enrollment in this project"),
   ).toBeNull();
 });
+it("saves a first policy without touching any field once reviewed", async () => {
+  const f = setup();
+  render(<EnrollmentPolicyEditor {...f.props} />);
+  await screen.findByLabelText("Allow enrollment in this project");
+  await userEvent.click(review());
+  await userEvent.click(save());
+  await waitFor(() => expect(f.props.onSaved).toHaveBeenCalledWith(projectId));
+});
