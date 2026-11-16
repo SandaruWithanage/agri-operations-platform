@@ -71,6 +71,12 @@ const device = "38f0dbdd-85db-4c75-bced-066e8ea54b86";
 const session = "11b492ca-bcb4-4662-91d9-88789a80a0c2";
 let client: pg.Client;
 let committedForConcurrency = false;
+let projectUpgrade: {
+  before: unknown;
+  after: unknown;
+  version: number;
+  change: unknown;
+} | null = null;
 let upgradeResult: { revoked: boolean; audit: number } | null = null;
 let historyUpgradeResult: {
   before: unknown;
@@ -260,6 +266,54 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    const upgradeProject = randomUUID();
+    await client.query(
+      "INSERT INTO operations.project(id,organization_id,name,created_by) VALUES($1,$2,'Synthetic pre-edit project',$3)",
+      [upgradeProject, upgradeOrg, legacyAccount],
+    );
+    await client.query(
+      "INSERT INTO operations.audit(project_id,actor_id,session_id,action) VALUES($1,$2,$3,'project.create')",
+      [upgradeProject, legacyAccount, legacySession],
+    );
+    const snapshot = async () => ({
+      project: (
+        await client.query("SELECT * FROM operations.project WHERE id=$1", [
+          upgradeProject,
+        ])
+      ).rows,
+      audit: (
+        await client.query(
+          "SELECT id,project_id,actor_id,session_id,action,occurred_at FROM operations.audit WHERE project_id=$1",
+          [upgradeProject],
+        )
+      ).rows,
+    });
+    const projectBefore = await snapshot();
+    await client.query(
+      readFileSync(
+        "database/migrations/20261116_project_lifecycle/up.sql",
+        "utf8",
+      ),
+    );
+
+    const upgradeAudit = (
+      await client.query(
+        "SELECT record_version,change_id FROM operations.audit WHERE project_id=$1",
+        [upgradeProject],
+      )
+    ).rows[0];
+    projectUpgrade = {
+      before: projectBefore,
+      after: await snapshot(),
+      version: upgradeAudit.record_version,
+      change: upgradeAudit.change_id,
+    };
+    await client.query("DELETE FROM operations.audit WHERE project_id=$1", [
+      upgradeProject,
+    ]);
+    await client.query("DELETE FROM operations.project WHERE id=$1", [
+      upgradeProject,
+    ]);
     expect(await inspectUpgrade()).toEqual(historyUpgradeResult.after);
     await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
       upgradeFarmer,
@@ -354,6 +408,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     expect(historyUpgradeResult).not.toBeNull();
     expect(historyUpgradeResult!.after).toEqual(historyUpgradeResult!.before);
     expect(historyUpgradeResult!.indexed).toBe(true);
+  });
+  it("adds project editing without changing existing creation records or audit timestamps", () => {
+    expect(projectUpgrade).not.toBeNull();
+    expect(projectUpgrade!.after).toEqual(projectUpgrade!.before);
+    expect(projectUpgrade!.version).toBe(1);
+    expect(projectUpgrade!.change).toBeNull();
   });
   it("stores an opaque cookie digest with a bounded session and device ownership", async () => {
     await client.query(

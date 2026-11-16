@@ -132,6 +132,9 @@ try {
     version: 1,
     createdAt: "2026-11-16T00:00:00Z",
   }));
+  let projectEditable = false,
+    projectEditCalls = 0,
+    projectEditPayload = null;
   let projectReadable = true,
     projectRegistrationCalls = 0,
     projectRegistrationPayload = null;
@@ -191,6 +194,34 @@ try {
           },
         ],
       });
+    if (path === "projects/change") {
+      if (!projectReadable || !projectEditable)
+        return reply({ error: "Denied" }, 403);
+      const input = route.request().postDataJSON();
+      assert.deepEqual(Object.keys(input).sort(), [
+        "active",
+        "expectedVersion",
+        "mutationId",
+        "name",
+        "projectId",
+      ]);
+      assert.equal(input.projectId, ids[0]);
+      assert.equal(input.expectedVersion, 1);
+      assert.equal(input.name, "Synthetic browser edited project");
+      assert.equal(input.active, true);
+      projectEditCalls++;
+      if (!projectEditPayload) {
+        projectEditPayload = input;
+        Object.assign(projectRows[0], {
+          name: input.name,
+          active: input.active,
+          version: 2,
+        });
+        return route.abort("failed");
+      }
+      assert.deepEqual(input, projectEditPayload);
+      return reply({ projectId: input.projectId, version: 2, replayed: true });
+    }
     if (path === "projects/register") {
       const input = route.request().postDataJSON();
       assert.deepEqual(Object.keys(input).sort(), [
@@ -242,7 +273,7 @@ try {
         ? projectRows.find((row) => row.id === url.searchParams.get("id"))
         : null;
       return project
-        ? reply({ accountId, project })
+        ? reply({ accountId, project, access: { edit: projectEditable } })
         : reply({ error: "Not available" }, 404);
     }
     if (path === "land/geographies")
@@ -1103,6 +1134,87 @@ try {
   assert.equal(projectRegistrationCalls, 2);
   await page.getByRole("button", { name: "Farmers", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  projectReadable = true;
+  projectEditable = true;
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: `View project: ${projectRows[0].name}`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Edit catalog project", exact: true })
+    .click();
+  await page
+    .getByLabel("Edited project name", { exact: true })
+    .fill("Synthetic browser edited project");
+  await page.getByLabel("Enabled in catalog", { exact: true }).check();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  assert.equal(
+    await page
+      .getByLabel("සංස්කරණය කළ ව්‍යාපෘති නම", { exact: true })
+      .inputValue(),
+    "Synthetic browser edited project",
+  );
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Project edit locked", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Edited project name", { exact: true }).count(),
+    0,
+  );
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen project edit",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByLabel("I reviewed the project name and catalog flag.", {
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", { name: "Save project edit", exact: true })
+    .click();
+  await page
+    .getByText("Could not confirm the project edit. Retry the same request.", {
+      exact: true,
+    })
+    .waitFor();
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Project edit locked", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen project edit",
+      exact: true,
+    })
+    .click();
+  assert.equal(
+    await page.getByLabel("Edited project name", { exact: true }).isDisabled(),
+    true,
+  );
+  await page
+    .getByRole("button", { name: "Save project edit", exact: true })
+    .click();
+  await page
+    .getByRole("heading", {
+      name: "Synthetic browser edited project",
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(projectEditCalls, 2);
+  assert.equal(
+    await page.getByLabel("Edited project name", { exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   authorized = false;
   await page
     .getByRole("button", {
@@ -1145,7 +1257,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, project catalogs and administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, project catalog creation/versioned editing and administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

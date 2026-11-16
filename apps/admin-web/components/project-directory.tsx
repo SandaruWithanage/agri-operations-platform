@@ -1,5 +1,6 @@
 "use client";
 import type { ProjectPage, ProjectDetail } from "@agri/validation";
+import { projectEditWords } from "./project-edit-words";
 import { projectWords } from "./project-words";
 export function ProjectDirectory({
   language,
@@ -10,6 +11,8 @@ export function ProjectDirectory({
   onClose,
   onBack,
   onNext,
+  onEdit,
+  editDisabled = false,
 }: {
   language: "en" | "si";
   page?: ProjectPage;
@@ -19,6 +22,8 @@ export function ProjectDirectory({
   onClose: () => void;
   onBack: () => void;
   onNext: () => void;
+  onEdit?: (source: ProjectDetail["project"]) => void;
+  editDisabled?: boolean;
 }) {
   const copy = projectWords[language];
   return (
@@ -91,6 +96,14 @@ export function ProjectDirectory({
               </time>
             </dd>
           </dl>
+          {detail.access?.edit === true && onEdit && (
+            <button
+              disabled={editDisabled || detail.project.version >= 2147483647}
+              onClick={() => onEdit(detail.project)}
+            >
+              {projectEditWords[language].start}
+            </button>
+          )}
           <button onClick={onClose}>{copy.close}</button>
         </section>
       )}

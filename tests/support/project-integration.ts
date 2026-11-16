@@ -1,3 +1,4 @@
+import { verifyProjectEditing } from "./project-edit-integration";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import pg from "pg";
@@ -436,5 +437,16 @@ export async function verifyProjectCatalog({
     accountId: actor.accountId,
     items: [],
     nextCursor: null,
+  });
+  await verifyProjectEditing({
+    owner,
+    actor,
+    organizationId,
+    geographyId,
+    projectId: value.projectId,
+    runtimeUrl,
+    runtimeEnv,
+    browser,
+    fieldBrowser,
   });
 }

@@ -1,4 +1,5 @@
 import type {
+  ProjectChangeResult,
   ProjectPage,
   ProjectDetail,
   ProjectRegistrationResult,
@@ -116,7 +117,16 @@ export interface PilotRuntime {
     input: unknown,
   ): Promise<ProjectRegistrationResult>;
   listProjects(actor: VerifiedActor, input: unknown): Promise<ProjectPage>;
-  projectDetail(actor: VerifiedActor, input: unknown): Promise<ProjectDetail>;
+  projectDetail(
+    actor: VerifiedActor,
+    input: unknown,
+    source: RegistrationSource,
+  ): Promise<ProjectDetail>;
+  changeProject(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<ProjectChangeResult>;
   projectOrganizations(
     actor: VerifiedActor,
     source: RegistrationSource,

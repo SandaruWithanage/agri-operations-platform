@@ -33,6 +33,7 @@ export const projectPageSchema = z.object({
 export const projectDetailSchema = z.object({
   accountId: uuid,
   project: projectSummarySchema,
+  access: z.object({ edit: z.boolean() }).optional(),
 });
 export const projectRegistrationResultSchema = z.object({
   status: z.literal("synced"),
@@ -54,3 +55,20 @@ export type ProjectRegistrationResult = z.infer<
 export type ProjectOrganizations = z.infer<typeof projectOrganizationsSchema>;
 
 export const projectOrganizationsQuerySchema = z.object({}).strict();
+
+export const projectChangeSchema = z
+  .object({
+    mutationId: uuid,
+    projectId: uuid,
+    expectedVersion: z.number().int().min(1).max(2147483646),
+    name: z.string().trim().min(1).max(200),
+    active: z.boolean(),
+  })
+  .strict();
+export const projectChangeResultSchema = z.object({
+  projectId: uuid,
+  version: z.number().int().min(2).max(2147483647),
+  replayed: z.boolean(),
+});
+export type ProjectChange = z.infer<typeof projectChangeSchema>;
+export type ProjectChangeResult = z.infer<typeof projectChangeResultSchema>;

@@ -1,4 +1,6 @@
 import {
+  projectChangeSchema,
+  projectChangeResultSchema,
   projectRegistrationSchema,
   projectRegistrationResultSchema,
   projectQuerySchema,
@@ -185,6 +187,7 @@ export function createBffHandler(
             "farmers/change",
             "land/register",
             "projects/register",
+            "projects/change",
           ].includes(path)) ||
         (request.method === "GET" &&
           [
@@ -296,6 +299,27 @@ export function createBffHandler(
         signed.accessToken.length > 16384
       )
         throw new Failure(503);
+      if (path === "projects/change") {
+        const parsed = projectChangeSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = projectChangeResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (
+          !result.success ||
+          result.data.projectId !== parsed.data.projectId ||
+          result.data.version !== parsed.data.expectedVersion + 1
+        )
+          throw new Failure(503);
+        return reply(result.data);
+      }
       if (path === "projects/register") {
         const parsed = projectRegistrationSchema.safeParse(await body(request));
         if (!parsed.success) throw new Failure(400);

@@ -55,6 +55,7 @@ function fake(): PilotRuntime {
     landDetail: vi.fn(),
     landGeographies: vi.fn(),
     registerProject: vi.fn(),
+    changeProject: vi.fn(),
     listProjects: vi.fn(),
     projectDetail: vi.fn(),
     projectOrganizations: vi.fn(),

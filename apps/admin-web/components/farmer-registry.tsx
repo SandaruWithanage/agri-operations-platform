@@ -1,4 +1,6 @@
 "use client";
+import { ProjectEditor, type ProjectEditDraft } from "./project-edit";
+import { projectEditWords } from "./project-edit-words";
 import { ProjectDirectory } from "./project-directory";
 import { ProjectRegistrationEditor } from "./project-registration";
 import { projectWords, projectCreationWords } from "./project-words";
@@ -179,8 +181,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [projectDraft, setProjectDraft] = useState<RegistrationDraft | null>(
     null,
   );
+  const [projectEdit, setProjectEdit] = useState<ProjectEditDraft | null>(null);
   const [saved, setSaved] = useState<
-    "correction" | "registration" | "land" | "project" | null
+    "correction" | "registration" | "land" | "project" | "project-edit" | null
   >(null);
   const [control, setControl] = useState<RegistryControl>({
     id: 0,
@@ -212,7 +215,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               ? registrationWords[language].saved
               : saved === "land"
                 ? landRegistrationWords[language].saved
-                : projectCreationWords[language].saved}
+                : saved === "project"
+                  ? projectCreationWords[language].saved
+                  : projectEditWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -225,10 +230,42 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             draft !== null ||
             registration !== null ||
             landDraft !== null ||
-            projectDraft !== null
+            projectDraft !== null ||
+            projectEdit !== null
           }
+          onEditProject={(source, owner) => {
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit
+            )
+              return;
+            setSaved(null);
+            setProjectEdit({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+              source: {
+                id: source.id,
+                organizationId: source.organizationId,
+                name: source.name,
+                active: source.active,
+                version: source.version,
+              },
+            });
+          }}
           onRegisterProject={(owner) => {
-            if (draft || registration || landDraft || projectDraft) return;
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit
+            )
+              return;
             setSaved(null);
             setProjectDraft({
               ...owner,
@@ -238,7 +275,14 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             });
           }}
           onRegisterLand={(owner) => {
-            if (draft || registration || landDraft || projectDraft) return;
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit
+            )
+              return;
             setSaved(null);
             setLandDraft({
               ...owner,
@@ -248,7 +292,14 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             });
           }}
           onRegister={(owner) => {
-            if (draft || registration || landDraft || projectDraft) return;
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit
+            )
+              return;
             setSaved(null);
             setRegistration({
               ...owner,
@@ -260,7 +311,14 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           onProtectedClear={lockDraft}
           control={control}
           onCorrect={(source, owner) => {
-            if (draft || registration || landDraft || projectDraft) return;
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit
+            )
+              return;
             setSaved(null);
             setDraft({
               ...owner,
@@ -277,6 +335,31 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {projectEdit && (
+        <ProjectEditor
+          key={`project-edit:${projectEdit.id}`}
+          draft={projectEdit}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setProjectEdit(null)}
+          onSaved={(projectId) => {
+            setProjectEdit(null);
+            setSaved("project-edit");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "projects",
+              recordId: projectId,
+            }));
+          }}
+        />
+      )}
       {projectDraft && (
         <ProjectRegistrationEditor
           key={`project:${projectDraft.id}`}
@@ -379,6 +462,7 @@ function RegistryView({
   onRegister,
   onRegisterLand,
   onRegisterProject,
+  onEditProject,
   onProtectedClear,
   control,
 }: {
@@ -388,6 +472,7 @@ function RegistryView({
   onRegister: (owner: Context) => void;
   onRegisterLand: (owner: Context) => void;
   onRegisterProject: (owner: Context) => void;
+  onEditProject: (source: ProjectEditDraft["source"], owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -561,7 +646,7 @@ function RegistryView({
               kind: "detail",
               id: recordId,
               epoch: generation,
-              domain: "farmers",
+              domain: nextDomain,
             }
           : {
               kind: "list",
@@ -1003,6 +1088,10 @@ function RegistryView({
       {domain === "projects" && context && !busy && (
         <ProjectDirectory
           language={language}
+          editDisabled={correctionOpen}
+          onEdit={(source) => {
+            if (context) onEditProject(source, context);
+          }}
           page={data?.kind === "project-list" ? data.value : undefined}
           detail={data?.kind === "project-detail" ? data.value : undefined}
           canBack={cursors.length > 1}
