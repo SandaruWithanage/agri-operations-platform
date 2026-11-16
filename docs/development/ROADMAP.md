@@ -19,6 +19,7 @@ See the [living project handover](PROJECT_HANDOVER.md) for stable task IDs, impl
 3. Preserve [the implemented shared Zustand locale preference](SHARED_LOCALE.md), extending stores only for confirmed non-sensitive UI needs. Persist only approved non-sensitive preferences, keep local forms local, and use URLs for shareable filters where suitable.
 4. Keep Dexie as the durable pending-work owner. Online mutation status/invalidation must not create a second queue or replace stable entity/mutation IDs. Preserve encrypted legacy drafts, recovery versions and interruption/idempotency behavior during integration.
 5. Preserve [the implemented transient per-mutation Syncing presentation and tested interruption/retry behavior](FIELD_SESSION_SYNC.md). Extend land/GPS offline data only after the minimal-data/device policy is reviewed; selection of Dexie alone grants no additional storage permission.
+6. Offline enrollment follows [ADR 0021](../decisions/ADR-0021-offline-enrollment-design.md) (conditionally accepted direction, not Accepted): it is blocked on the owner's DEC-12 decision and security review, reuses the existing vault, adds no second database or sync engine, and ships behind a default-off flag as OFF-04A–D with independent evidence.
 
 ## Conditional Redis work at M3+
 
