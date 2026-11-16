@@ -11,7 +11,7 @@ This is an online backend foundation, not the completed farmer/land workflow or 
 
 ## Online directory
 
-The admin [Reported land directory](LAND_DIRECTORY.md) provides bilingual scoped list/detail reads. It shares the authenticated shell with the farmer registry and uses TanStack Query with cancellation and no persistent records. Capture/maps, relationships and offline land storage remain unfinished.
+The admin [Reported land directory](LAND_DIRECTORY.md) provides bilingual scoped list/detail reads. It shares the authenticated shell with the farmer registry and uses TanStack Query with cancellation and no persistent records. [Online capture](ONLINE_LAND_CAPTURE.md) is implemented with optional explicit GPS and tab-only drafts. Maps, relationships and offline land storage remain unfinished.
 
 ## Protocol
 
@@ -33,10 +33,10 @@ The admin [Reported land directory](LAND_DIRECTORY.md) provides bilingual scoped
 
 Point/label/area can be omitted or null. A point requires both longitude and latitude; accuracy is optional. Zero coordinates, zero reported accuracy and zero reported area are valid technical values. Organization, creator, time, source, farmer/owner/project IDs, polygons and survey verification are not accepted from callers. Values identify reported land only; the configured geography is not a claim that spatial containment was checked.
 
-Use the shared `PilotClient.registerLand`, `land`, `landIdentification` and `landGeographies` transport methods. Preserve entity/mutation IDs across uncertain network results. The registration response acknowledges `status: synced`, ID and replay status; it does not confer read permission. Future Next.js views must use the accepted TanStack Query ownership/cancellation rules, not a second custom record cache or a Zustand business-data store.
+Use the shared `PilotClient.registerLand`, `land`, `landIdentification` and `landGeographies` transport methods. Preserve entity/mutation IDs across uncertain network results. The registration response acknowledges `status: synced`, ID and replay status; it does not confer read permission. Online Next.js views use the accepted TanStack Query ownership/cancellation rules; do not introduce a second custom record cache or a Zustand business-data store.
 
 ## Offline and operational limits
 
-This API does not add land data to Dexie or the public HTTP cache. The existing minimal farmer-only offline policy remains in force. Farmer/land links, configurable relationships, capture/map/search UI, land correction and offline GPS reconciliation are separate tasks. Reported coordinates/accuracy/area are not legal boundary/title evidence or verified acreage.
+This API does not add land data to Dexie or the public HTTP cache. The existing minimal farmer-only offline policy remains in force. Farmer/land links, configurable relationships, map/search UI, land correction and offline GPS reconciliation are separate tasks. Reported coordinates/accuracy/area are not legal boundary/title evidence or verified acreage.
 
 Run integration checks only against a fresh disposable `agri_test` database with PostGIS, then run the normal lint/format/typecheck/tests/build/browser checks. CI uses the same pinned official image. This workspace's rootless VFS storage required a locally flattened copy of that official root filesystem/runtime configuration to fit; the local fixture ran PostgreSQL 17.11/PostGIS 3.5.7. Production/CI image definitions remain the official pinned image. That storage workaround is not a production deployment instruction.
