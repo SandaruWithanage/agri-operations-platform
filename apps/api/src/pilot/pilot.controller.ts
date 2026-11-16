@@ -311,6 +311,37 @@ export class PilotController {
       return runtime.withdrawEnrollment(actor, this.source(source), input);
     });
   }
+  @Post("enrollment-policies/set")
+  @HttpCode(200)
+  setEnrollmentPolicy(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.setEnrollmentPolicy(actor, this.source(source), input);
+    });
+  }
+  @Get("enrollment-policies")
+  enrollmentPolicy(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.enrollmentPolicy(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
   @Get("enrollments")
   listEnrollments(
     @Headers("x-agri-bff-key") key: string | undefined,

@@ -237,12 +237,12 @@ export async function verifyProjectEnrollment({
     ]);
     // Default-deny policy: a disabled policy blocks enrollment; the catalog active flag never enables it.
     await owner.query(
-      "UPDATE operations.enrollment_policy SET enabled=false WHERE project_id=$1",
+      "UPDATE operations.enrollment_policy SET enabled=false,version=version+1 WHERE project_id=$1",
       [project],
     );
     await expect(enroll(create())).rejects.toMatchObject({ code: "55000" });
     await owner.query(
-      "UPDATE operations.enrollment_policy SET enabled=true WHERE project_id=$1",
+      "UPDATE operations.enrollment_policy SET enabled=true,version=version+1 WHERE project_id=$1",
       [project],
     );
     // The policy version used is recorded on each enrollment.
