@@ -473,3 +473,130 @@ it("clears pending verification and ignores its late acknowledgement when the vi
   expect(api.farmer).toHaveBeenCalledOnce();
   expect(screen.queryByText(farmer.fullName)).toBeNull();
 });
+
+function correctionClient() {
+  const api = client();
+  vi.mocked(api.farmer).mockResolvedValue({
+    accountId,
+    farmer,
+    access: { viewAudit: false, correct: true },
+  });
+  vi.spyOn(api, "sessionIdentity").mockResolvedValue({ accountId, deviceId });
+  vi.spyOn(api, "farmerCorrectionGeographies").mockResolvedValue({
+    accountId,
+    farmerId: farmer.id,
+    farmerVersion: farmer.version,
+    sourceGeographyId: farmer.geographyId,
+    geographies: [{ id: farmer.geographyId, name: farmer.geographyName }],
+    nextCursor: null,
+  });
+  vi.spyOn(api, "changeFarmer").mockResolvedValue({
+    farmerId: farmer.id,
+    version: 2,
+    replayed: false,
+    duplicateRisk: false,
+  });
+  return api;
+}
+async function openCorrection() {
+  await screen.findByText(farmer.fullName);
+  await userEvent.click(
+    screen.getByRole("button", { name: `View record: ${farmer.fullName}` }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Correct record", exact: true }),
+  );
+  return screen.findByLabelText("Corrected full name");
+}
+it("loads the authoritative record after a permitted correction and clears the successful draft", async () => {
+  window.history.replaceState({}, "", "/");
+  const api = correctionClient();
+  vi.mocked(api.farmers)
+    .mockResolvedValueOnce({ accountId, items: [farmer], nextCursor: null })
+    .mockResolvedValue({
+      accountId,
+      items: [
+        { ...farmer, fullName: "Synthetic saved correction", version: 2 },
+      ],
+      nextCursor: null,
+    });
+  vi.mocked(api.changeFarmer).mockImplementation(async () => {
+    vi.mocked(api.farmer).mockResolvedValue({
+      accountId,
+      farmer: { ...farmer, fullName: "Synthetic saved correction", version: 2 },
+      access: { viewAudit: false, correct: true },
+    });
+    return {
+      farmerId: farmer.id,
+      version: 2,
+      replayed: false,
+      duplicateRisk: false,
+    };
+  });
+  render(<FarmerRegistry client={api} />);
+  const input = await openCorrection();
+  await userEvent.clear(input);
+  await userEvent.type(input, "Synthetic saved correction");
+  await userEvent.click(screen.getByRole("checkbox"));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Save correction", exact: true }),
+  );
+  await screen.findByText("Synthetic saved correction", { exact: true });
+  expect(screen.queryByLabelText("Corrected full name")).toBeNull();
+  expect(api.farmer).toHaveBeenCalledTimes(3);
+  expect(api.changeFarmer).toHaveBeenCalledWith(
+    accountId,
+    expect.objectContaining({
+      farmerId: farmer.id,
+      expectedVersion: 1,
+      fullName: "Synthetic saved correction",
+    }),
+    deviceId,
+  );
+});
+it("locks a working correction across domain navigation without silently replacing its values", async () => {
+  window.history.replaceState({}, "", "/");
+  const api = correctionClient();
+  vi.spyOn(api, "land").mockResolvedValue({
+    accountId,
+    items: [],
+    nextCursor: null,
+  });
+  render(<FarmerRegistry client={api} />);
+  const input = await openCorrection();
+  await userEvent.clear(input);
+  await userEvent.type(input, "Synthetic retained across navigation");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Reported land", exact: true }),
+  );
+  await screen.findByRole("heading", { name: "Correction draft locked" });
+  expect(screen.queryByLabelText("Corrected full name")).toBeNull();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Check access and reopen correction" }),
+  );
+  expect(
+    ((await screen.findByLabelText("Corrected full name")) as HTMLInputElement)
+      .value,
+  ).toBe("Synthetic retained across navigation");
+  expect(api.changeFarmer).not.toHaveBeenCalled();
+});
+it("retains an unsent correction behind a lock after logout", async () => {
+  window.history.replaceState({}, "", "/");
+  const api = correctionClient();
+  render(<FarmerRegistry client={api} />);
+  const input = await openCorrection();
+  await userEvent.clear(input);
+  await userEvent.type(input, "Synthetic retained after logout");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Sign out", exact: true }),
+  );
+  await screen.findByLabelText("Password");
+  expect(screen.queryByLabelText("Corrected full name")).toBeNull();
+  expect(
+    screen.getByRole("heading", { name: "Correction draft locked" }),
+  ).toBeTruthy();
+  expect(api.changeFarmer).not.toHaveBeenCalled();
+  const warning = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(warning);
+  expect(warning.defaultPrevented).toBe(true);
+});

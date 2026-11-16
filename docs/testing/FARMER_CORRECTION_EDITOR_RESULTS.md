@@ -1,0 +1,15 @@
+# Bounded online correction editor verification
+
+Verified on 16 November 2026 with Node 26.13.1, pnpm 12.21.0 and a disposable synthetic PostgreSQL 17/PostGIS 3.5 database.
+
+- Frozen installation, strict peers, repository structure, lint, formatting, TypeScript 7 checks and production builds passed.
+- All 317 tests across 45 files passed, including existing live NestJS/BFF/PostgreSQL source/destination permission, version, replay, audit rollback, session/device revocation and RLS tests.
+- Twelve context tests cover UUID cursor precision/underflow, account/device binding before domain reads, correction capability, mixed version/location responses, old-location coverage after a move, cancelled reads and account/record-bound replies.
+- Seventeen editor tests cover explicit review, locale preservation, no browser persistence, hidden-view/cache cleanup, original account/device reauthorization, revoked coverage, identical retry after a committed-but-lost acknowledgement, conflicts without rebase, late acknowledgements, explicit account-bound discard, inactivity, transport changes and React Strict Mode. The online correction and verification tests also prove there is no paused request automatically submitted on reconnect. A second lock cancels a pending discard-identity check and suppresses its late confirmation.
+- Parent integration covers authoritative detail reload after success, tab-value retention through domain navigation and logout. A fresh-workspace test reproduces the first-registry/first-draft counter case and verifies unique sibling key namespaces across language changes, with one main view retained.
+- SDK tests cover device-bound submissions, invalid/missing devices and metadata-only session identity reads without returning CSRF data.
+- Both production Chromium workflows passed. The admin flow changes locale and application section with an unsent correction, reopens it after fresh access checks, deliberately loses the first server acknowledgement, retries the identical request and fetches the updated farmer detail. It retains the existing assertions for no admin record persistence, scope/session cleanup, registry/land/audit and compiled module/error compatibility. The field flow retains encrypted offline restart/outbox/archive coverage.
+
+Production dependency audit has no known findings. The full tree still has the documented unpatched low development-only optional-checker advisory; no high/critical finding is ignored. The existing validation-only database build emits a no-output Turborepo warning and succeeds.
+
+This workflow retains online working values only in locked tab memory. Browser/OS crash or reload recovery of unsent corrections is not implemented; the notice, before-unload warning, explicit discard and separate server receipts are safeguards, not durable storage. Native-speaker, client business criteria, real-device and production operating acceptance remain unfinished. See [the implementation and recovery limits](../development/FARMER_CORRECTION_EDITOR.md).
