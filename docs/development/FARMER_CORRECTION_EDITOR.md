@@ -19,6 +19,8 @@ Changing application views, hiding, logout, transport changes, read denial or fi
 
 `PilotClient.sessionIdentity(signal)` returns only authenticated account/device metadata and consumes a cancellable session read; CSRF data is not returned to query consumers. The editor does not fetch registration reference catalogs just to establish identity. `changeFarmer` optionally binds a retained submission to its expected device before forwarding it; actual authorization still comes from the BFF/NestJS/PostgreSQL session.
 
+Online admin mutations use `networkMode: always` with retries disabled, so a request fails normally instead of pausing for automatic submission on reconnect. Durable field work remains in Dexie.
+
 The form has its own ephemeral protected query client, with account/device, draft source, view epoch and page identities. It cancels and clears reads on protected transitions, ignores late acknowledgements, and retains only local working values/immutable retry input. Registry and draft sibling keys have distinct prefixes so a fresh page's first registry and first draft cannot collide during locale changes. One open draft cannot be silently replaced by another.
 
 Source/version mismatches between current-record and choice responses fail closed. A moved record needs a separately eligible original-location page. An inactive original location may prevent that proof; values remain locked until access can be established or the original account/device explicitly discards them. The application does not invent broader history rights to recover the view.

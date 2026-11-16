@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 
-/** Ephemeral online reads only. Dexie remains the durable field outbox owner. */
+/** Ephemeral online server state only. Dexie remains the durable field outbox owner. */
 export function createProtectedQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -12,7 +12,7 @@ export function createProtectedQueryClient() {
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
       },
-      mutations: { retry: false, gcTime: 0 },
+      mutations: { retry: false, gcTime: 0, networkMode: "always" },
     },
   });
 }

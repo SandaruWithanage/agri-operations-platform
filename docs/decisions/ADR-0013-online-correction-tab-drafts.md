@@ -20,7 +20,7 @@ Explicit discard rechecks the original account/device and requires confirmation 
 
 ## Submission and recovery
 
-TanStack Query owns fetched server data and online mutation status. At submission, the reviewed values, original version, reason and a single generated mutation UUID are fixed. Frontend/device checks are safety bindings only; server sessions and database permissions remain authoritative. No optimistic record update, automatic retry, rebase or replacement mutation occurs.
+TanStack Query owns fetched server data and online mutation status. At submission, the reviewed values, original version, reason and a single generated mutation UUID are fixed. Frontend/device checks are safety bindings only; server sessions and database permissions remain authoritative. No optimistic record update, automatic retry, rebase or replacement mutation occurs. Protected online mutations explicitly use `networkMode: always`, so disconnects do not create a paused submission that resumes automatically on reconnect.
 
 A version conflict retains the fixed values for review and requires a fresh record before a new correction. An uncertain response may be retried with the identical submission, including after locking and reauthorization. If the first request already committed, the existing database journal returns the original acknowledgement once current permissions pass. A late acknowledgement cannot reopen a cleared view or erase its locked draft. Own correction receipts provide a separate bounded server-outcome check; a missing receipt never proves failure. Discarding a retained request cannot undo an accepted correction.
 

@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { StrictMode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import { onlineManager } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -97,6 +98,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  onlineManager.setOnline(true);
 });
 it("requires current access and explicit review, submits the original version and fixed locale-independent reason", async () => {
   const f = setup(),
@@ -436,4 +438,22 @@ it("cancels a pending discard identity check on a second lock and ignores its la
   expect(f.props.onDiscard).not.toHaveBeenCalled();
   expect(f.props.onFailure).not.toHaveBeenCalled();
   expect(unload().defaultPrevented).toBe(true);
+});
+
+it("does not pause and automatically submit an online correction when connectivity returns", async () => {
+  const f = setup();
+  vi.mocked(f.client.changeFarmer).mockRejectedValue(
+    new PilotRequestError(503),
+  );
+  render(<FarmerCorrection {...f.props} />);
+  await changeName();
+  act(() => onlineManager.setOnline(false));
+  await submit();
+  await screen.findByRole("alert");
+  expect(f.client.changeFarmer).toHaveBeenCalledOnce();
+  await act(async () => onlineManager.setOnline(true));
+  expect(f.client.changeFarmer).toHaveBeenCalledOnce();
+  expect(
+    screen.getByRole("button", { name: "Retry the same correction" }),
+  ).toBeTruthy();
 });

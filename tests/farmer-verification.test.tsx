@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { createProtectedQueryClient } from "../apps/admin-web/lib/protected-query";
 import {
   FarmerVerification,
@@ -57,6 +57,7 @@ async function confirm() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  onlineManager.setOnline(true);
 });
 it("requires explicit review and submits the current version with a fixed reason without persistence", async () => {
   const props = setup(),
@@ -216,4 +217,23 @@ it("keeps an uncertain intent fixed when language changes", async () => {
   expect(vi.mocked(props.client.changeFarmer).mock.calls[0]).toEqual(
     vi.mocked(props.client.changeFarmer).mock.calls[1],
   );
+});
+
+it("requires explicit verification retry instead of a paused online mutation resuming on reconnect", async () => {
+  const props = setup();
+  vi.mocked(props.client.changeFarmer).mockRejectedValue(
+    new PilotRequestError(503),
+  );
+  view(props);
+  onlineManager.setOnline(false);
+  await confirm();
+  await screen.findByRole("alert");
+  expect(props.client.changeFarmer).toHaveBeenCalledOnce();
+  onlineManager.setOnline(true);
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Retry the same verification" }),
+    ).toBeTruthy(),
+  );
+  expect(props.client.changeFarmer).toHaveBeenCalledOnce();
 });
