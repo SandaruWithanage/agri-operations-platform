@@ -1,5 +1,10 @@
 "use client";
 import { ProjectEditor, type ProjectEditDraft } from "./project-edit";
+import {
+  EnrollmentPolicyEditor,
+  type EnrollmentPolicyDraft,
+} from "./enrollment-policy-edit";
+import { enrollmentPolicyWords } from "./enrollment-policy-words";
 import { projectEditWords } from "./project-edit-words";
 import { ProjectDirectory } from "./project-directory";
 import { ProjectRegistrationEditor } from "./project-registration";
@@ -182,8 +187,17 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     null,
   );
   const [projectEdit, setProjectEdit] = useState<ProjectEditDraft | null>(null);
+  const [policyEdit, setPolicyEdit] = useState<EnrollmentPolicyDraft | null>(
+    null,
+  );
   const [saved, setSaved] = useState<
-    "correction" | "registration" | "land" | "project" | "project-edit" | null
+    | "correction"
+    | "registration"
+    | "land"
+    | "project"
+    | "project-edit"
+    | "policy"
+    | null
   >(null);
   const [control, setControl] = useState<RegistryControl>({
     id: 0,
@@ -217,7 +231,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
                 ? landRegistrationWords[language].saved
                 : saved === "project"
                   ? projectCreationWords[language].saved
-                  : projectEditWords[language].saved}
+                  : saved === "policy"
+                    ? enrollmentPolicyWords[language].saved
+                    : projectEditWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -231,15 +247,54 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             registration !== null ||
             landDraft !== null ||
             projectDraft !== null ||
-            projectEdit !== null
+            projectEdit !== null ||
+            policyEdit !== null
           }
+          onEditPolicy={(source, owner) => {
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit ||
+              policyEdit
+            )
+              return;
+            setSaved(null);
+            // The reviewed version comes from a fresh, authorized policy read; failures fail closed.
+            void client
+              .enrollmentPolicy(source.id)
+              .then((detail) => {
+                if (
+                  detail.accountId !== owner.accountId ||
+                  detail.projectId !== source.id
+                )
+                  throw new PilotRequestError(401);
+                setPolicyEdit({
+                  ...owner,
+                  id: ++nextOnlineDraft,
+                  client,
+                  boundaryEpoch: lockEpoch,
+                  source: {
+                    projectId: source.id,
+                    projectName: source.name,
+                    version: detail.policy?.version ?? 0,
+                    enabled: detail.policy?.enabled ?? false,
+                    eligibleFarmerStatuses: detail.policy
+                      ?.eligibleFarmerStatuses ?? ["verified"],
+                  },
+                });
+              })
+              .catch(failure);
+          }}
           onEditProject={(source, owner) => {
             if (
               draft ||
               registration ||
               landDraft ||
               projectDraft ||
-              projectEdit
+              projectEdit ||
+              policyEdit
             )
               return;
             setSaved(null);
@@ -263,7 +318,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               registration ||
               landDraft ||
               projectDraft ||
-              projectEdit
+              projectEdit ||
+              policyEdit
             )
               return;
             setSaved(null);
@@ -280,7 +336,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               registration ||
               landDraft ||
               projectDraft ||
-              projectEdit
+              projectEdit ||
+              policyEdit
             )
               return;
             setSaved(null);
@@ -297,7 +354,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               registration ||
               landDraft ||
               projectDraft ||
-              projectEdit
+              projectEdit ||
+              policyEdit
             )
               return;
             setSaved(null);
@@ -316,7 +374,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               registration ||
               landDraft ||
               projectDraft ||
-              projectEdit
+              projectEdit ||
+              policyEdit
             )
               return;
             setSaved(null);
@@ -335,6 +394,31 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {policyEdit && (
+        <EnrollmentPolicyEditor
+          key={`enrollment-policy:${policyEdit.id}`}
+          draft={policyEdit}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setPolicyEdit(null)}
+          onSaved={(projectId) => {
+            setPolicyEdit(null);
+            setSaved("policy");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "projects",
+              recordId: projectId,
+            }));
+          }}
+        />
+      )}
       {projectEdit && (
         <ProjectEditor
           key={`project-edit:${projectEdit.id}`}
@@ -463,6 +547,7 @@ function RegistryView({
   onRegisterLand,
   onRegisterProject,
   onEditProject,
+  onEditPolicy,
   onProtectedClear,
   control,
 }: {
@@ -473,6 +558,7 @@ function RegistryView({
   onRegisterLand: (owner: Context) => void;
   onRegisterProject: (owner: Context) => void;
   onEditProject: (source: ProjectEditDraft["source"], owner: Context) => void;
+  onEditPolicy: (source: { id: string; name: string }, owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -1089,6 +1175,9 @@ function RegistryView({
         <ProjectDirectory
           language={language}
           editDisabled={correctionOpen}
+          onPolicy={(source) => {
+            if (context) onEditPolicy(source, context);
+          }}
           onEdit={(source) => {
             if (context) onEditProject(source, context);
           }}
