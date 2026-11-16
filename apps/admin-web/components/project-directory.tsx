@@ -2,6 +2,7 @@
 import type { ProjectPage, ProjectDetail } from "@agri/validation";
 import { projectEditWords } from "./project-edit-words";
 import { projectWords } from "./project-words";
+import { enrollmentPolicyWords } from "./enrollment-policy-words";
 export function ProjectDirectory({
   language,
   page,
@@ -13,6 +14,7 @@ export function ProjectDirectory({
   onNext,
   onEdit,
   editDisabled = false,
+  onPolicy,
 }: {
   language: "en" | "si";
   page?: ProjectPage;
@@ -24,6 +26,7 @@ export function ProjectDirectory({
   onNext: () => void;
   onEdit?: (source: ProjectDetail["project"]) => void;
   editDisabled?: boolean;
+  onPolicy?: (source: ProjectDetail["project"]) => void;
 }) {
   const copy = projectWords[language];
   return (
@@ -102,6 +105,14 @@ export function ProjectDirectory({
               onClick={() => onEdit(detail.project)}
             >
               {projectEditWords[language].start}
+            </button>
+          )}
+          {onPolicy && (
+            <button
+              disabled={editDisabled}
+              onClick={() => onPolicy(detail.project)}
+            >
+              {enrollmentPolicyWords[language].start}
             </button>
           )}
           <button onClick={onClose}>{copy.close}</button>

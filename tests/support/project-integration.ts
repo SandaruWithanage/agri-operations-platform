@@ -2,6 +2,7 @@ import { verifyProjectScopes } from "./project-scope-integration";
 import { verifyProjectEditing } from "./project-edit-integration";
 import { verifyProjectEnrollment } from "./project-enrollment-integration";
 import { verifyEnrollmentPolicyAdmin } from "./enrollment-policy-integration";
+import { verifyEnrollmentIsolation } from "./enrollment-isolation-integration";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import pg from "pg";
@@ -471,6 +472,12 @@ export async function verifyProjectCatalog({
     runtimeEnv,
   });
   await verifyEnrollmentPolicyAdmin({
+    owner,
+    actor,
+    organizationId,
+    runtimeUrl,
+  });
+  await verifyEnrollmentIsolation({
     owner,
     actor,
     organizationId,
