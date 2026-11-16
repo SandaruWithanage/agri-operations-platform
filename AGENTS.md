@@ -4,6 +4,10 @@ Read `docs/PROJECT_CONTEXT.md` before proposing changes. Treat it as the current
 
 Read the [Accepted data/state/cache ADR](docs/architecture/decisions/ADR-data-state-cache.md) before selecting or changing persistence, server-state, UI-state, caching or offline approaches. PostgreSQL/PostGIS owns authoritative data; TanStack Query owns online server state; Zustand is limited to shared UI state; Dexie owns durable offline work; Redis remains optional for confirmed needs. Follow the [roadmap](docs/development/ROADMAP.md), distinguish accepted architecture from implemented behavior, and propose an updated ADR for conflicts rather than silently replacing this decision.
 
+## Living delivery documentation
+
+Read [PROJECT_HANDOVER.md](docs/development/PROJECT_HANDOVER.md) before continuing implementation. It is the central delivered/pending task register and continuation plan. Whenever a pending task is completed or materially changes, update its stable task ID/status, what/how implemented, evidence, remaining limitations/dependencies and completion-log entry in the same PR. Split partially completed tasks rather than marking a whole domain done. Synchronize delivery status, roadmap, open decisions and setup/domain guides when their claims change. Preserve historical results as dated evidence. Keep engineering completion, CI results, provisional business rules and external client/device/production acceptance distinct; do not calculate completion percentages from tests, files or PR counts.
+
 ## Working principles
 
 - Work in a feature branch. Never push directly to `main`, force-push, or merge without approval.
