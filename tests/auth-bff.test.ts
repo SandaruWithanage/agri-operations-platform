@@ -660,3 +660,203 @@ it("binds review queue filters to sanitized responses and rejects silently unfil
     expect(call).toHaveBeenCalledTimes(1);
   }
 });
+
+const enrollmentIds = {
+  mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+  enrollmentId: "06149451-4004-4a23-a5a2-64a24e485a82",
+  projectId: "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9",
+  farmerId: "a50456eb-af66-41f0-8c38-0bc827249cd2",
+};
+const bffSession = () =>
+  vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }));
+
+it("binds enrollment commands to the request, requires CSRF and strips extra fields", async () => {
+  const missing = vi.fn();
+  expect(
+    (
+      await createBffHandler(
+        config,
+        missing,
+      )(
+        req("enrollments/enroll", "POST", enrollmentIds, {
+          "x-csrf-token": "",
+        }),
+      )
+    ).status,
+  ).toBe(403);
+  expect(missing).not.toHaveBeenCalled();
+  const strict = bffSession();
+  expect(
+    (
+      await createBffHandler(
+        config,
+        strict,
+      )(req("enrollments/enroll", "POST", { ...enrollmentIds, actorId: "x" }))
+    ).status,
+  ).toBe(400);
+  const ok = bffSession().mockResolvedValueOnce(
+    Response.json({
+      enrollmentId: enrollmentIds.enrollmentId,
+      version: 1,
+      replayed: false,
+      secret: "extra",
+    }),
+  );
+  const response = await createBffHandler(
+    config,
+    ok,
+  )(req("enrollments/enroll", "POST", enrollmentIds));
+  expect(await response.json()).toEqual({
+    enrollmentId: enrollmentIds.enrollmentId,
+    version: 1,
+    replayed: false,
+  });
+  expect(ok.mock.calls[1][1].headers["x-agri-source"]).toBe("field_officer");
+  // A mismatched or wrongly versioned acknowledgment fails closed.
+  for (const bad of [
+    { enrollmentId: enrollmentIds.projectId, version: 1, replayed: false },
+    { enrollmentId: enrollmentIds.enrollmentId, version: 2, replayed: false },
+  ]) {
+    const mismatch = bffSession().mockResolvedValueOnce(Response.json(bad));
+    expect(
+      (
+        await createBffHandler(
+          config,
+          mismatch,
+        )(req("enrollments/enroll", "POST", enrollmentIds))
+      ).status,
+    ).toBe(503);
+  }
+  const withdrawn = bffSession().mockResolvedValueOnce(
+    Response.json({
+      enrollmentId: enrollmentIds.enrollmentId,
+      version: 5,
+      replayed: false,
+    }),
+  );
+  expect(
+    (
+      await createBffHandler(
+        config,
+        withdrawn,
+      )(
+        req("enrollments/withdraw", "POST", {
+          mutationId: enrollmentIds.mutationId,
+          enrollmentId: enrollmentIds.enrollmentId,
+          expectedVersion: 1,
+        }),
+      )
+    ).status,
+  ).toBe(503);
+});
+
+it("validates policy administration requests and read bindings", async () => {
+  const input = {
+    mutationId: enrollmentIds.mutationId,
+    projectId: enrollmentIds.projectId,
+    expectedVersion: 0,
+    enabled: true,
+    eligibleFarmerStatuses: ["verified"],
+  };
+  for (const bad of [
+    { eligibleFarmerStatuses: [] },
+    { eligibleFarmerStatuses: ["verified", "verified"] },
+    { source: "administrator" },
+  ])
+    expect(
+      (
+        await createBffHandler(
+          config,
+          bffSession(),
+        )(req("enrollment-policies/set", "POST", { ...input, ...bad }))
+      ).status,
+    ).toBe(400);
+  const ok = bffSession().mockResolvedValueOnce(
+    Response.json({ projectId: input.projectId, version: 1, replayed: false }),
+  );
+  expect(
+    (
+      await createBffHandler(
+        config,
+        ok,
+      )(req("enrollment-policies/set", "POST", input))
+    ).status,
+  ).toBe(200);
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const other = bffSession().mockResolvedValueOnce(
+    Response.json({
+      accountId,
+      projectId: enrollmentIds.farmerId,
+      policy: null,
+    }),
+  );
+  expect(
+    (
+      await createBffHandler(
+        config,
+        other,
+      )(req(`enrollment-policies?projectId=${input.projectId}`))
+    ).status,
+  ).toBe(503);
+  const good = bffSession().mockResolvedValueOnce(
+    Response.json({ accountId, projectId: input.projectId, policy: null }),
+  );
+  expect(
+    await (
+      await createBffHandler(
+        config,
+        good,
+      )(req(`enrollment-policies?projectId=${input.projectId}`))
+    ).json(),
+  ).toEqual({ accountId, projectId: input.projectId, policy: null });
+  // Unknown query keys and duplicates never reach the API.
+  const unknown = bffSession();
+  expect(
+    (
+      await createBffHandler(
+        config,
+        unknown,
+      )(req(`enrollment-policies?projectId=${input.projectId}&role=admin`))
+    ).status,
+  ).toBe(400);
+});
+
+it("rejects enrollment list rows that violate the requested filters or limit", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const row = {
+    id: enrollmentIds.enrollmentId,
+    organizationId: enrollmentIds.mutationId,
+    projectId: enrollmentIds.projectId,
+    farmerId: enrollmentIds.farmerId,
+    status: "enrolled",
+    version: 1,
+    enrolledAt: "2026-11-16T00:00:00.000Z",
+    withdrawnAt: null,
+  };
+  const page = (items: unknown[]) =>
+    bffSession().mockResolvedValueOnce(
+      Response.json({ accountId, items, nextCursor: null }),
+    );
+  const query = `enrollments?limit=5&projectId=${enrollmentIds.projectId}`;
+  expect(
+    await (await createBffHandler(config, page([row]))(req(query))).json(),
+  ).toMatchObject({ items: [row] });
+  expect(
+    (
+      await createBffHandler(
+        config,
+        page([{ ...row, projectId: enrollmentIds.farmerId }]),
+      )(req(query))
+    ).status,
+  ).toBe(503);
+  expect(
+    (
+      await createBffHandler(
+        config,
+        page([row, row]),
+      )(req(`enrollments?limit=1`))
+    ).status,
+  ).toBe(503);
+});

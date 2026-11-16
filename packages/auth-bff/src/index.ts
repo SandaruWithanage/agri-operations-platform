@@ -10,6 +10,19 @@ import {
   projectOrganizationsSchema,
 } from "@agri/validation";
 import {
+  enrollmentCreateSchema,
+  enrollmentWithdrawSchema,
+  enrollmentResultSchema,
+  enrollmentQuerySchema,
+  enrollmentDetailQuerySchema,
+  enrollmentPageSchema,
+  enrollmentDetailSchema,
+  enrollmentPolicySetSchema,
+  enrollmentPolicyQuerySchema,
+  enrollmentPolicyResultSchema,
+  enrollmentPolicyDetailSchema,
+} from "@agri/validation";
+import {
   landRegistrationSchema,
   landRegistrationResultSchema,
   landQuerySchema,
@@ -188,6 +201,9 @@ export function createBffHandler(
             "land/register",
             "projects/register",
             "projects/change",
+            "enrollments/enroll",
+            "enrollments/withdraw",
+            "enrollment-policies/set",
           ].includes(path)) ||
         (request.method === "GET" &&
           [
@@ -204,6 +220,9 @@ export function createBffHandler(
             "projects",
             "projects/detail",
             "projects/organizations",
+            "enrollments",
+            "enrollments/detail",
+            "enrollment-policies",
             "registration/geographies",
             "registration/context",
           ].includes(path));
@@ -384,6 +403,135 @@ export function createBffHandler(
             result.data.project.id !== query.data.id)
         )
           throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "enrollments/enroll") {
+        const parsed = enrollmentCreateSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = enrollmentResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (
+          !result.success ||
+          result.data.enrollmentId !== parsed.data.enrollmentId ||
+          result.data.version !== 1
+        )
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "enrollments/withdraw") {
+        const parsed = enrollmentWithdrawSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = enrollmentResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (
+          !result.success ||
+          result.data.enrollmentId !== parsed.data.enrollmentId ||
+          result.data.version !== parsed.data.expectedVersion + 1
+        )
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "enrollment-policies/set") {
+        const parsed = enrollmentPolicySetSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = enrollmentPolicyResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (
+          !result.success ||
+          result.data.projectId !== parsed.data.projectId ||
+          result.data.version !== parsed.data.expectedVersion + 1
+        )
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (
+        path === "enrollments" ||
+        path === "enrollments/detail" ||
+        path === "enrollment-policies"
+      ) {
+        const params = new URL(request.url).searchParams;
+        if (new Set(params.keys()).size !== Array.from(params.keys()).length)
+          throw new Failure(400);
+        const schemas = {
+          enrollments: [enrollmentQuerySchema, enrollmentPageSchema],
+          "enrollments/detail": [
+            enrollmentDetailQuerySchema,
+            enrollmentDetailSchema,
+          ],
+          "enrollment-policies": [
+            enrollmentPolicyQuerySchema,
+            enrollmentPolicyDetailSchema,
+          ],
+        } as const;
+        const [querySchema, resultSchema] = schemas[path];
+        const query = querySchema.safeParse(Object.fromEntries(params));
+        if (!query.success) throw new Failure(400);
+        const filters = query.data as Record<string, unknown>;
+        const safeParams = new URLSearchParams(
+          Object.entries(filters).map(([key, value]) => [key, String(value)]),
+        );
+        const result = resultSchema.safeParse(
+          await call(
+            `${path}?${safeParams}`,
+            "GET",
+            undefined,
+            signed.accessToken,
+          ),
+        );
+        if (!result.success) throw new Failure(503);
+        const data = result.data as Record<string, unknown>;
+        if (path === "enrollments") {
+          const items = data.items as Array<Record<string, unknown>>;
+          if (
+            items.length > (filters.limit as number) ||
+            items.some(
+              (row) =>
+                (filters.projectId !== undefined &&
+                  row.projectId !== filters.projectId) ||
+                (filters.farmerId !== undefined &&
+                  row.farmerId !== filters.farmerId) ||
+                (filters.status !== undefined && row.status !== filters.status),
+            )
+          )
+            throw new Failure(503);
+        }
+        if (
+          path === "enrollments/detail" &&
+          (data.enrollment as { id?: unknown }).id !== filters.id
+        )
+          throw new Failure(503);
+        if (path === "enrollment-policies") {
+          const policy = data.policy as { projectId?: unknown } | null;
+          if (
+            data.projectId !== filters.projectId ||
+            (policy !== null && policy.projectId !== filters.projectId)
+          )
+            throw new Failure(503);
+        }
         return reply(result.data);
       }
       if (path === "land/register") {
