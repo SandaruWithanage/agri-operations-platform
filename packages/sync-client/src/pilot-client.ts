@@ -1,4 +1,13 @@
 import {
+  projectRegistrationSchema,
+  projectRegistrationResultSchema,
+  projectQuerySchema,
+  projectDetailSchema,
+  projectPageSchema,
+  projectOrganizationsSchema,
+  type ProjectRegistration,
+} from "@agri/validation";
+import {
   landRegistrationSchema,
   landRegistrationResultSchema,
   landPageSchema,
@@ -213,6 +222,68 @@ export class PilotClient {
     });
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
+  }
+  async registerProject(
+    accountId: string,
+    input: ProjectRegistration,
+    expectedDeviceId: string,
+  ) {
+    if (!uuid.test(expectedDeviceId)) throw new PilotRequestError(400);
+    const value = projectRegistrationSchema.parse(input),
+      session = await this.session();
+    if (
+      session.accountId !== accountId ||
+      session.deviceId !== expectedDeviceId.toLowerCase()
+    )
+      throw new PilotRequestError(401);
+    const result = projectRegistrationResultSchema.safeParse(
+      await this.request("projects/register", value, session.csrfToken),
+    );
+    if (!result.success || result.data.projectId !== value.projectId)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async projects(after?: string, signal?: AbortSignal) {
+    const query = projectQuerySchema.safeParse({
+      limit: 25,
+      ...(after ? { after } : {}),
+    });
+    if (!query.success) throw new PilotRequestError(400);
+    const params = new URLSearchParams(
+      Object.entries(query.data).map(([key, value]) => [key, String(value)]),
+    );
+    const result = projectPageSchema.safeParse(
+      await this.request(`projects?${params}`, undefined, undefined, signal),
+    );
+    if (!result.success || result.data.items.length > query.data.limit)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async project(id: string, signal?: AbortSignal) {
+    if (!uuid.test(id)) throw new PilotRequestError(400);
+    const result = projectDetailSchema.safeParse(
+      await this.request(
+        `projects/detail?id=${encodeURIComponent(id)}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success || result.data.project.id !== id.toLowerCase())
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async projectOrganizations(signal?: AbortSignal) {
+    const result = projectOrganizationsSchema.safeParse(
+      await this.request(
+        "projects/organizations",
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success) throw new PilotRequestError(503);
+    return result.data;
   }
   async registerLand(
     accountId: string,

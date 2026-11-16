@@ -1,3 +1,4 @@
+import { projectOrganizationsQuerySchema } from "@agri/validation";
 import {
   Body,
   Query,
@@ -193,6 +194,65 @@ export class PilotController {
       const actor = await runtime.authenticate(this.bearer(token));
       runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
       return runtime.changeFarmer(actor, input);
+    });
+  }
+  @Post("projects/register")
+  @HttpCode(200)
+  registerProject(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.registerProject(actor, this.source(source), input);
+    });
+  }
+  @Get("projects")
+  listProjects(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.listProjects(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
+  @Get("projects/detail")
+  projectDetail(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.projectDetail(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
+  @Get("projects/organizations")
+  projectOrganizations(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      projectOrganizationsQuerySchema.parse(query);
+      return runtime.projectOrganizations(actor, this.source(source));
     });
   }
   @Post("land/register")

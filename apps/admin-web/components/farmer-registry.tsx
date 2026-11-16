@@ -1,4 +1,7 @@
 "use client";
+import { ProjectDirectory } from "./project-directory";
+import { ProjectRegistrationEditor } from "./project-registration";
+import { projectWords, projectCreationWords } from "./project-words";
 import { LocaleProvider, useLocale } from "@agri/i18n/react";
 import {
   QueryClientProvider,
@@ -134,7 +137,7 @@ type Context = Pick<
   Awaited<ReturnType<PilotClient["context"]>>,
   "accountId" | "deviceId"
 >;
-type Domain = "farmers" | "land";
+type Domain = "farmers" | "land" | "projects";
 type ReadRequest = {
   epoch: number;
   domain: Domain;
@@ -173,8 +176,11 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     null,
   );
   const [landDraft, setLandDraft] = useState<RegistrationDraft | null>(null);
+  const [projectDraft, setProjectDraft] = useState<RegistrationDraft | null>(
+    null,
+  );
   const [saved, setSaved] = useState<
-    "correction" | "registration" | "land" | null
+    "correction" | "registration" | "land" | "project" | null
   >(null);
   const [control, setControl] = useState<RegistryControl>({
     id: 0,
@@ -204,7 +210,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             ? correctionWords[language].saved
             : saved === "registration"
               ? registrationWords[language].saved
-              : landRegistrationWords[language].saved}
+              : saved === "land"
+                ? landRegistrationWords[language].saved
+                : projectCreationWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -214,10 +222,23 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
         <RegistryView
           client={client}
           correctionOpen={
-            draft !== null || registration !== null || landDraft !== null
+            draft !== null ||
+            registration !== null ||
+            landDraft !== null ||
+            projectDraft !== null
           }
+          onRegisterProject={(owner) => {
+            if (draft || registration || landDraft || projectDraft) return;
+            setSaved(null);
+            setProjectDraft({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+            });
+          }}
           onRegisterLand={(owner) => {
-            if (draft || registration || landDraft) return;
+            if (draft || registration || landDraft || projectDraft) return;
             setSaved(null);
             setLandDraft({
               ...owner,
@@ -227,7 +248,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             });
           }}
           onRegister={(owner) => {
-            if (draft || registration || landDraft) return;
+            if (draft || registration || landDraft || projectDraft) return;
             setSaved(null);
             setRegistration({
               ...owner,
@@ -239,7 +260,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           onProtectedClear={lockDraft}
           control={control}
           onCorrect={(source, owner) => {
-            if (draft || registration || landDraft) return;
+            if (draft || registration || landDraft || projectDraft) return;
             setSaved(null);
             setDraft({
               ...owner,
@@ -256,6 +277,30 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {projectDraft && (
+        <ProjectRegistrationEditor
+          key={`project:${projectDraft.id}`}
+          draft={projectDraft}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setProjectDraft(null)}
+          onSaved={() => {
+            setProjectDraft(null);
+            setSaved("project");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "projects",
+            }));
+          }}
+        />
+      )}
       {landDraft && (
         <LandRegistrationEditor
           key={`land:${landDraft.id}`}
@@ -333,6 +378,7 @@ function RegistryView({
   onCorrect,
   onRegister,
   onRegisterLand,
+  onRegisterProject,
   onProtectedClear,
   control,
 }: {
@@ -341,6 +387,7 @@ function RegistryView({
   onCorrect: (source: FarmerSummary, owner: Context) => void;
   onRegister: (owner: Context) => void;
   onRegisterLand: (owner: Context) => void;
+  onRegisterProject: (owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -348,6 +395,12 @@ function RegistryView({
   const copy = words[language];
   const landCopy = landWords[language];
   const [domain, setDomain] = useState<Domain>("farmers");
+  const domainCopy =
+    domain === "farmers"
+      ? copy
+      : domain === "land"
+        ? landCopy
+        : projectWords[language];
   const [filters, setFilters] = useState<FarmerListFilters>({});
   const [invalidFilters, setInvalidFilters] = useState(false);
   const [context, setContext] = useState<Context | null>(null);
@@ -390,29 +443,39 @@ function RegistryView({
     queryFn: async ({ signal }) => {
       if (!context || !request) throw new Error("No active read context");
       const result =
-        request.domain === "farmers"
+        request.domain === "projects"
           ? request.kind === "list"
             ? {
-                kind: "farmer-list" as const,
-                value: await client.farmers(
-                  request.cursor,
-                  signal,
-                  request.filters,
-                ),
+                kind: "project-list" as const,
+                value: await client.projects(request.cursor, signal),
               }
             : {
-                kind: "farmer-detail" as const,
-                value: await client.farmer(request.id, signal),
+                kind: "project-detail" as const,
+                value: await client.project(request.id, signal),
               }
-          : request.kind === "list"
-            ? {
-                kind: "land-list" as const,
-                value: await client.land(request.cursor, signal),
-              }
-            : {
-                kind: "land-detail" as const,
-                value: await client.landIdentification(request.id, signal),
-              };
+          : request.domain === "farmers"
+            ? request.kind === "list"
+              ? {
+                  kind: "farmer-list" as const,
+                  value: await client.farmers(
+                    request.cursor,
+                    signal,
+                    request.filters,
+                  ),
+                }
+              : {
+                  kind: "farmer-detail" as const,
+                  value: await client.farmer(request.id, signal),
+                }
+            : request.kind === "list"
+              ? {
+                  kind: "land-list" as const,
+                  value: await client.land(request.cursor, signal),
+                }
+              : {
+                  kind: "land-detail" as const,
+                  value: await client.landIdentification(request.id, signal),
+                };
       signal.throwIfAborted();
       if (
         result.kind === "farmer-list" &&
@@ -429,7 +492,9 @@ function RegistryView({
     request !== null && !busy && !query.isError ? query.data : undefined;
   const rows = data?.kind === "farmer-list" ? data.value.items : [];
   const next =
-    data?.kind === "farmer-list" || data?.kind === "land-list"
+    data?.kind === "farmer-list" ||
+    data?.kind === "land-list" ||
+    data?.kind === "project-list"
       ? data.value.nextCursor
       : null;
   const selected = data?.kind === "farmer-detail" ? data.value.farmer : null;
@@ -631,8 +696,15 @@ function RegistryView({
         >
           {landCopy.tab}
         </button>
+        <button
+          disabled={authBusy}
+          aria-pressed={domain === "projects"}
+          onClick={() => void load(undefined, [undefined], "projects")}
+        >
+          {projectWords[language].tab}
+        </button>
       </nav>
-      <h1>{domain === "farmers" ? copy.title : landCopy.title}</h1>
+      <h1>{domainCopy.title}</h1>
       {invalidFilters && (
         <div role="alert">
           <p>{copy.invalidFilters}</p>
@@ -643,12 +715,10 @@ function RegistryView({
           </button>
         </div>
       )}
-      <p>{domain === "farmers" ? copy.scope : landCopy.scope}</p>
+      <p>{domainCopy.scope}</p>
       {message && (
         <p role={message === "prepared" ? "status" : "alert"}>
-          {message === "missing" && domain === "land"
-            ? landCopy.missing
-            : copy[message]}
+          {message === "missing" ? domainCopy.missing : copy[message]}
         </p>
       )}
       {busy && <p role="status">{copy.busy}</p>}
@@ -656,6 +726,14 @@ function RegistryView({
         <button disabled={busy} onClick={() => void load()}>
           {copy.refresh}
         </button>
+        {context && domain === "projects" && (
+          <button
+            disabled={busy || correctionOpen}
+            onClick={() => onRegisterProject(context)}
+          >
+            {projectCreationWords[language].start}
+          </button>
+        )}
         {context && domain === "land" && (
           <button
             disabled={busy || correctionOpen}
@@ -910,6 +988,23 @@ function RegistryView({
           language={language}
           page={data?.kind === "land-list" ? data.value : undefined}
           detail={data?.kind === "land-detail" ? data.value : undefined}
+          canBack={cursors.length > 1}
+          onOpen={detail}
+          onClose={() => void load()}
+          onBack={() => {
+            const history = cursors.slice(0, -1);
+            void load(history[history.length - 1], history);
+          }}
+          onNext={() => {
+            if (next) void load(next, [...cursors, next]);
+          }}
+        />
+      )}
+      {domain === "projects" && context && !busy && (
+        <ProjectDirectory
+          language={language}
+          page={data?.kind === "project-list" ? data.value : undefined}
+          detail={data?.kind === "project-detail" ? data.value : undefined}
           canBack={cursors.length > 1}
           onOpen={detail}
           onClose={() => void load()}

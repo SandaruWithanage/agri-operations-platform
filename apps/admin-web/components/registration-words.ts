@@ -2,7 +2,7 @@ export const registrationWords = {
   en: {
     start: "Register a farmer",
     title: "Online administrator registration",
-    occupied: "Finish or discard the open registration or correction first.",
+    occupied: "Finish or discard the open draft first.",
     notice:
       "This online form keeps values only in this tab. Reloading, closing or a browser crash can lose them. Keep the tab open until the server confirms the result. Use the field workspace for durable offline registration.",
     rules:
@@ -28,7 +28,7 @@ export const registrationWords = {
   si: {
     start: "ගොවියෙකු ලියාපදිංචි කරන්න",
     title: "මාර්ගගත පරිපාලක ලියාපදිංචිය",
-    occupied: "පළමුව විවෘත ලියාපදිංචිය හෝ නිවැරදි කිරීම අවසන් කරන්න හෝ අත්හරින්න.",
+    occupied: "පළමුව විවෘත කෙටුම්පත අවසන් කරන්න හෝ අත්හරින්න.",
     notice:
       "මෙම මාර්ගගත පෝරමයේ අගයන් මෙම ටැබයේ පමණක් පවතී. නැවත පූරණය කිරීමෙන්, වැසීමෙන් හෝ බ්‍රවුසරය බිඳවැටීමෙන් ඒවා නැති විය හැක. සේවාදායකය ප්‍රතිඵලය තහවුරු කරන තුරු ටැබය විවෘතව තබන්න. නොබැඳි ලියාපදිංචිය සඳහා ක්ෂේත්‍ර වැඩබිම භාවිත කරන්න.",
     rules:

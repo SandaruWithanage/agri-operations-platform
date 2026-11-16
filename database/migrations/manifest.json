@@ -16,5 +16,6 @@
   "20261115_zzzzzzzzzzz_verification_receipt/up.sql",
   "20261115_zzzzzzzzzzzz_farmer_review_queue/up.sql",
   "20261115_zzzzzzzzzzzzz_correction_geographies/up.sql",
-  "20261116_farmer_correction_receipt/up.sql"
+  "20261116_farmer_correction_receipt/up.sql",
+  "20261116_project_catalog/up.sql"
 ]

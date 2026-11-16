@@ -68,7 +68,7 @@ const words = {
 } as const;
 export function LandRegistrationForm({
   language,
-  geographies,
+  options: geographies,
   enabled = true,
   freezeAfterAttempt = false,
   initiallyFrozen = false,

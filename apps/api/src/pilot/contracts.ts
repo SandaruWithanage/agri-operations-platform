@@ -1,4 +1,8 @@
 import type {
+  ProjectPage,
+  ProjectDetail,
+  ProjectRegistrationResult,
+  ProjectOrganizations,
   LandPage,
   LandDetail,
   LandRegistrationResult,
@@ -106,6 +110,17 @@ export interface PilotRuntime {
     actor: VerifiedActor,
     source: RegistrationSource,
   ): Promise<LandGeographies>;
+  registerProject(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<ProjectRegistrationResult>;
+  listProjects(actor: VerifiedActor, input: unknown): Promise<ProjectPage>;
+  projectDetail(actor: VerifiedActor, input: unknown): Promise<ProjectDetail>;
+  projectOrganizations(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+  ): Promise<ProjectOrganizations>;
   readiness(): Promise<boolean>;
   close(): Promise<void>;
 }

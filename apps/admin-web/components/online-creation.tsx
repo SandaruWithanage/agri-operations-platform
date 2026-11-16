@@ -21,10 +21,10 @@ export type CreationDraft = CreationOwner & {
   client: PilotClient;
   boundaryEpoch: number;
 };
-type Geography = { id: string; label: string };
+type CreationOption = { id: string; label: string };
 export type CreationFormProps<W, R> = {
   language: "en" | "si";
-  geographies: readonly Geography[];
+  options: readonly CreationOption[];
   enabled?: boolean;
   freezeAfterAttempt?: boolean;
   initiallyFrozen?: boolean;
@@ -33,14 +33,15 @@ export type CreationFormProps<W, R> = {
   onDirtyChange?: (dirty: boolean) => void;
   onSave: (value: R) => Promise<void>;
 };
-export type CreationAdapter<W extends { geographyId: string }, R, S> = {
+export type CreationAdapter<W, R, S> = {
   key: string;
+  selection: (working: W) => string | undefined;
   read: (
     client: PilotClient,
     owner: CreationOwner,
-    geography: string | undefined,
+    selection: string | undefined,
     signal: AbortSignal,
-  ) => Promise<{ geographies: Geography[] }>;
+  ) => Promise<{ options: CreationOption[] }>;
   request: (record: R) => S;
   submit: (
     client: PilotClient,
@@ -64,7 +65,7 @@ export type CreationCopy = {
   discarding: string;
   discardConfirm: string;
 };
-type Props<W extends { geographyId: string }, R, S> = {
+type Props<W, R, S> = {
   adapter: CreationAdapter<W, R, S>;
   copy: CreationCopy;
   draft: CreationDraft;
@@ -79,9 +80,7 @@ type Props<W extends { geographyId: string }, R, S> = {
   idleMs?: number;
 };
 /** Tab-only draft boundaries; domain adapters retain their own strict protocol and permissions. */
-export function OnlineCreation<W extends { geographyId: string }, R, S>(
-  props: Props<W, R, S>,
-) {
+export function OnlineCreation<W, R, S>(props: Props<W, R, S>) {
   const [queries] = useState(createProtectedQueryClient);
   return (
     <QueryClientProvider client={queries}>
@@ -89,7 +88,7 @@ export function OnlineCreation<W extends { geographyId: string }, R, S>(
     </QueryClientProvider>
   );
 }
-function RegistrationForm<W extends { geographyId: string }, R, S>({
+function RegistrationForm<W, R, S>({
   adapter,
   copy,
   draft,
@@ -166,7 +165,7 @@ function RegistrationForm<W extends { geographyId: string }, R, S>({
       const value = await adapter.read(
         draft.client,
         draft,
-        working.current?.geographyId || undefined,
+        working.current ? adapter.selection(working.current) : undefined,
         signal,
       );
       signal.throwIfAborted();
@@ -331,9 +330,11 @@ function RegistrationForm<W extends { geographyId: string }, R, S>({
       saving ||
       discarding ||
       conflict ||
-      !working.current?.geographyId ||
-      !data.geographies.some(
-        (value) => value.id === working.current?.geographyId,
+      !working.current ||
+      !adapter.selection(working.current) ||
+      !data.options.some(
+        (value) =>
+          working.current && value.id === adapter.selection(working.current),
       )
     )
       throw new PilotRequestError(403);
@@ -374,7 +375,7 @@ function RegistrationForm<W extends { geographyId: string }, R, S>({
               <Form
                 key={epoch}
                 language={language}
-                geographies={data.geographies}
+                options={data.options}
                 enabled={!discarding && !conflict}
                 freezeAfterAttempt
                 initiallyFrozen={frozen}

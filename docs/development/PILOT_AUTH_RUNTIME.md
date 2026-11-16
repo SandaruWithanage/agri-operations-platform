@@ -16,16 +16,25 @@ Use the tracked runner described in [database/README.md](../../database/README.m
 8. `20261115_zzzz_farmer_abac/up.sql`
 9. `20261115_zzzzz_registration_reference/up.sql`
 10. `20261115_zzzzzz_device_proof/up.sql`
+11. `20261115_zzzzzzz_farmer_registry/up.sql`
+12. `20261115_zzzzzzzz_farmer_review/up.sql`
+13. `20261115_zzzzzzzzz_farmer_audit/up.sql`
+14. `20261115_zzzzzzzzzz_land_identification/up.sql`
+15. `20261115_zzzzzzzzzzz_verification_receipt/up.sql`
+16. `20261115_zzzzzzzzzzzz_farmer_review_queue/up.sql`
+17. `20261115_zzzzzzzzzzzzz_correction_geographies/up.sql`
+18. `20261116_farmer_correction_receipt/up.sql`
+19. `20261116_project_catalog/up.sql`
 
 The farmer migration installs pgcrypto in a restricted schema and expects a clean installation. Existing installations need a reviewed migration adaptation. The runner tracks checksums and serializes applications; upgrade/restore rehearsals and production ownership review are still outstanding.
 
-Provision separate LOGIN identities inheriting exactly one of these groups: `agri_credential_reader`, `agri_mfa_verifier`, `agri_login_throttle`, `agri_session_issuer`, `agri_session_executor`, `agri_session_reader`, `agri_farmer_runtime`, `agri_device_verifier`, `agri_land_runtime`. Use interactive password assignment or a secret manager; never put passwords in SQL files or shell history. Runtime startup rejects superusers, BYPASSRLS, cross-group membership, missing group access, signing-key access (including column grants), direct registration/change/audit-journal access, owner/provisioner membership (including `agri_land_function_owner`) and legacy issuer execution. Production connection URLs require `sslmode=verify-full`. Restrict the API at the network boundary to the BFFs and terminate HTTPS with a trusted deployment configuration.
+Provision separate LOGIN identities inheriting exactly one of these groups: `agri_credential_reader`, `agri_mfa_verifier`, `agri_login_throttle`, `agri_session_issuer`, `agri_session_executor`, `agri_session_reader`, `agri_farmer_runtime`, `agri_device_verifier`, `agri_land_runtime`, `agri_project_runtime`. Use interactive password assignment or a secret manager; never put passwords in SQL files or shell history. Runtime startup rejects superusers, BYPASSRLS, cross-group membership, missing group access, signing-key access (including column grants), direct registration/change/audit-journal access, owner/provisioner membership (including `agri_land_function_owner` and `agri_project_function_owner`) and legacy issuer execution. Production connection URLs require `sslmode=verify-full`. Restrict the API at the network boundary to the BFFs and terminate HTTPS with a trusted deployment configuration.
 
 Provision the context signing key into `authz.context_key` through a privileged secret-provisioning process. It must match `PILOT_ACTOR_KEY`. No API role can read that table. Create accounts with genuine Argon2id hashes, encrypted/enrolled MFA factors, approved account-bound devices and scoped permissions using a controlled bootstrap process. A self-service bootstrap/admin UI is not implemented. Do not use the synthetic fixture hashes from tests.
 
 ## Secret/configuration mapping
 
-`PILOT_DATABASE_URLS` is a JSON object keyed by the nine group names above, each pointing to its dedicated LOGIN URL. `PILOT_MFA_KEYS` maps factor key IDs to canonical base64 AES-256 keys. `PILOT_THROTTLE_KEY`, `PILOT_CSRF_KEY`, `PILOT_ACTOR_KEY` and `PILOT_DEVICE_CHALLENGE_KEY` are distinct canonical base64 32-byte keys. The JWT private key is RSA PKCS8 PEM with at least 2048 bits; issuer, audience and key ID are explicit. JWT lifetime is 300–600 seconds. Idle expiration cannot exceed absolute expiration. Deployment-managed keys, rotation and recovery must be implemented and tested before production.
+`PILOT_DATABASE_URLS` is a JSON object keyed by the ten group names above, each pointing to its dedicated LOGIN URL. `PILOT_MFA_KEYS` maps factor key IDs to canonical base64 AES-256 keys. `PILOT_THROTTLE_KEY`, `PILOT_CSRF_KEY`, `PILOT_ACTOR_KEY` and `PILOT_DEVICE_CHALLENGE_KEY` are distinct canonical base64 32-byte keys. The JWT private key is RSA PKCS8 PEM with at least 2048 bits; issuer, audience and key ID are explicit. JWT lifetime is 300–600 seconds. Idle expiration cannot exceed absolute expiration. Deployment-managed keys, rotation and recovery must be implemented and tested before production.
 
 Each Next.js app uses server-only `PILOT_API_ORIGIN`, `PILOT_PUBLIC_ORIGIN` and `PILOT_INTERNAL_KEY`. The public origin must be an exact HTTPS origin. The API origin must be HTTPS; development can use HTTP only for localhost. Internal credentials must never use `NEXT_PUBLIC_` variables. The BFF's source is fixed by the app: field officer for field-pwa, administrator for admin-web; the database still checks the explicit source grant.
 

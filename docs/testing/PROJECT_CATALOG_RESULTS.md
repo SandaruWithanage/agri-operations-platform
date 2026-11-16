@@ -1,0 +1,19 @@
+# Project catalog verification — 16 November 2026
+
+Synthetic local `agri_test` PostgreSQL 17/PostGIS 3.5 database; Node 26.13.1 and pnpm 12.21.0 with the pinned stable toolchain. No production credentials, farmer information, project catalog or devices were used.
+
+## Results
+
+- **381 tests across 51 files passed** with live PostgreSQL integration. The focused catalog/contracts and existing online farmer/land form group passed **50 tests across four files**.
+- A separate pristine-fixture rehearsal applied all 19 migrations through the tracked runner, checked all history entries and project FORCE RLS, and repeated application with unchanged history/timestamps. Only rehearsal schemas/new NOLOGIN roles were then removed. This is not an adoption or production backup/restore rehearsal.
+- Manifest entry 19 applies after the existing 18 migrations without changing their checksums or existing farmer/audit rows. The real runtime starts with ten independent restricted LOGIN identities and reports ready; missing project connection, project-owner membership and project-journal column grants fail startup.
+- The BFF → NestJS → PostgreSQL flow proves missing/wrong-source/assigned/geography/unit/future/expired/inactive grant denial, exact configured-organization choices, separate create/read authority, cross-organization hiding, strict caller scope/creator/role/type rejection, pending operation reauthorization and sanitized results. Hidden/nonexistent details share an unavailable response; list pages expose no hidden count.
+- Native restricted SQL denies reads without signed actor context, direct writes, journal/audit/key/creator access, cross-domain reads and function-owner assumption. Concurrent identical requests produce one project/audit and one replay. Changed requests conflict. A forced audit error rolls back the project and mutation journal and exposes no SQL error to the browser; the original IDs remain retryable after repair.
+- A waiting signed native write is held behind a grant-row lock. The grant expires before release; the resumed write is denied without a mutation journal entry. This checks current permission after waiting rather than trusting the initial snapshot.
+- Contract/transport tests check disabled-by-default metadata, canonical UUIDs, strict fields, required CSRF, trusted source, sanitized acknowledgements/projections, response bounds, cancelled reads, account/device mismatch and stable-ID retry after a lost acknowledgement.
+- UI tests check bilingual configured catalog/detail, no browser record persistence, create-without-read, organization/device/account changes, locked retained submissions and late-read cleanup. The generalized creation adapter keeps organization and geography selections separate while rerunning existing farmer/land draft guards.
+- Lint, formatting, type-checks and production API/validation/Prisma/both Next.js builds passed. Both Chromium scenarios passed. The admin flow now includes catalog list/detail, creation, Sinhala switching, navigation lock/reopen, a lost acknowledgement, identical retry and empty create-only refresh. Existing farmer, land/GPS and encrypted field restart/sync/archive scenarios still pass.
+
+## Limits
+
+The project flag is provisional catalog metadata, not approved lifecycle/enrollment policy. Updates, project-specific/combined assignments, enrollment, types/cycles, resources, reports, durable online/project offline recovery and production operations are unfinished. The operator still provisions identities/grants through controlled administration; no permission-management screen or default grant is installed. Tab/browser termination can lose working values and retry IDs. Synthetic Chromium is not physical-device, native-speaker or independent security acceptance. See [operator and upgrade guidance](../development/PROJECT_CATALOG.md) and [ADR 0016](../decisions/ADR-0016-project-catalog.md).

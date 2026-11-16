@@ -19,11 +19,16 @@ const adapter: CreationAdapter<
   Request
 > = {
   key: "farmer-registration",
-  read: readRegistrationContext,
+  selection: (value) => value.geographyId,
+  read: async (...args) => ({
+    options: (await readRegistrationContext(...args)).geographies,
+  }),
   request: (farmer) => ({ mutationId: crypto.randomUUID(), farmer }),
   submit: (client, owner, request) =>
     client.register(owner.accountId, request, owner.deviceId),
-  Form: FarmerRegistrationForm,
+  Form: ({ options, ...props }) => (
+    <FarmerRegistrationForm {...props} geographies={options} />
+  ),
 };
 type Props = Omit<
   ComponentProps<
