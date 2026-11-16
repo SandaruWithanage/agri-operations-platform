@@ -122,6 +122,19 @@ try {
   });
   const context = await browser.newContext();
   let correctionAllowed = true;
+  const catalogOrganizationId = "4e743f19-e3f7-4ed0-bdcc-29fe8e71ff0d";
+  const projectRows = ids.slice(0, 2).map((id, index) => ({
+    id,
+    organizationId: catalogOrganizationId,
+    organizationName: "Synthetic configured organization",
+    name: `Synthetic browser project ${index + 1}`,
+    active: index === 1,
+    version: 1,
+    createdAt: "2026-11-16T00:00:00Z",
+  }));
+  let projectReadable = true,
+    projectRegistrationCalls = 0,
+    projectRegistrationPayload = null;
   let landRegistrationCalls = 0,
     landRegistrationPayload = null;
   let registrationCalls = 0,
@@ -168,6 +181,70 @@ try {
         offlineUntil: Date.now() + 3600000,
         geographies: [{ id: rows[0].geographyId, name: rows[0].geographyName }],
       });
+    if (path === "projects/organizations")
+      return reply({
+        accountId,
+        organizations: [
+          {
+            id: catalogOrganizationId,
+            name: "Synthetic configured organization",
+          },
+        ],
+      });
+    if (path === "projects/register") {
+      const input = route.request().postDataJSON();
+      assert.deepEqual(Object.keys(input).sort(), [
+        "active",
+        "mutationId",
+        "name",
+        "organizationId",
+        "projectId",
+      ]);
+      assert.equal(input.name, "Synthetic browser catalog project");
+      assert.equal(input.organizationId, catalogOrganizationId);
+      assert.equal(input.active, false);
+      projectRegistrationCalls++;
+      if (!projectRegistrationPayload) {
+        projectRegistrationPayload = input;
+        projectRows.push({
+          id: input.projectId,
+          organizationId: input.organizationId,
+          organizationName: "Synthetic configured organization",
+          name: input.name,
+          active: input.active,
+          version: 1,
+          createdAt: "2026-11-16T00:00:00Z",
+        });
+        return route.abort("failed");
+      }
+      assert.deepEqual(input, projectRegistrationPayload);
+      return reply({
+        status: "synced",
+        projectId: input.projectId,
+        replayed: true,
+      });
+    }
+    if (path === "projects") {
+      const after = url.searchParams.get("after");
+      const eligible = projectReadable
+        ? projectRows
+            .filter((row) => !after || row.id > after)
+            .sort((a, b) => a.id.localeCompare(b.id))
+        : [];
+      return reply({
+        accountId,
+        items: eligible.slice(0, 2),
+        nextCursor: eligible.length > 2 ? eligible[1].id : null,
+      });
+    }
+    if (path === "projects/detail") {
+      const project = projectReadable
+        ? projectRows.find((row) => row.id === url.searchParams.get("id"))
+        : null;
+      return project
+        ? reply({ accountId, project })
+        : reply({ error: "Not available" }, 404);
+    }
     if (path === "land/geographies")
       return reply({
         accountId,
@@ -956,6 +1033,76 @@ try {
   );
   await page.getByRole("button", { name: "Farmers", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByText(projectRows[0].name, { exact: true }).waitFor();
+  await page
+    .getByRole("button", {
+      name: `View project: ${projectRows[0].name}`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("heading", { name: projectRows[0].name, exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Close project", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Create catalog project", exact: true })
+    .click();
+  await page
+    .getByLabel("Project name", { exact: true })
+    .fill("Synthetic browser catalog project");
+  await page
+    .getByLabel("Organization", { exact: true })
+    .selectOption(catalogOrganizationId);
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  assert.equal(
+    await page.getByLabel("ව්‍යාපෘති නම", { exact: true }).inputValue(),
+    "Synthetic browser catalog project",
+  );
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Project draft locked", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Project name", { exact: true }).count(),
+    0,
+  );
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen project",
+      exact: true,
+    })
+    .click();
+  assert.equal(
+    await page.getByLabel("Project name", { exact: true }).inputValue(),
+    "Synthetic browser catalog project",
+  );
+  await page
+    .getByRole("button", { name: "Save catalog project", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Could not confirm the project creation. Retry the same request.",
+      { exact: true },
+    )
+    .waitFor();
+  projectReadable = false;
+  await page
+    .getByRole("button", { name: "Save catalog project", exact: true })
+    .click();
+  await page.getByText(/Project catalog entry accepted/).waitFor();
+  await page
+    .getByText(
+      "No projects are available within your current catalog read permissions.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(projectRegistrationCalls, 2);
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   authorized = false;
   await page
     .getByRole("button", {
@@ -998,7 +1145,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, project catalogs and administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

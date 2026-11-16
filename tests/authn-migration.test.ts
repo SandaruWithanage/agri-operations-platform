@@ -1,3 +1,4 @@
+import { verifyProjectCatalog } from "./support/project-integration";
 import { ReadinessController } from "../apps/api/src/readiness.controller";
 import { verifyCorrectionReceipt } from "./support/correction-receipt-integration";
 import { verifyLandIdentification } from "./support/land-integration";
@@ -253,6 +254,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261116_project_catalog/up.sql",
+        "utf8",
+      ),
+    );
     expect(await inspectUpgrade()).toEqual(historyUpgradeResult.after);
     await client.query("DELETE FROM farm.farmer_audit WHERE farmer_id=$1", [
       upgradeFarmer,
@@ -316,13 +323,13 @@ suite("provisional authentication migration on PostgreSQL", () => {
       if (committedForConcurrency) {
         await client.query("ROLLBACK");
         await client.query(
-          "DROP SCHEMA land, farm, authz, authz_crypto, authn CASCADE",
+          "DROP SCHEMA operations, land, farm, authz, authz_crypto, authn CASCADE",
         );
         await client.query(
-          "DROP OWNED BY agri_land_function_owner,agri_land_runtime",
+          "DROP OWNED BY agri_project_function_owner,agri_project_runtime,agri_land_function_owner,agri_land_runtime",
         );
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8",
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8, agri_project_function_owner, agri_project_runtime, agri_test_login_9",
         );
       } else await client.query("ROLLBACK");
       await client.end();
@@ -1876,6 +1883,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
       "agri_farmer_runtime",
       "agri_device_verifier",
       "agri_land_runtime",
+      "agri_project_runtime",
     ];
     const mappings: Record<string, string> = {};
     for (let i = 0; i < groups.length; i++) {
@@ -2002,10 +2010,22 @@ suite("provisional authentication migration on PostgreSQL", () => {
         source: "field_officer",
         allowInsecureLocal: true,
       });
+      const adminHandler = createBffHandler({
+        apiOrigin: await app.getUrl(),
+        publicOrigin: "https://field.example.test",
+        internalKey: env.PILOT_INTERNAL_KEY,
+        source: "administrator",
+        allowInsecureLocal: true,
+      });
       let cookieHeader = "";
       let csrfValue = "";
-      const browser = (path: string, method = "GET", data?: unknown) =>
-        handler(
+      const browser = (
+        path: string,
+        method = "GET",
+        data?: unknown,
+        application: "field_officer" | "administrator" = "field_officer",
+      ) =>
+        (application === "administrator" ? adminHandler : handler)(
           new Request(`https://field.example.test/api/pilot/${path}`, {
             method,
             headers: {
@@ -3087,6 +3107,16 @@ suite("provisional authentication migration on PostgreSQL", () => {
         (await (await browser(`farmers/detail?id=${farmerId}`, "GET")).json())
           .access,
       ).toMatchObject({ viewAudit: false });
+      await verifyProjectCatalog({
+        owner: client,
+        actor: identity,
+        geographyId: locations[0].id,
+        runtimeUrl: mappings.agri_project_runtime,
+        runtimeEnv: env,
+        browser: (path, method, body) =>
+          browser(path, method, body, "administrator"),
+        fieldBrowser: browser,
+      });
       await verifyLandIdentification({
         owner: client,
         actor: identity,

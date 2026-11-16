@@ -22,7 +22,7 @@ The private `agri_migrations.history` schema records file IDs, SHA-256 checksums
 
 ## Existing manually migrated databases
 
-Automatic adoption is refused when `authn`, `authz`, `farm` or `land` exists without tracked history. Do not delete data or insert fabricated history to bypass this check. Compare the deployed schema, roles and function ownership with the exact reviewed revision, rehearse backup/restore, and prepare a separately reviewed baseline/adoption migration. Disposable local/test databases can be recreated deliberately using their documented lifecycle. This command never resets a database.
+Automatic adoption is refused when `authn`, `authz`, `farm`, `land` or `operations` exists without tracked history. Do not delete data or insert fabricated history to bypass this check. Compare the deployed schema, roles and function ownership with the exact reviewed revision, rehearse backup/restore, and prepare a separately reviewed baseline/adoption migration. Disposable local/test databases can be recreated deliberately using their documented lifecycle. This command never resets a database.
 
 ## Recovery and release gates
 
@@ -47,3 +47,7 @@ Apply entry 17 before deploying the correction-choice read endpoint. It adds a b
 ## Own correction receipts (manifest entry 18)
 
 Apply entry 18 before deploying the correction receipt endpoint. It adds an indexed actor-bound function with current and historical read/correct coverage checks, using existing roles and URLs. No direct journal read privilege or business grant is added. See [receipt semantics and recovery limits](../docs/development/FARMER_CORRECTION_RECEIPTS.md).
+
+## Configurable project catalog (manifest entry 19)
+
+Apply entry 19 before deploying the project API. It adds the `operations` schema, FORCE RLS, configured-organization catalog records, actor-bound idempotency and atomic creation audit. Provision a tenth isolated LOGIN inheriting only `agri_project_runtime` and update `PILOT_DATABASE_URLS`; enabled startup fails closed if it is missing, owns functions, reads journals/keys or inherits another runtime role. The function-owner group is never an application identity. No projects, role names or business grants are seeded. Organization-wide create/read permissions remain explicit and separate; narrow geography/unit/source grants cannot widen to the entire catalog. See [setup, protocol and limits](../docs/development/PROJECT_CATALOG.md).
