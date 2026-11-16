@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import {
+  projectChangeSchema,
+  projectChangeResultSchema,
   projectRegistrationSchema,
   projectRegistrationResultSchema,
   projectQuerySchema,
@@ -90,7 +92,12 @@ export class ProjectCatalogService {
       });
     });
   }
-  async detail(connection: ActorQuery, actor: VerifiedActor, input: unknown) {
+  async detail(
+    connection: ActorQuery,
+    actor: VerifiedActor,
+    input: unknown,
+    source: RegistrationSource,
+  ) {
     const query = projectDetailQuerySchema.parse(input);
     return this.context.run(connection, actor, async (db) => {
       const result = await db.query(
@@ -99,10 +106,62 @@ export class ProjectCatalogService {
       );
       if (!result.rows.length)
         throw new NotFoundException("Project not available");
+      const value = project(result.rows[0] as Record<string, unknown>);
+      const permission = await db.query(
+        "SELECT operations.allowed_organization($1,'project.update',$2) AS permitted",
+        [value.organizationId, source],
+      );
       return {
         accountId: actor.accountId,
-        project: project(result.rows[0] as Record<string, unknown>),
+        project: value,
+        access: {
+          edit:
+            (permission.rows[0] as { permitted?: unknown })?.permitted === true,
+        },
       };
+    });
+  }
+  async change(
+    connection: ActorQuery,
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ) {
+    const value = projectChangeSchema.parse(input);
+    return this.context.run(connection, actor, async (db) => {
+      const target = await db.query(
+        "SELECT organization_id FROM operations.project WHERE id=$1",
+        [value.projectId],
+      );
+      if (!target.rows.length)
+        throw new NotFoundException("Project not available");
+      const organization = (target.rows[0] as { organization_id: unknown })
+        .organization_id;
+      const permission = await db.query(
+        "SELECT operations.allowed_organization($1,'project.update',$2) AS permitted",
+        [organization, source],
+      );
+      if ((permission.rows[0] as { permitted?: unknown })?.permitted !== true)
+        throw new ForbiddenException("Project change denied");
+      const result = await db.query(
+        "SELECT * FROM operations.change_project($1,$2,$3,$4,$5,$6)",
+        [
+          value.mutationId,
+          value.projectId,
+          value.expectedVersion,
+          value.name,
+          value.active,
+          source,
+        ],
+      );
+      const row = result.rows[0] as
+        | { project_id?: unknown; version?: unknown; replayed?: unknown }
+        | undefined;
+      return output(projectChangeResultSchema, {
+        projectId: row?.project_id,
+        version: row?.version,
+        replayed: row?.replayed,
+      });
     });
   }
   async organizations(

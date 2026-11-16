@@ -10,7 +10,7 @@ import {
 
 it("loads the explicit dependency order and rejects transaction-control SQL outside quoted bodies", async () => {
   const migrations = await loadMigrations();
-  expect(migrations).toHaveLength(19);
+  expect(migrations).toHaveLength(20);
   expect(migrations[1].id).toBe(
     "20261115_authn_foundation/session-reader-grants.sql",
   );

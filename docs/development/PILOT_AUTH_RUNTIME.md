@@ -25,6 +25,7 @@ Use the tracked runner described in [database/README.md](../../database/README.m
 17. `20261115_zzzzzzzzzzzzz_correction_geographies/up.sql`
 18. `20261116_farmer_correction_receipt/up.sql`
 19. `20261116_project_catalog/up.sql`
+20. `20261116_project_lifecycle/up.sql`
 
 The farmer migration installs pgcrypto in a restricted schema and expects a clean installation. Existing installations need a reviewed migration adaptation. The runner tracks checksums and serializes applications; upgrade/restore rehearsals and production ownership review are still outstanding.
 

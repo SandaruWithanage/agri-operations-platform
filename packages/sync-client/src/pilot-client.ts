@@ -1,4 +1,7 @@
 import {
+  projectChangeSchema,
+  projectChangeResultSchema,
+  type ProjectChange,
   projectRegistrationSchema,
   projectRegistrationResultSchema,
   projectQuerySchema,
@@ -222,6 +225,30 @@ export class PilotClient {
     });
     if (!parsed.success) throw new PilotRequestError(503);
     return parsed.data;
+  }
+  async changeProject(
+    accountId: string,
+    input: ProjectChange,
+    expectedDeviceId: string,
+  ) {
+    if (!uuid.test(expectedDeviceId)) throw new PilotRequestError(400);
+    const value = projectChangeSchema.parse(input),
+      session = await this.session();
+    if (
+      session.accountId !== accountId ||
+      session.deviceId !== expectedDeviceId.toLowerCase()
+    )
+      throw new PilotRequestError(401);
+    const result = projectChangeResultSchema.safeParse(
+      await this.request("projects/change", value, session.csrfToken),
+    );
+    if (
+      !result.success ||
+      result.data.projectId !== value.projectId ||
+      result.data.version !== value.expectedVersion + 1
+    )
+      throw new PilotRequestError(503);
+    return result.data;
   }
   async registerProject(
     accountId: string,

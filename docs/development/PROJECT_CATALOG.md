@@ -1,6 +1,6 @@
 # Configurable project catalog
 
-The admin app provides **Projects** list/detail and **Create catalog project**, in English/Sinhala. This is an online catalog foundation; enrollment, officer assignment, project types/cycles, resource accounting and project lifecycle editing remain future work. Farmer registration does not enroll a farmer automatically.
+The admin app provides **Projects** list/detail and **Create catalog project**, in English/Sinhala. The catalog also supports [versioned name/flag editing](PROJECT_EDITING.md) after migration 20 with separate read/update authority. Enrollment, officer assignment, project types/cycles, resource accounting and client-approved operational lifecycle rules remain future work. Farmer registration does not enroll a farmer automatically.
 
 ## Upgrade and provisioning
 
@@ -20,10 +20,10 @@ An uncertain outcome can be retried using the same fixed request. A changed payl
 ## Protocol and boundaries
 
 - `GET /api/pilot/projects?limit=25&after=<uuid>`: bounded authorized list, maximum 100 items per page; no caller-supplied organization/account/role scope.
-- `GET /api/pilot/projects/detail?id=<uuid>`: authorized detail; hidden/missing both unavailable.
+- `GET /api/pilot/projects/detail?id=<uuid>`: authorized detail; hidden/missing both unavailable. Current edit capability is a source/grant hint, never authorization.
 - `GET /api/pilot/projects/organizations`: filtered configured organization choices for creation, maximum 10,000. A larger response fails validation rather than silently truncating; pagination is needed before such a deployment.
 - `POST /api/pilot/projects/register`: `mutationId`, `projectId`, `organizationId`, `name`, optional boolean `active` (default false). Caller source, actor, roles, project type, farmer/land/enrollment IDs and creator/time fields are rejected.
 
-`PilotClient` supplies `projects`, `project`, `projectOrganizations` and device-bound `registerProject`. Read methods accept abort signals; submission rechecks the authenticated account/device. NestJS and native SQL remain authoritative for current permissions. Project metadata does not grant access to people, land or future enrollments. Narrow project/geography assignments are not implemented and cannot become organization-wide access.
+`PilotClient` supplies `projects`, `project`, `projectOrganizations`, device-bound `registerProject` and versioned `changeProject`. Read methods accept abort signals; submission rechecks the authenticated account/device. NestJS and native SQL remain authoritative for current permissions. Project metadata does not grant access to people, land or future enrollments. Narrow project/geography assignments are not implemented and cannot become organization-wide access.
 
 Run installation, peer/audit, lint, format/type checks, synthetic PostgreSQL tests, production builds and Chromium checks. See [verification evidence](../testing/PROJECT_CATALOG_RESULTS.md) and [ADR 0016](../decisions/ADR-0016-project-catalog.md). No client, native-speaker, physical-device or production certification is claimed.
