@@ -2,6 +2,8 @@
 
 Development foundation and provisional pilot registration. The repository contains tested hybrid authentication, PostgreSQL ABAC/RLS, server BFFs and an English/Sinhala encrypted offline registration workspace. Authentication is disabled by default. Complete device recovery/erasure, administration, remaining Phase 1 domains and production validation are unfinished. See [delivery status](docs/development/PHASE_1_STATUS.md) for the current inventory. Use synthetic data during development.
 
+Start with the [living project handover](docs/development/PROJECT_HANDOVER.md): completed capabilities and implementation methods, evidence, stable remaining task IDs, dependencies, steps/acceptance criteria and the recommended continuation order. Update it in the same PR whenever a pending task is completed.
+
 ## Setup
 
 Use Node.js 26.13.1 (`.node-version`), pnpm 12.21.0 and Docker Compose v2. Node 26 does not bundle Corepack; install pnpm explicitly. See the [stable-version policy and compatibility notes](docs/development/DEPENDENCY_POLICY.md).

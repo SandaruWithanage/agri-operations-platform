@@ -5,7 +5,9 @@ M0 is complete. Before continuing current authorized work, read:
 1. [Root AGENTS.md](../AGENTS.md).
 2. [Project context](PROJECT_CONTEXT.md).
 3. [Accepted data/state/cache ADR](architecture/decisions/ADR-data-state-cache.md).
-4. [Current roadmap](development/ROADMAP.md), [delivery status/backlog](development/PHASE_1_STATUS.md) and relevant domain/security ADRs.
+4. [Living project handover/task register](development/PROJECT_HANDOVER.md), then the [current roadmap](development/ROADMAP.md), [delivery status/backlog](development/PHASE_1_STATUS.md) and relevant domain/security ADRs.
+
+Update the living task register, implementation/evidence links, remaining steps and completion log in the same PR whenever a pending task is completed or materially changes. Keep stable task IDs, preserve dated historical reports and distinguish implementation/CI from external acceptance. Follow its maintenance procedure rather than leaving a completed task in an old backlog.
 
 Inspect the repository and current branch/PR state before making changes. Accepted architecture is not the same as implemented behavior or production acceptance. Follow the current user-authorized scope and feature-branch process. The original M0 brief below is historical; do not restart M0 or treat its milestone boundary as today's backlog.
 

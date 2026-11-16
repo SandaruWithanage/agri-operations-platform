@@ -1,18 +1,20 @@
 # Phase 1 delivery status
 
+Use the [living project handover](PROJECT_HANDOVER.md) for the stable delivered/pending task register, implementation methods, evidence, completion log and concrete remaining steps. Update it with this summary whenever a pending task is completed.
+
 This is an implementation inventory, not client approval or production certification. Registration rules in ADR-0003 and authentication decisions in ADR-0004 remain the governing provisional decisions. Uploaded planning documents are reference material, not executable deployment instructions.
 
 The current [rough engineering delivery estimate](DELIVERY_ESTIMATE.md) is about 55% complete / 45% remaining for Phase 1, not production certification.
 
 ## Accepted architecture versus implementation
 
-The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is accepted architecture. PostgreSQL authority and encrypted Dexie farmer persistence are implemented; reported PostGIS land-identification APIs and a bilingual scoped online directory are tested, while farmer/land relationships, capture/map UI and offline GPS remain unfinished. TanStack Query now owns admin registry/detail/audit online reads with isolated, cancellable in-memory queries. Field home session checks now use isolated TanStack Query; encrypted workspace reference/reconciliation ownership stays in Dexie. Future online domain mutations still need integration. Zustand now owns the shared locale preference only; Redis remains optional and absent. The [roadmap](ROADMAP.md) places the frontend migration at current M2, and Redis only at M3+ for a confirmed use case.
+The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is accepted architecture. PostgreSQL authority and encrypted Dexie farmer persistence are implemented; reported PostGIS land-identification APIs and a bilingual scoped online directory are tested, while farmer/land relationships, map/search UI and offline GPS remain unfinished; bounded online capture is implemented. TanStack Query now owns scoped farmer/land/project reads and bounded online mutation state with isolated, cancellable in-memory queries. Field home session checks now use isolated TanStack Query; encrypted workspace reference/reconciliation ownership stays in Dexie. Additional domain operations still need integration. Zustand now owns the shared locale preference only; Redis remains optional and absent. The [roadmap](ROADMAP.md) places the frontend migration at current M2, and Redis only at M3+ for a confirmed use case.
 
 ## Implemented and verified with synthetic data
 
 - [Shared per-workspace Zustand locale preferences](SHARED_LOCALE.md) for admin and field, preserving legacy storage, form state and browser/server isolation. No business records or credentials enter the store.
 - [Latest stable toolchain and dependency policy](DEPENDENCY_POLICY.md), including Zod 4.6.7, Node 26, Prisma 7, TypeScript 7 project checks and isolated TS 6 tooling API compatibility. Stable-version maintenance and audited exceptions are documented.
-- [Separate API dependency readiness](API_READINESS.md) with bounded/shared nine-role primary-connection probes, sanitized no-store responses and shutdown hooks. Deployment routing and operational acceptance remain unfinished.
+- [Separate API dependency readiness](API_READINESS.md) with bounded/shared ten-role primary-connection probes, sanitized no-store responses and shutdown hooks. Deployment routing and operational acceptance remain unfinished.
 - M0 monorepo, independent Next.js apps, NestJS liveness, shared packages, local PostGIS Compose, language toggle, lint/typecheck/test/build CI.
 - Password/MFA/session/JWT/CSRF components with a disabled-by-default integrated NestJS runtime and restricted PostgreSQL connections.
 - BFF cookie isolation, server-only access tokens and sanitized browser responses.
@@ -35,7 +37,7 @@ The [data/state/cache ADR](../architecture/decisions/ADR-data-state-cache.md) is
 - [Configurable project catalog](PROJECT_CATALOG.md): bilingual online list/detail/creation, organization-wide explicit create/read grants, FORCE RLS, private idempotency/audit, exact concurrent retry and a tenth isolated runtime identity. No hardcoded projects/types or automatic enrollment; project-specific assignments, operational lifecycle rules and enrollment remain unfinished.
 - [Bilingual online reported land capture](ONLINE_LAND_CAPTURE.md) with optional point/accuracy/area, explicit cancellable GPS, isolated land-create coverage, immutable retry and tab-only drafts. No farmer/ownership/project relationship or offline GPS storage is inferred.
 - [Bilingual scoped online land directory](LAND_DIRECTORY.md) with optional-coordinate detail, bounded pagination, domain/account-bound TanStack Query reads, cancellation and denial/logout/hidden-view cleanup. Online capture is implemented; mapping, relationships and offline GPS remain unfinished.
-- Reported PostGIS land identification APIs with independent create/read permissions, optional WGS84 point/accuracy and reported area, scoped coordinate visibility, stable mutation IDs and atomic audit. Relationships and UI/offline work remain incomplete.
+- Reported PostGIS land identification APIs with independent create/read permissions, optional WGS84 point/accuracy and reported area, scoped coordinate visibility, stable mutation IDs and atomic audit. Relationships, maps and offline work remain incomplete.
 - Scoped bilingual admin farmer list/detail with bounded pagination, separate read permission, actor-bound sanitized replies and no browser farmer persistence.
 - Native SQL manifest, checksum/history validation, one transaction per file, concurrent-run lock, failure rollback and refusal of untracked database adoption.
 
