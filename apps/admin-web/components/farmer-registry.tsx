@@ -7,6 +7,11 @@ import {
 import { enrollmentPolicyWords } from "./enrollment-policy-words";
 import { EnrollmentDirectory } from "./enrollment-directory";
 import {
+  EnrollmentCreateEditor,
+  type EnrollmentCreateDraft,
+} from "./enrollment-create";
+import { enrollmentCreateWords } from "./enrollment-create-words";
+import {
   EnrollmentWithdrawEditor,
   type EnrollmentWithdrawDraft,
 } from "./enrollment-withdraw";
@@ -199,6 +204,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [withdrawal, setWithdrawal] = useState<EnrollmentWithdrawDraft | null>(
     null,
   );
+  const [enrollment, setEnrollment] = useState<EnrollmentCreateDraft | null>(
+    null,
+  );
   const [saved, setSaved] = useState<
     | "correction"
     | "registration"
@@ -207,6 +215,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     | "project-edit"
     | "policy"
     | "withdrawal"
+    | "enrollment"
     | null
   >(null);
   const [control, setControl] = useState<RegistryControl>({
@@ -245,7 +254,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
                     ? enrollmentPolicyWords[language].saved
                     : saved === "withdrawal"
                       ? enrollmentWithdrawWords[language].saved
-                      : projectEditWords[language].saved}
+                      : saved === "enrollment"
+                        ? enrollmentCreateWords[language].saved
+                        : projectEditWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -261,8 +272,30 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
             projectDraft !== null ||
             projectEdit !== null ||
             policyEdit !== null ||
-            withdrawal !== null
+            withdrawal !== null ||
+            enrollment !== null
           }
+          onEnrollFarmer={(source, owner) => {
+            if (
+              draft ||
+              registration ||
+              landDraft ||
+              projectDraft ||
+              projectEdit ||
+              policyEdit ||
+              withdrawal ||
+              enrollment
+            )
+              return;
+            setSaved(null);
+            setEnrollment({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+              source: { farmerId: source.id, farmerName: source.fullName },
+            });
+          }}
           onWithdrawEnrollment={(source, owner) => {
             if (
               draft ||
@@ -271,7 +304,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -296,7 +330,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -334,7 +369,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -360,7 +396,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -379,7 +416,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -398,7 +436,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -419,7 +458,8 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
               projectDraft ||
               projectEdit ||
               policyEdit ||
-              withdrawal
+              withdrawal ||
+              enrollment
             )
               return;
             setSaved(null);
@@ -438,6 +478,31 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {enrollment && (
+        <EnrollmentCreateEditor
+          key={`enrollment-create:${enrollment.id}`}
+          draft={enrollment}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setEnrollment(null)}
+          onSaved={(enrollmentId) => {
+            setEnrollment(null);
+            setSaved("enrollment");
+            setControl((value) => ({
+              id: value.id + 1,
+              action: "refresh",
+              domain: "enrollments",
+              recordId: enrollmentId,
+            }));
+          }}
+        />
+      )}
       {withdrawal && (
         <EnrollmentWithdrawEditor
           key={`enrollment-withdraw:${withdrawal.id}`}
@@ -618,6 +683,7 @@ function RegistryView({
   onEditProject,
   onEditPolicy,
   onWithdrawEnrollment,
+  onEnrollFarmer,
   onProtectedClear,
   control,
 }: {
@@ -633,6 +699,7 @@ function RegistryView({
     source: EnrollmentWithdrawDraft["source"],
     owner: Context,
   ) => void;
+  onEnrollFarmer: (source: FarmerSummary, owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -1327,6 +1394,14 @@ function RegistryView({
             </dd>
           </dl>
           <p>{copy.review}</p>
+          {context && (
+            <button
+              disabled={correctionOpen}
+              onClick={() => onEnrollFarmer(selected, context)}
+            >
+              {enrollmentCreateWords[language].start}
+            </button>
+          )}
           {data?.kind === "farmer-detail" &&
             data.value.access?.verify === true &&
             context && (
