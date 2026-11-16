@@ -163,7 +163,7 @@ export async function createPilotRuntime(
       );
       pools.set(role, pool);
       const check = await pool.query(
-        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_project_function_owner','MEMBER') OR pg_has_role(current_user,'agri_land_function_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('farm','land','operations') AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk','audit','project_mutation','project_change') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
+        "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,pg_has_role(current_user,'agri_authn_function_owner','MEMBER') OR pg_has_role(current_user,'agri_policy_owner','MEMBER') OR pg_has_role(current_user,'agri_project_scope_owner','MEMBER') OR pg_has_role(current_user,'agri_project_function_owner','MEMBER') OR pg_has_role(current_user,'agri_land_function_owner','MEMBER') OR pg_has_role(current_user,'agri_device_provisioner','MEMBER') AS owner_member,has_function_privilege(current_user,(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='issue_session' AND p.pronargs=8),'EXECUTE') AS legacy_issue,(SELECT has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authn' AND c.relname='login_session') AS direct_session_write,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('farm','land','operations') AND c.relname IN ('farmer_audit','farmer_change','registration_mutation','registration_risk','audit','project_mutation','project_change') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS journal_access,EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname IN ('project_permission_grant','project_assignment') AND (has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AS scope_access,pg_has_role(current_user,$1,'USAGE') AS permitted,has_any_column_privilege(current_user,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='authz' AND c.relname='context_key'),'SELECT') AS key_access FROM pg_roles r WHERE r.rolname=current_user",
         [role],
       );
       const row = check.rows[0];
@@ -177,6 +177,7 @@ export async function createPilotRuntime(
         row.legacy_issue !== false ||
         row.direct_session_write !== false ||
         row.journal_access !== false ||
+        row.scope_access !== false ||
         !row.permitted ||
         row.key_access !== false
       )
@@ -188,6 +189,15 @@ export async function createPilotRuntime(
         if (migration.rows[0]?.ready !== true)
           throw new Error(
             "Project editing migration or execute grant is missing",
+          );
+      }
+      if (role === "agri_project_runtime") {
+        const scope = await pool.query(
+          "SELECT has_function_privilege(current_user,to_regprocedure('authz.allowed_project_geography(uuid,uuid,text,text)'),'EXECUTE') AS ready",
+        );
+        if (scope.rows[0]?.ready !== true)
+          throw new Error(
+            "Project scope migration or execute grant is missing",
           );
       }
       for (const other of roles) {

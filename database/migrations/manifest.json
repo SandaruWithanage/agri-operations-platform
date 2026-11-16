@@ -18,5 +18,6 @@
   "20261115_zzzzzzzzzzzzz_correction_geographies/up.sql",
   "20261116_farmer_correction_receipt/up.sql",
   "20261116_project_catalog/up.sql",
-  "20261116_project_lifecycle/up.sql"
+  "20261116_project_lifecycle/up.sql",
+  "20261116_project_scope/up.sql"
 ]
