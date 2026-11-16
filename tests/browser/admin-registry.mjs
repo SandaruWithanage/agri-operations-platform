@@ -122,6 +122,8 @@ try {
   });
   const context = await browser.newContext();
   let correctionAllowed = true;
+  let registrationCalls = 0,
+    registrationPayload = null;
   let correctionCalls = 0,
     correctionPayload = null,
     correctionReceipt = null;
@@ -162,8 +164,31 @@ try {
         deviceKeyFingerprint: "a".repeat(64),
         verifiedAt: Date.now(),
         offlineUntil: Date.now() + 3600000,
-        geographies: [],
+        geographies: [{ id: rows[0].geographyId, name: rows[0].geographyName }],
       });
+    if (path === "farmers/register") {
+      const input = route.request().postDataJSON();
+      assert.deepEqual(Object.keys(input).sort(), ["farmer", "mutationId"]);
+      assert.deepEqual(Object.keys(input.farmer).sort(), [
+        "farmerId",
+        "fullName",
+        "geographyId",
+        "privacyNoticeProvided",
+      ]);
+      assert.equal(
+        input.farmer.fullName,
+        "Synthetic browser administrator registration",
+      );
+      assert.equal(input.farmer.geographyId, rows[0].geographyId);
+      assert.equal(input.farmer.privacyNoticeProvided, true);
+      registrationCalls++;
+      if (!registrationPayload) {
+        registrationPayload = input;
+        return route.abort("failed");
+      }
+      assert.deepEqual(input, registrationPayload);
+      return reply({ status: "synced", farmerId: input.farmer.farmerId });
+    }
     if (path === "land")
       return reply({
         accountId,
@@ -748,6 +773,71 @@ try {
   );
   await page.getByRole("button", { name: "Close record", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Register a farmer", exact: true })
+    .click();
+  await page
+    .getByLabel("Full name", { exact: true })
+    .fill("Synthetic browser administrator registration");
+  await page
+    .getByLabel("GN division or village", { exact: true })
+    .selectOption(rows[0].geographyId);
+  await page
+    .getByLabel("I provided the required privacy notice", { exact: true })
+    .check();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  assert.equal(
+    await page.getByLabel("සම්පූර්ණ නම", { exact: true }).inputValue(),
+    "Synthetic browser administrator registration",
+  );
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reported land", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Registration draft locked", exact: true })
+    .waitFor();
+  assert.equal(await page.getByLabel("Full name", { exact: true }).count(), 0);
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen registration",
+      exact: true,
+    })
+    .click();
+  assert.equal(
+    await page.getByLabel("Full name", { exact: true }).inputValue(),
+    "Synthetic browser administrator registration",
+  );
+  await page
+    .getByRole("button", { name: "Save registration", exact: true })
+    .click();
+  await page
+    .getByText("Could not save the registration. Please try again.", {
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Full name", { exact: true }).isDisabled(),
+    true,
+  );
+  readable = false;
+  await page
+    .getByRole("button", { name: "Save registration", exact: true })
+    .click();
+  await page.getByText(/Registration accepted for review/).waitFor();
+  await page
+    .getByText(
+      "No farmer records are available within your current read permissions.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(registrationCalls, 2);
+  assert.equal(await page.getByLabel("Full name", { exact: true }).count(), 0);
+  readable = true;
+  await page
+    .getByRole("button", { name: "Check session and refresh", exact: true })
+    .click();
+  await page.getByText(rows[0].fullName, { exact: true }).waitFor();
   authorized = false;
   await page
     .getByRole("button", {
@@ -790,7 +880,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, administrator registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();

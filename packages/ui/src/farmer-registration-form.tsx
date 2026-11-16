@@ -1,0 +1,199 @@
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  farmerRegistrationSchema,
+  type FarmerRegistration,
+  type WorkingRegistration,
+} from "@agri/validation";
+
+/** This form has no identity or authorization of its own. Mount only after the server verifies both. */
+type GeographyOption = { id: string; label: string };
+type Props = {
+  language: "en" | "si";
+  /** Options must come from the signed-in user's currently authorized server-side scope. */
+  geographies: readonly GeographyOption[];
+  /** Must preserve the farmer UUID and reconcile retries before accepting another record. */
+  onSave: (record: FarmerRegistration) => Promise<void>;
+  enabled?: boolean;
+  freezeAfterAttempt?: boolean;
+  /** Restore an already submitted, immutable request after a protected view locks. */
+  initiallyFrozen?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+  initialDraft?: WorkingRegistration;
+  onDraftChange?: (value: WorkingRegistration) => void;
+};
+const messages = {
+  en: {
+    heading: "Farmer registration",
+    name: "Full name",
+    geography: "GN division or village",
+    choose: "Select a location",
+    notice: "I provided the required privacy notice",
+    submit: "Save registration",
+    errors:
+      "Enter a name, select a valid location, and confirm the privacy notice.",
+    failure: "Could not save the registration. Please try again.",
+    saving: "Saving…",
+    unavailable: "No authorized locations are available.",
+    retry:
+      "Retry the same registration before starting another. Keep this page open until the result is confirmed.",
+  },
+  si: {
+    heading: "ගොවි ලියාපදිංචිය",
+    name: "සම්පූර්ණ නම",
+    geography: "ග්‍රාම නිලධාරී වසම හෝ ගම",
+    choose: "ස්ථානයක් තෝරන්න",
+    notice: "අවශ්‍ය පෞද්ගලිකත්ව දැනුම්දීම ලබා දුන්නා",
+    submit: "ලියාපදිංචිය සුරකින්න",
+    errors: "නමක් ඇතුළත් කර වලංගු ස්ථානයක් තෝරා පෞද්ගලිකත්ව දැනුම්දීම තහවුරු කරන්න.",
+    failure: "ලියාපදිංචිය සුරැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    saving: "සුරකිමින්…",
+    unavailable: "අවසර ලත් ස්ථාන නොමැත.",
+    retry:
+      "වෙනත් ලියාපදිංචියක් ආරම්භ කිරීමට පෙර මෙම ලියාපදිංචිය නැවත උත්සාහ කරන්න. ප්‍රතිඵලය තහවුරු වන තුරු මෙම පිටුව විවෘතව තබන්න.",
+  },
+} as const;
+
+export function FarmerRegistrationForm({
+  language,
+  geographies,
+  onSave,
+  enabled = true,
+  freezeAfterAttempt = false,
+  initiallyFrozen = false,
+  onDirtyChange,
+  initialDraft,
+  onDraftChange,
+}: Props) {
+  const copy = messages[language];
+  const [fullName, setFullName] = useState(initialDraft?.fullName ?? "");
+  const [geographyId, setGeographyId] = useState(
+    initialDraft?.geographyId ?? "",
+  );
+  const [notice, setNotice] = useState(
+    initialDraft?.privacyNoticeProvided ?? false,
+  );
+  const [error, setError] = useState<"validation" | "save" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [frozen, setFrozen] = useState(initiallyFrozen);
+  useEffect(() => {
+    onDirtyChange?.(Boolean(fullName || geographyId || notice || frozen));
+  }, [fullName, geographyId, notice, frozen, onDirtyChange]);
+  const pendingFarmerId = useRef<string | null>(initialDraft?.farmerId ?? null);
+  const draftRef = useRef<WorkingRegistration | null>(initialDraft ?? null);
+  function publish(patch: Partial<WorkingRegistration>) {
+    pendingFarmerId.current ??= crypto.randomUUID();
+    const previous = draftRef.current ?? {
+      farmerId: pendingFarmerId.current,
+      fullName,
+      geographyId,
+      privacyNoticeProvided: notice,
+    };
+    draftRef.current = { ...previous, ...patch };
+    onDraftChange?.(draftRef.current);
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving || !enabled) return;
+    pendingFarmerId.current ??= crypto.randomUUID();
+    const parsed = farmerRegistrationSchema.safeParse({
+      farmerId: pendingFarmerId.current,
+      fullName,
+      geographyId,
+      privacyNoticeProvided: notice,
+    });
+    if (
+      !parsed.success ||
+      !geographies.some((option) => option.id === geographyId)
+    ) {
+      setError("validation");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    if (freezeAfterAttempt) setFrozen(true);
+    try {
+      await onSave(parsed.data);
+      pendingFarmerId.current = null;
+      draftRef.current = null;
+      setFullName("");
+      setGeographyId("");
+      setNotice(false);
+      setFrozen(false);
+    } catch {
+      setError("save");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <form
+      className="registration-form"
+      onSubmit={submit}
+      noValidate
+      aria-labelledby="farmer-form-heading"
+    >
+      <h2 id="farmer-form-heading">{copy.heading}</h2>
+      {error && (
+        <p role="alert">
+          {error === "validation" ? copy.errors : copy.failure}
+        </p>
+      )}
+      {frozen && <p role="status">{copy.retry}</p>}
+      {geographies.length === 0 && <p role="status">{copy.unavailable}</p>}
+      <label htmlFor="farmer-full-name">{copy.name}</label>
+      <input
+        id="farmer-full-name"
+        disabled={saving || frozen || !enabled}
+        value={fullName}
+        onChange={(event) => {
+          setFullName(event.target.value);
+          publish({ fullName: event.target.value });
+        }}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        required
+        maxLength={200}
+      />
+      <label htmlFor="farmer-geography">{copy.geography}</label>
+      <select
+        id="farmer-geography"
+        disabled={saving || frozen || !enabled}
+        value={geographyId}
+        onChange={(event) => {
+          setGeographyId(event.target.value);
+          publish({ geographyId: event.target.value });
+        }}
+        required
+      >
+        <option value="">{copy.choose}</option>
+        {geographies.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          disabled={saving || frozen || !enabled}
+          checked={notice}
+          onChange={(event) => {
+            setNotice(event.target.checked);
+            publish({ privacyNoticeProvided: event.target.checked });
+          }}
+          required
+        />{" "}
+        {copy.notice}
+      </label>
+      <button
+        type="submit"
+        disabled={saving || !enabled || geographies.length === 0}
+      >
+        {saving ? copy.saving : copy.submit}
+      </button>
+    </form>
+  );
+}

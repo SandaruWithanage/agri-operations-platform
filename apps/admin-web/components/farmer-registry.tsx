@@ -8,6 +8,11 @@ import {
 import { createProtectedQueryClient } from "../lib/protected-query";
 import { LandDirectory, landWords } from "./land-directory";
 import { FarmerCorrection, type CorrectionDraft } from "./farmer-correction";
+import {
+  FarmerRegistrationEditor,
+  type RegistrationDraft,
+} from "./farmer-registration";
+import { registrationWords } from "./registration-words";
 import { correctionWords } from "./correction-words";
 import { FarmerCorrectionReceipt } from "./farmer-correction-receipt";
 import { FarmerVerification } from "./farmer-verification";
@@ -134,7 +139,7 @@ type ReadRequest = {
   filters?: FarmerListFilters;
 } & ({ kind: "list"; cursor?: string } | { kind: "detail"; id: string });
 let nextRegistryBoundary = 0;
-let nextCorrectionDraft = 0;
+let nextOnlineDraft = 0;
 type RegistryControl = {
   id: number;
   action: "refresh" | "clear" | "failure";
@@ -161,7 +166,12 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
   const [language] = useLocale();
   const [draft, setDraft] = useState<CorrectionDraft | null>(null);
   const [lockEpoch, setLockEpoch] = useState(0);
-  const [saved, setSaved] = useState(false);
+  const [registration, setRegistration] = useState<RegistrationDraft | null>(
+    null,
+  );
+  const [saved, setSaved] = useState<"correction" | "registration" | null>(
+    null,
+  );
   const [control, setControl] = useState<RegistryControl>({
     id: 0,
     action: "clear",
@@ -186,7 +196,9 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
     <>
       {saved && (
         <p className="correction-saved" role="status">
-          {correctionWords[language].saved}
+          {saved === "correction"
+            ? correctionWords[language].saved
+            : registrationWords[language].saved}
         </p>
       )}
       <QueryClientProvider
@@ -195,15 +207,25 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
       >
         <RegistryView
           client={client}
-          correctionOpen={draft !== null}
+          correctionOpen={draft !== null || registration !== null}
+          onRegister={(owner) => {
+            if (draft || registration) return;
+            setSaved(null);
+            setRegistration({
+              ...owner,
+              id: ++nextOnlineDraft,
+              client,
+              boundaryEpoch: lockEpoch,
+            });
+          }}
           onProtectedClear={lockDraft}
           control={control}
           onCorrect={(source, owner) => {
-            if (draft) return;
-            setSaved(false);
+            if (draft || registration) return;
+            setSaved(null);
             setDraft({
               ...owner,
-              id: ++nextCorrectionDraft,
+              id: ++nextOnlineDraft,
               client,
               boundaryEpoch: lockEpoch,
               source: {
@@ -216,6 +238,26 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           }}
         />
       </QueryClientProvider>
+      {registration && (
+        <FarmerRegistrationEditor
+          key={`registration:${registration.id}`}
+          draft={registration}
+          activeClient={client}
+          boundaryEpoch={lockEpoch}
+          language={language}
+          registerLock={registerLock}
+          onFailure={failure}
+          onIdle={() =>
+            setControl((value) => ({ id: value.id + 1, action: "clear" }))
+          }
+          onDiscard={() => setRegistration(null)}
+          onSaved={() => {
+            setRegistration(null);
+            setSaved("registration");
+            setControl((value) => ({ id: value.id + 1, action: "refresh" }));
+          }}
+        />
+      )}
       {draft && (
         <FarmerCorrection
           key={`correction:${draft.id}`}
@@ -231,7 +273,7 @@ function AdminWorkspace({ client: supplied }: { client?: PilotClient }) {
           onDiscard={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
-            setSaved(true);
+            setSaved("correction");
             setControl((value) => ({
               id: value.id + 1,
               action: "refresh",
@@ -247,12 +289,14 @@ function RegistryView({
   client,
   correctionOpen,
   onCorrect,
+  onRegister,
   onProtectedClear,
   control,
 }: {
   client: PilotClient;
   correctionOpen: boolean;
   onCorrect: (source: FarmerSummary, owner: Context) => void;
+  onRegister: (owner: Context) => void;
   onProtectedClear: () => void;
   control: RegistryControl;
 }) {
@@ -564,6 +608,14 @@ function RegistryView({
         </button>
         {context && (
           <button
+            disabled={busy || correctionOpen}
+            onClick={() => onRegister(context)}
+          >
+            {registrationWords[language].start}
+          </button>
+        )}
+        {context && (
+          <button
             disabled={busy}
             onClick={async () => {
               const previous = context;
@@ -854,7 +906,9 @@ function RegistryView({
                 >
                   {correctionWords[language].start}
                 </button>
-                {correctionOpen && <p>{correctionWords[language].occupied}</p>}
+                {correctionOpen && (
+                  <p>{registrationWords[language].occupied}</p>
+                )}
               </>
             )}
           {data?.kind === "farmer-detail" &&
