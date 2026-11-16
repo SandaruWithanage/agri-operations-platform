@@ -33,7 +33,7 @@ The admin [Reported land directory](LAND_DIRECTORY.md) provides bilingual scoped
 
 Point/label/area can be omitted or null. A point requires both longitude and latitude; accuracy is optional. Zero coordinates, zero reported accuracy and zero reported area are valid technical values. Organization, creator, time, source, farmer/owner/project IDs, polygons and survey verification are not accepted from callers. Values identify reported land only; the configured geography is not a claim that spatial containment was checked.
 
-Use the shared `PilotClient.registerLand`, `land`, `landIdentification` and `landGeographies` transport methods. Preserve entity/mutation IDs across uncertain network results. The registration response acknowledges `status: synced`, ID and replay status; it does not confer read permission. Future Next.js views must use the accepted TanStack Query ownership/cancellation rules, not a second custom record cache or a Zustand business-data store.
+Use the shared `PilotClient.registerLand`, `land`, `landIdentification` and `landGeographies` transport methods. Preserve entity/mutation IDs across uncertain network results. The registration response acknowledges `status: synced`, ID and replay status; it does not confer read permission. Online Next.js views use the accepted TanStack Query ownership/cancellation rules; do not introduce a second custom record cache or a Zustand business-data store.
 
 ## Offline and operational limits
 
