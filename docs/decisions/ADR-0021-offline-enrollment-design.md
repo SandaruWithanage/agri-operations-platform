@@ -1,12 +1,14 @@
 # ADR 0021 — Offline enrollment design (amended; NOT yet Accepted)
 
-Status: **conditionally accepted as the technical direction; not Accepted; implementation not authorized.** It becomes Accepted only after (a) the owner records approval of field-officer enrollment authority in the decision register (DEC-12, section 7) and (b) owner/security review of this amended text. DEC-04 (eligibility, cycles, withdrawal, who may act) is still open, so nothing here is an approved client rule and no provisional rule may be described as client-approved.
+Status: **conditionally accepted as the technical direction; not Accepted; implementation not authorized.** The owner has recorded a **provisional** Phase 1 pilot operating policy for DEC-12 (section 7), which is subject to client confirmation and independent security review and must not be described as final client-approved business policy. The ADR becomes Accepted only through the approval steps in section 9. DEC-04 (eligibility, cycles, withdrawal, who may act) is still open with the client, so no provisional rule here is a client-approved rule.
 
 ## Review record
 
 Architecture review, 16 Nov 2026 (recorded as supplied by the project owner): direction aligns with the approved PostgreSQL, Dexie, synchronization and database-enforced ABAC architecture. Required amendments, all addressed below: (1) duplicate-intent fingerprint lifecycle and future re-enrollment; (2) replay when the server committed but authorization was revoked before the response was recovered; (3) distinct handling of authentication failure, authorization denial, business conflict and uncertain outcomes; (4) encrypted synchronization metadata and account/device partition integrity; (5) Dexie migration safety, multi-tab behavior and archive compatibility; (6) explicit owner approval of field-officer enrollment authority.
 
 Standing constraints from the review: preserve the existing vault; introduce no Redux, no second offline database, no Redis and no second synchronization engine; eligibility and project policy stay server-authoritative; do not enable offline enrollment for real officers; do not merge or deploy without the security evidence listed in section 8.
+
+Owner review, 16 Nov 2026 (recorded as supplied by the project owner): reviewed the merged amendments and supplied a **provisional** Phase 1 pilot operating policy for DEC-12, the offline farmer dependency, refusal reasons and queue limits (sections 7 and 10). It is subject to client confirmation and independent security review. The owner directed that offline enrollment must not be implemented or enabled until the required approvals are explicitly recorded, and that no merge or production-readiness claim be made.
 
 ## Context
 
@@ -29,7 +31,7 @@ An offline enrollment is a **queued intent, not a result**: `{mutationId, enroll
 
 ### 3. Outcome classes and local state (review items 2 and 3)
 
-Four classes, never merged. The BFF passes through 400/401/403/404/409/429 and turns everything else into a generic 503, so the device sees only these signals; reasons stay generic in v1 (open question 3).
+Four classes, never merged. The BFF passes through 400/401/403/404/409/429 and turns everything else into a generic 503, so the device sees only these signals; officer-facing refusal messages are generic in v1 (section 7).
 
 | Class                  | Signal                                                                                                         | Meaning                                                                                                     | Local result                                                                                                                                               | Retry                                                                                                                   |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -60,16 +62,30 @@ Four classes, never merged. The BFF passes through 400/401/403/404/409/429 and t
 
 No eligibility, policy, project scope or farmer-visibility decision is made on the device. Sync always requires a current session and approved device, and the database re-checks everything. A grant or assignment revoked while offline turns the item into `rejected` (never sent before) or `unconfirmed` (sent before), never into an unreviewed write. A farmer geography move while offline is a server refusal. Sync stops for an account/device mismatch. The local project list is cleared on the next context refresh.
 
-### 7. Explicit owner approval of field-officer enrollment authority (review item 6)
+### 7. Field-officer enrollment authority — provisional owner recommendation (DEC-12; review item 6)
 
-Enrollment source `field_officer` exists in the API and the field BFF, but **no `enrollment.create`/`enrollment.withdraw` grant is seeded or provisioned for field officers**. The owner must record in the decision register (new item **DEC-12**, linked to DEC-02/DEC-04): whether field officers may create enrollments at all; under which project and geography scopes; whether a second approval is required; who may withdraw or reassign; and whether enrollment may be queued offline. Until a dated owner approval naming the approver role is recorded there, this ADR stays unaccepted, offline enrollment ships behind a feature flag that defaults off and is not enabled for real officers in any environment, and no document may describe these rules as client-approved.
+**Status of this section: provisional owner recommendation, not final client policy.** It is the proposed Phase 1 pilot operating policy, pending client confirmation (DEC-12/DEC-04) and independent security review. Until both are recorded, no field-officer enrollment grant exists in any environment and offline enrollment stays disabled.
+
+1. Field officers may create farmer/project enrollments only when explicitly granted `enrollment.create`.
+2. The permission is constrained by active organization, project and geographical assignments (the existing project grant and project/geography assignment scope; acceptance must prove an inactive organization, project or assignment is refused).
+3. Current `farmer.read` and the current per-project enrollment policy must also authorize the operation, as they do online today.
+4. Creating or registering a farmer never grants enrollment authority.
+5. Authorized field officers may queue offline enrollment intents on approved organization devices, using only the existing encrypted vault.
+6. At synchronization the server revalidates all permissions, farmer status, current geography and project policy; nothing decided on the device is trusted.
+7. **Officers cannot withdraw enrollments in v1.** Withdrawal requires a separately authorized administrator holding `enrollment.withdraw`. Today the database would accept an `enrollment.withdraw` grant with a field-officer source, so this rule needs enforcement (prerequisite task ENR-AUTH-01, section 10); until then no such grant may be provisioned.
+8. No additional manual approval step per enrollment in v1; eligibility and authorization remain mandatory.
+9. Enrollment permissions are never seeded to all field officers. Grants must be explicit, scoped and audited; audited grant administration (IAM-01) or an equivalent documented, audited provisioning procedure is required before any real grant.
+
+**Offline farmer dependency (provisional):** in v1 only farmers already confirmed by the server may be selected for offline enrollment. A farmer whose registration is still pending synchronization must synchronize successfully first. Dependent mutation ordering is deferred to a separate future ADR and must not be implemented implicitly.
+
+**Refusal reasons (provisional):** field officers receive generic refusal messages that do not reveal confidential project policy or unauthorized record information. Authorized administrators may see detailed reasons and audit history only through properly scoped server endpoints. Local `rejected`, `conflict` and `unconfirmed` states stay distinct. Today the server does not persist refused attempts at all (a refusal rolls back its transaction), so administrator-visible reasons need new server work (prerequisite task ENR-AUDIT-01, section 10).
 
 ### 8. Required evidence before merge, enablement or deployment
 
 - All acceptance tests below, each mutation-checked where it asserts isolation or integrity (for example: swapping a row between partitions, altering AAD inputs and replaying a ciphertext under another row id must each fail authentication).
 - Independent security review of the enrollment store, AAD binding, fingerprint lifecycle and outcome classification, recorded in the results page.
 - Device evidence under DEC-07 (actual models/OS/browsers, offline window, lost-device and lost-passphrase recovery) before any real-officer enablement; synthetic Chromium results are not device approval.
-- Recorded DEC-12 approval (section 7) and an explicit enablement record; deployment must not enable the feature flag otherwise.
+- Client confirmation of DEC-12 recorded in the decision register (section 9, A1), the prerequisite tasks of section 10 deployed, and an explicit owner enablement record (section 10, Gate E). Deployment must not enable the feature flag otherwise; the provisional owner recommendation alone is not sufficient.
 
 ## Acceptance tests required before merge
 
@@ -82,17 +98,45 @@ Enrollment source `field_officer` exists in the API and the field BFF, but **no 
 
 ## Remaining open questions
 
-1. DEC-12: field-officer enrollment authority (section 7) — blocks acceptance.
-2. May a farmer registered offline in the same session be enrolled before their registration syncs (dependency ordering, a "blocked" state)?
-3. Should a refused enrollment tell the officer why (not enabled, not eligible, already enrolled), or stay generic (current proposal)?
-4. Queue size, maximum age and the "outcome unknown" bound (technical defaults, not client rules).
-5. Device security evidence under DEC-07 before widening the offline dataset (OFF-03/IAM/REC).
+1. **Client confirmation** of the provisional DEC-12 policy and of DEC-04 eligibility/lifecycle rules (named client approver role and date). Blocks Accepted.
+2. **Independent security review** of this design and, later, of the implementation. Blocks Accepted and, separately, enablement.
+3. Device security evidence under DEC-07 (models/OS/browsers, ownership/management, offline window, lost-device and lost-passphrase recovery). Blocks enablement.
+4. **Escalation channel for aged items.** An unsynchronized intent is encrypted on the device and invisible to the server by design, so "escalate for administrator review after 30 days" cannot be a server-side alert in v1. The provisional design shows a persistent escalated state with the enrollment reference and an instruction to contact an administrator, and includes the item in the recovery archive on request. Whether a server-visible signal (for example a reference-only heartbeat) is acceptable needs an owner/security decision.
+5. Whether the engineering-proposed values marked "(proposed)" in section 10 are acceptable as configuration defaults.
 
-## Proposed task split (after acceptance; incremental, each with independent tests and evidence)
+## 9. Approval steps required before this ADR becomes Accepted
 
-- **OFF-04A** — R1 release: Dexie version 4 with the empty store, version-change handling, encrypted enrollment store with AAD binding and fingerprint lifecycle, feature flag off.
-- **OFF-04B** — Sync engine and outcome classification inside the existing sync path (no second engine), single-leader locking, `unconfirmed` handling.
-- **OFF-04C** — Review/recovery UI (English/Sinhala), archive version 3, reconciliation guidance.
-- **OFF-04D** — BFF/browser A/B coverage, Chromium journeys, security review and device evidence packaging.
+"Accepted" authorizes implementing OFF-04A–D behind a default-off flag. It does **not** authorize enablement for real officers (section 8, step E).
 
-None is started. Do not enable offline enrollment for real officers, and do not merge or deploy OFF-04 work without the evidence in section 8.
+1. **A1 — Client confirmation.** Record in `docs/requirements/OPEN_DECISIONS.md` the client's confirmation or amendment of DEC-12 and the affected DEC-04 items, with date and approver role. Until then the policy stays labelled provisional.
+2. **A2 — Independent security review.** A reviewer outside the implementation team reviews sections 2–5 and 8 (fingerprint lifecycle, outcome classification, encrypted metadata and AAD binding, partition checks, Dexie/archive migration) and the prerequisite designs. Findings are tracked; each is closed or explicitly risk-accepted by the owner. Recorded in a dated results page.
+3. **A3 — Prerequisite designs approved.** The ENR-AUDIT-01 design (a short ADR addendum covering refusal logging that survives rollback, retention and scoped administrator endpoints) and the ENR-AUTH-01 approach are approved.
+4. **A4 — Owner decision.** The owner changes the status line to Accepted in a reviewed commit that cites the A1–A3 dates and approvers. Nobody else changes it.
+
+## 10. Implementation sequence and acceptance criteria (not started; follows acceptance)
+
+Each task lands as its own pull request with independent tests and evidence, updates `PROJECT_HANDOVER.md`, the decision register, the results page and the roadmap, and is never merged without the evidence in section 8. Nothing enables the feature.
+
+**Provisional queue and retry defaults** (configurable technical safeguards, not client-approved expiry rules):
+
+- Maximum **100** unresolved enrollment intents per account/device vault; saving a new intent at capacity is refused with a clear message and nothing is deleted.
+- Capacity warning at **80** unresolved intents _(proposed)_.
+- Warning when any intent has been unresolved for **7 days**; **escalated state** after **30 days** (open question 4).
+- **Never** auto-delete an unsynchronized intent because of age; age never bypasses current server authorization — an aged item is sent with its original IDs and the server decides.
+- Retry is bounded: exponential backoff from 30 seconds to a 15-minute cap and at most 8 automatic attempts per unlocked session, then manual retry _(proposed)_; stable `mutationId`/`enrollmentId` are never regenerated.
+
+**Prerequisites (separate branches and PRs, before OFF-04B enablement):**
+
+- **ENR-AUTH-01 — Administrator-only withdrawal.** Enforce in PostgreSQL that `enrollment.withdraw` grants and withdrawal calls require the administrator source; keep the field BFF unable to reach withdrawal. _Acceptance:_ a field-officer-source withdraw grant is refused or inert; Officer A/B matrix extended; existing administrator withdrawal unchanged; migration notes and rollback limits documented.
+- **ENR-AUDIT-01 — Administrator-visible refusal reasons and attempt history.** Durable server-side record of refused enroll attempts (including authorization denials as security events) that survives the rolled-back transaction, with enumerated reason codes, retention stated, and a scoped administrator endpoint under its own permission. Officer responses stay generic. _Acceptance:_ every refusal class writes one attempt record; officers cannot read it; replays do not duplicate it; Officer A/B isolation holds; no secrets or farmer PII beyond IDs are logged.
+- **IAM-01 (or an audited provisioning procedure) — Explicit, scoped, audited enrollment grants.** _Acceptance:_ no grant is seeded; every grant change is audited with actor and scope; inactive organization/project/assignment is refused (DEC-12 item 2).
+
+**OFF-04A — Encrypted enrollment store (R1 release, flag off).** Dexie version 4 with the empty/additive `enrollments` store; version-change/blocked handling; AAD-bound rows; fingerprint lifecycle; queue limits and warnings; confirmed-server-farmer-only selection. _Acceptance:_ populated v3 vault upgrades with farmer drafts decrypting byte-identically and unique fingerprints intact; AAD tamper and cross-row/cross-vault swaps fail (mutation-checked); capacity of 100 enforced with no deletion; two connections at different versions behave safely; nothing is exposed in the UI.
+
+**OFF-04B — Sync classification inside the existing sync path (no second engine).** Outcome classes and states (`pending-sync`, `rejected`, `conflict`, `unconfirmed`, `synced`), single-leader locking, bounded retry, partition checks, generic officer messages. _Acceptance:_ every row of the section 3 table; lost response replays with no second row or audit; commit-then-revoke yields `unconfirmed`; revocation, farmer geography move, inactive organization/project/assignment and farmer-status change while offline are refused by the server; aged items are still authorized only by current server state; one officer's queue cannot be sent under another account/device.
+
+**OFF-04C — Review/recovery UI and archive version 3 (English and Sinhala).** Per-item review for conflict, rejected and unconfirmed, 7-day and 30-day indicators, capacity warning, reconciliation guidance, authenticated archive v3 written only when enrollment rows exist. _Acceptance:_ v2 archives open in the new reader and v3 is rejected by a v2 reader; import verifies partition binding and recomputes fingerprints; 44 px touch targets, contrast and navigation warnings verified; no data ever shown that the server did not authorize.
+
+**OFF-04D — BFF/browser A/B coverage, Chromium journeys and evidence packaging.** _Acceptance:_ shared-profile Officer A/B, multi-tab single-leader behavior, offline queue → reload → unlock → reconnect → sync, conflict/rejected/unconfirmed review in both languages, and the section 8 evidence compiled for security review.
+
+**Gate E — Enablement for real officers (separate recorded decision).** Requires: A1–A4 complete; independent security review of the _implementation_; real-device acceptance under DEC-07; the prerequisites above deployed; a recorded owner enablement decision naming scopes and officers. Until then the flag stays off in every environment, and no document may claim production readiness or client approval.
