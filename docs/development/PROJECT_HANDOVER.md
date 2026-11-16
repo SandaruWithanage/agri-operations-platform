@@ -147,6 +147,10 @@ Choose an approved map/boundary-data/hosting approach. Add bounded viewport/sear
 
 **Dependencies:** map/data-egress decisions and current land scopes; relationships where needed. **Done when:** bounded queries/index use, pan/zoom cancellation, wrong-scope points/counts and provider/privacy behavior are tested, including authorized/no-coordinate records.
 
+### OFF-04 — Offline enrollment queue — Pending (design proposed)
+
+[ADR 0021](../decisions/ADR-0021-offline-enrollment-design.md) proposes reusing the encrypted account/device vault for queued enrollment intents (IDs only), server-authoritative sync outcomes and the acceptance tests required before merge. It awaits owner/security approval and answers to its open questions; no code exists. Preconditions delivered: PRJ-04B database/API Officer A/B matrix. Still required: BFF/browser A/B coverage and sync reauthorization tests. Do not start OFF-04A–D until the ADR is accepted.
+
 ### OFF-03 — Durable offline land/GPS workflow — Pending
 
 Expand the minimal farmer-only dataset only after device/data-security and recovery review. Version encrypted Dexie records/outbox for necessary GPS/land/link fields; preserve legacy farmer drafts and IDs. Design farmer/land/relationship sync ordering and idempotent recovery after partial success. Reauthorize every server action; no expired/offline JWT bypass or second queue.
