@@ -1,5 +1,7 @@
 # Phase 1 execution board (proposed tracking file)
 
+> **Historical lean board (superseded as a scope proposal, 17 Nov 2026).** The living board for the owner's full staff Phase 1 is [PHASE_1_STAFF_EXECUTION_BOARD.md](PHASE_1_STAFF_EXECUTION_BOARD.md). This file keeps its dated audit findings, gate results and UAT mapping unchanged as evidence; "UAT-nn" below means the lean plan's list (see conflict SC-08).
+
 **Status: proposed tracking aid, not a contract and not client acceptance.** It records the P1-PR01 audit of the existing code against [PHASE_1_AGENT_DEVELOPMENT_PLAN.md](PHASE_1_AGENT_DEVELOPMENT_PLAN.md) and the proposed [lean scope](../requirements/PHASE_1_LEAN_SCOPE_PROPOSED.md). The stable delivered/pending register remains [PROJECT_HANDOVER.md](PROJECT_HANDOVER.md). Status vocabulary: `Pending`, `In Progress`, `Verified`, `Blocked`, `Client Accepted`. Nothing below is `Client Accepted`.
 
 ## 1. Baseline (audit date 16 Nov 2026)

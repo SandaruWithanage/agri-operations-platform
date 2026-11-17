@@ -1,5 +1,7 @@
 # Phase 1 lean scope — PROPOSED (not client-approved)
 
+> **Superseded as a scope proposal (17 Nov 2026)** by [PHASE_1_STAFF_SCOPE_PROPOSED.md](PHASE_1_STAFF_SCOPE_PROPOSED.md). Kept as history; its fee, duration and exclusions are no longer the working proposal and none of them was ever approved.
+
 **Status: proposal only. No client or owner approval is recorded here.** This additive document summarizes the lean P1 scope from [PHASE_1_AGENT_DEVELOPMENT_PLAN.md](../development/PHASE_1_AGENT_DEVELOPMENT_PLAN.md) (budget proposal v0.3: 18–20 weeks calendar, 160 engineering hours, LKR 250,000, all proposed). It does **not** replace, withdraw or edit the comprehensive SRS or the 71-decision register, which remain the proposed long-term requirements. Until a dated change order is signed, build and test only already-authorized bounded technical work with synthetic data.
 
 ## Proposed in-scope outcomes
