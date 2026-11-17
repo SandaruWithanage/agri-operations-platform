@@ -624,7 +624,9 @@ function OfflineWorkspaceView() {
         >
           සිංහල
         </button>
-        <a href="/">{c.signin}</a>
+        <a className="nav-link" href="/">
+          {c.signin}
+        </a>
       </div>
       <h1>{c.title}</h1>
       <p role="status">{online ? c.online : c.offline}</p>
