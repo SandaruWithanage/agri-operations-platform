@@ -30,6 +30,10 @@ import {
   landDetailSchema,
   landPageSchema,
   landGeographiesSchema,
+  landGeometryRecordSchema,
+  landGeometryResultSchema,
+  landGeometryQuerySchema,
+  landGeometryReadSchema,
 } from "@agri/validation";
 import {
   farmerHistoryQuerySchema,
@@ -199,6 +203,7 @@ export function createBffHandler(
             "farmers/register",
             "farmers/change",
             "land/register",
+            "land/geometry",
             "projects/register",
             "projects/change",
             "enrollments/enroll",
@@ -216,6 +221,7 @@ export function createBffHandler(
             "farmers/correction-geographies",
             "land",
             "land/detail",
+            "land/geometry",
             "land/geographies",
             "projects",
             "projects/detail",
@@ -555,6 +561,46 @@ export function createBffHandler(
           ),
         );
         if (!result.success || result.data.landId !== parsed.data.landId)
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "land/geometry" && request.method === "POST") {
+        const parsed = landGeometryRecordSchema.safeParse(await body(request));
+        if (!parsed.success) throw new Failure(400);
+        const result = landGeometryResultSchema.safeParse(
+          await call(
+            path,
+            "POST",
+            undefined,
+            signed.accessToken,
+            parsed.data,
+            csrf,
+          ),
+        );
+        if (!result.success || result.data.landId !== parsed.data.landId)
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "land/geometry") {
+        const params = new URL(request.url).searchParams;
+        if (new Set(params.keys()).size !== Array.from(params.keys()).length)
+          throw new Failure(400);
+        const query = landGeometryQuerySchema.safeParse(
+          Object.fromEntries(params),
+        );
+        if (!query.success) throw new Failure(400);
+        const result = landGeometryReadSchema.safeParse(
+          await call(
+            `${path}?${new URLSearchParams({
+              landId: query.data.landId,
+              history: String(query.data.history),
+            })}`,
+            "GET",
+            undefined,
+            signed.accessToken,
+          ),
+        );
+        if (!result.success || result.data.landId !== query.data.landId)
           throw new Failure(503);
         return reply(result.data);
       }

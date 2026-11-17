@@ -31,6 +31,10 @@ import {
   landPageSchema,
   landDetailSchema,
   landGeographiesSchema,
+  landGeometryRecordSchema,
+  landGeometryResultSchema,
+  landGeometryReadSchema,
+  type LandGeometryRecord,
   type LandRegistration,
 } from "@agri/validation";
 import {
@@ -520,6 +524,41 @@ export class PilotClient {
       ),
     );
     if (!result.success || result.data.land.id !== id)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async recordLandGeometry(
+    accountId: string,
+    input: LandGeometryRecord,
+    expectedDeviceId?: string,
+  ) {
+    if (expectedDeviceId !== undefined && !uuid.test(expectedDeviceId))
+      throw new PilotRequestError(400);
+    const value = landGeometryRecordSchema.parse(input);
+    const session = await this.session();
+    if (
+      session.accountId !== accountId ||
+      (expectedDeviceId !== undefined && session.deviceId !== expectedDeviceId)
+    )
+      throw new PilotRequestError(401);
+    const result = landGeometryResultSchema.safeParse(
+      await this.request("land/geometry", value, session.csrfToken),
+    );
+    if (!result.success || result.data.landId !== value.landId)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  async landGeometry(landId: string, history = false, signal?: AbortSignal) {
+    if (!uuid.test(landId)) throw new PilotRequestError(400);
+    const result = landGeometryReadSchema.safeParse(
+      await this.request(
+        `land/geometry?landId=${encodeURIComponent(landId)}&history=${history}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (!result.success || result.data.landId !== landId)
       throw new PilotRequestError(503);
     return result.data;
   }
