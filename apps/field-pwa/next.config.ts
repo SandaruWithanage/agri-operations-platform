@@ -52,7 +52,7 @@ export default {
   ],
   async headers() {
     return [
-      // The field app uses location only on the foreground survey screen, never for embedded content.
+      // Location is used only by this app's own pages (the foreground survey screen), never by embedded content.
       { source: "/:path*", headers: securityHeaders("self") },
       {
         source: "/offline-workspace",

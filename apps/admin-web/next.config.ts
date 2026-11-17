@@ -51,7 +51,7 @@ export default {
     "@agri/validation",
   ],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders("none") }];
+    return [{ source: "/:path*", headers: securityHeaders("self") }];
   },
   experimental: { cpus: 2 },
 };

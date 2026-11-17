@@ -19,9 +19,11 @@ const all = (list: Rule[]) =>
   );
 
 describe("frontend security headers", () => {
+  // Both apps use the browser location API on their own pages (field survey; admin land registration "Use current
+  // GPS location"), so each must allow it for itself and never for embedded or foreign content.
   it.each([
     ["field PWA", field, "geolocation=(self)"],
-    ["admin web", admin, "geolocation=()"],
+    ["admin web", admin, "geolocation=(self)"],
   ])(
     "%s applies a same-origin policy to every route in production",
     async (_name, config, geo) => {
