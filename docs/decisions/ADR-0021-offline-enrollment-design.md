@@ -140,3 +140,39 @@ Each task lands as its own pull request with independent tests and evidence, upd
 **OFF-04D — BFF/browser A/B coverage, Chromium journeys and evidence packaging.** _Acceptance:_ shared-profile Officer A/B, multi-tab single-leader behavior, offline queue → reload → unlock → reconnect → sync, conflict/rejected/unconfirmed review in both languages, and the section 8 evidence compiled for security review.
 
 **Gate E — Enablement for real officers (separate recorded decision).** Requires: A1–A4 complete; independent security review of the _implementation_; real-device acceptance under DEC-07; the prerequisites above deployed; a recorded owner enablement decision naming scopes and officers. Until then the flag stays off in every environment, and no document may claim production readiness or client approval.
+
+## 11. DRAFT amendment A (17 Nov 2026): same-session dependent enrollment and refusal reasons — NOT part of the reviewed text
+
+**Status: proposed amendment text for owner and independent security review. It does not change this ADR's status (still NOT Accepted), it is not implemented, and nothing here enables offline enrollment.** It responds to the owner's later provisional answers Q3 (an enrollment may be queued for a farmer newly registered offline in the same session, with dependency-aware sync) and Q4 (safe, actionable refusal reasons for currently authorized field officers), which differ from the earlier DEC-12 text (server-confirmed farmers only; generic officer messages). Those differences are recorded as conflicts SC-02 and SC-03 in the Phase 1 conflict register; **the owner must say which policy stands before this section can be reviewed.** The offline farmer dependency in section 7 is replaced by this section only if the owner chooses Q3.
+
+### 11.1 Dependency model
+
+- A queue item has a kind (`farmer.register` or `enrollment.create`) and, for an enrollment, an optional **single** `dependsOn` edge to a `farmer.register` item **in the same account/device partition**. The edge lives inside the encrypted payload; it is never a server concept and never crosses partitions. Maximum depth 1, no cycles, validated when the item is queued and again on unlock and archive import.
+- The farmer UUID is generated on the device and is the canonical server identifier (as today), so the enrollment already carries the final `farmerId`. The edge only controls **ordering**.
+- **Send order:** the parent is sent first. The child is sent only after the parent has a confirmed server receipt (`synced`). The server never trusts the order: it re-validates the child on its own (current session and device, current `farmer.read` on the farmer's current geography, project scope, enabled policy, farmer status).
+- **Parent outcomes → child state:**
+
+| Parent                                        | Child                                                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `pending-sync`, `syncing`                     | `blocked-dependency` (waiting); no request is made                                                                             |
+| `synced`                                      | released to `pending-sync`                                                                                                     |
+| `conflict`, `rejected`                        | stays `blocked-dependency` with the parent reason shown; all data retained; a new intent needs explicit review                 |
+| `unconfirmed` (possible commit, then revoked) | stays `blocked-dependency`; reconciliation by an authorized administrator, then explicit discard or re-queue                   |
+| parent discarded by the officer               | child cannot be sent; the officer must discard or re-parent explicitly (a child is never silently promoted to "no dependency") |
+
+- `blocked-dependency` is a new local state; it never means success or rejection. It counts toward the unresolved-intent limits (100, warning at 80, 7 and 30 day indicators) and is never auto-deleted.
+- **Creation is not read access.** Registering a farmer does not grant `farmer.read`. A queued child for that farmer is accepted by the server only if the officer separately holds `farmer.read` in the farmer's geography and the project scope; otherwise it is refused (`rejected`). The UI must warn when the cached, non-authoritative permission hints suggest this will fail.
+
+### 11.2 Refusal reasons (resolves SC-03 only after an owner choice)
+
+- Option G (current DEC-12 text): officers always see a generic message; administrators see detailed reasons and history (ENR-AUDIT-01).
+- Option S (owner Q4): officers see a **closed set of safe, actionable classes**, bilingual, for example `not authorized`, `not accepted now`, `already enrolled`, `try again later`. The server returns a class from an enumeration, never free text, rule names, thresholds, policy configuration or another record's data, and **only inside a response to a currently authorized request**. A revoked actor receives only `not authorized`. Whether `not accepted now` is acceptable (it hints that a project policy or eligibility rule exists) is a confidentiality decision for the owner and the security reviewer.
+- Recommendation: keep Option G until the owner decides; if Option S is chosen, make the disclosure level a server-side, per-project configuration defaulting to generic.
+
+### 11.3 Additional acceptance tests (added to section 10)
+
+Parent commits then the reply is lost: child waits, parent replays with the same ID, then the child is sent; parent rejected or conflicting leaves the child blocked with data retained; parent `unconfirmed` leaves the child blocked and never sends it; restart, lock and multi-tab preserve edges and order; the edge cannot reference another partition, a missing parent or a cycle (import and unlock included); an officer without `farmer.read` gets a refused child while the parent still succeeds; tampering with the plaintext status cannot send a child before its parent; two officers cannot satisfy each other's dependencies; archive v3 round-trips edges; queue limits count blocked children; Staff UAT-01, 03 and 04.
+
+### 11.4 Not decided here
+
+Whether Q3 or the earlier confirmed-farmer-only rule stands; Option G versus S; whether dependent registration of farmer and enrollment should instead be a single atomic server command (a larger design change that would need its own review); and every approval in section 9. This draft does not authorize OFF-04A–D.
