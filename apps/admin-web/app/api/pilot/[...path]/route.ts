@@ -9,6 +9,7 @@ async function handle(request: Request): Promise<Response> {
       internalKey: process.env.PILOT_INTERNAL_KEY ?? "",
       source: "administrator",
       allowInsecureLocal: process.env.NODE_ENV !== "production",
+      trustedProxyHops: Number(process.env.PILOT_TRUSTED_PROXY_HOPS ?? "0"),
     });
     return handler(request);
   } catch {

@@ -100,4 +100,4 @@ Merged since the previous review: #46 (board and security review log), #47 (P1-0
 
 ## Issue triage
 
-The GitHub issue board is checked between tasks. Open QA findings are fixed ahead of new features: #59 (survey page stale data across an account switch) was fixed in PR #61 (merged). #60 (walk-survey save retries after editing) was fixed in PR #62 (merged). #63 (survey visible after sign-out) is fixed in PR #65 (open). #64 (shared BFF login throttle bucket, SEC-04) is next.
+The GitHub issue board is checked between tasks. Open QA findings are fixed ahead of new features: #59 (survey page stale data across an account switch) was fixed in PR #61 and #60 (walk-survey save retries after editing) in PR #62 (both merged). #63 (survey visible after sign-out) was fixed in PR #65 (merged). #64 (shared BFF login throttle bucket, SEC-04) is fixed in PR #66 (open) except for the topology, measurement and edge-limit items.

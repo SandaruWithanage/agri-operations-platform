@@ -50,6 +50,105 @@ describe("server-only authentication BFF", () => {
     expect(fetcher.mock.calls[0][1].headers["x-agri-bff-key"]).toBe(internal);
     expect(fetcher.mock.calls[0][1].redirect).toBe("error");
   });
+  describe("login client attribution (issue #64)", () => {
+    const login = {
+      loginName: "synthetic",
+      password: "synthetic",
+      otp: "123456",
+      deviceId: "synthetic",
+    };
+    async function forwarded(
+      hops: number | undefined,
+      extra: Record<string, string>,
+    ) {
+      const fetcher = vi.fn().mockResolvedValue(Response.json({ cookie }));
+      const handler = createBffHandler(
+        {
+          ...config,
+          ...(hops === undefined ? {} : { trustedProxyHops: hops }),
+        },
+        fetcher,
+      );
+      expect(
+        (await handler(req("auth/login", "POST", login, extra))).status,
+      ).toBe(200);
+      return fetcher.mock.calls[0][1].headers["x-agri-client"] as
+        string | undefined;
+    }
+
+    it("trusts no forwarding header by default and never forwards a browser-supplied client header", async () => {
+      expect(
+        await forwarded(undefined, { "x-forwarded-for": "198.51.100.9" }),
+      ).toBeUndefined();
+      expect(
+        await forwarded(0, { "x-forwarded-for": "198.51.100.9" }),
+      ).toBeUndefined();
+      expect(
+        await forwarded(undefined, { "x-agri-client": "198.51.100.9" }),
+      ).toBeUndefined();
+      expect(
+        await forwarded(1, { "x-agri-client": "198.51.100.9" }),
+      ).toBeUndefined();
+    });
+
+    it("takes the address appended by the outermost trusted proxy and ignores caller-supplied entries", async () => {
+      expect(
+        await forwarded(1, { "x-forwarded-for": "198.51.100.9, 203.0.113.7" }),
+      ).toBe("203.0.113.7");
+      expect(await forwarded(1, { "x-forwarded-for": "203.0.113.7" })).toBe(
+        "203.0.113.7",
+      );
+      // With two trusted proxies the client is the second entry from the right; the spoofed first entry is ignored.
+      expect(
+        await forwarded(2, {
+          "x-forwarded-for": "198.51.100.9, 203.0.113.7, 10.0.0.2",
+        }),
+      ).toBe("203.0.113.7");
+      expect(await forwarded(1, { "x-forwarded-for": "2001:db8::7" })).toBe(
+        "2001:db8::7",
+      );
+    });
+
+    it("gives no attribution for a short chain, a missing header or something that is not an address", async () => {
+      expect(
+        await forwarded(2, { "x-forwarded-for": "203.0.113.7" }),
+      ).toBeUndefined();
+      expect(await forwarded(1, {})).toBeUndefined();
+      expect(
+        await forwarded(1, { "x-forwarded-for": "not-an-ip; drop table" }),
+      ).toBeUndefined();
+      expect(
+        await forwarded(1, { "x-forwarded-for": "a".repeat(60) }),
+      ).toBeUndefined();
+      expect(
+        await forwarded(1, { "x-forwarded-for": "1".repeat(2000) }),
+      ).toBeUndefined();
+    });
+
+    it("attributes only the login call and rejects an unsafe proxy depth", async () => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ csrfToken: "x", accountId: "a", deviceId: "d" }),
+        );
+      const handler = createBffHandler(
+        { ...config, trustedProxyHops: 1 },
+        fetcher,
+      );
+      await handler(
+        req("auth/csrf", "GET", undefined, {
+          "x-forwarded-for": "203.0.113.7",
+        }),
+      );
+      expect(fetcher).toHaveBeenCalled();
+      for (const call of fetcher.mock.calls)
+        expect(call[1].headers["x-agri-client"]).toBeUndefined();
+      for (const bad of [-1, 1.5, 6, Number.NaN])
+        expect(() =>
+          createBffHandler({ ...config, trustedProxyHops: bad }, vi.fn()),
+        ).toThrow("Invalid BFF configuration");
+    });
+  });
   it("rejects foreign origins, missing CSRF and duplicate cookies before forwarding a request", async () => {
     const fetcher = vi.fn();
     const handler = createBffHandler(config, fetcher);

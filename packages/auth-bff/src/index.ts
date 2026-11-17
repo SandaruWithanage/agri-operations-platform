@@ -61,7 +61,30 @@ export type BffConfig = {
   internalKey: string;
   source: "field_officer" | "administrator";
   allowInsecureLocal?: boolean;
+  /**
+   * Number of trusted reverse proxies in front of this BFF that each append the address they received the
+   * request from to `X-Forwarded-For`. 0 (the default) means no forwarding header is trusted, so every login is
+   * attributed to one shared "unattributed" client and only the (much larger) broad client limit applies.
+   */
+  trustedProxyHops?: number;
 };
+/**
+ * The client address as seen by the outermost trusted proxy: the `hops`-th entry from the right of
+ * `X-Forwarded-For`. Entries further left are supplied by the caller and are never used. Anything that does not
+ * look like an address, or a chain shorter than the configured depth, yields no attribution.
+ */
+export function trustedClientAddress(
+  request: Request,
+  hops: number,
+): string | undefined {
+  if (hops < 1) return undefined;
+  const header = request.headers.get("x-forwarded-for");
+  if (!header || header.length > 1000) return undefined;
+  const parts = header.split(",").map((part) => part.trim());
+  if (parts.length < hops) return undefined;
+  const candidate = parts[parts.length - hops];
+  return /^[0-9a-fA-F:.]{2,45}$/.test(candidate) ? candidate : undefined;
+}
 const clearCookie =
   "__Host-agri_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0";
 const uuid =
@@ -148,9 +171,13 @@ export function createBffHandler(
     api.hash ||
     frontend.protocol !== "https:" ||
     frontend.origin !== config.publicOrigin ||
-    config.internalKey.length < 43
+    config.internalKey.length < 43 ||
+    !Number.isInteger(config.trustedProxyHops ?? 0) ||
+    (config.trustedProxyHops ?? 0) < 0 ||
+    (config.trustedProxyHops ?? 0) > 5
   )
     throw new Error("Invalid BFF configuration");
+  const hops = config.trustedProxyHops ?? 0;
   async function call(
     path: string,
     method: string,
@@ -158,6 +185,7 @@ export function createBffHandler(
     accessToken?: string,
     input?: unknown,
     csrf?: string,
+    client?: string,
   ): Promise<unknown> {
     const headers: Record<string, string> = {
       "x-agri-bff-key": config.internalKey,
@@ -167,6 +195,8 @@ export function createBffHandler(
     if (secret) headers["x-agri-session"] = secret;
     if (accessToken) headers.authorization = `Bearer ${accessToken}`;
     if (csrf) headers["x-csrf-token"] = csrf;
+    // Only ever set here from the trusted-proxy rule; a browser-supplied copy of this header is never forwarded.
+    if (client) headers["x-agri-client"] = client;
     if (input !== undefined) headers["Content-Type"] = "application/json";
     let response: Response;
     try {
@@ -280,6 +310,8 @@ export function createBffHandler(
           undefined,
           undefined,
           await body(request),
+          undefined,
+          trustedClientAddress(request, hops),
         )) as { cookie?: unknown };
         if (
           typeof result.cookie !== "string" ||

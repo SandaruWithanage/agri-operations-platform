@@ -3,7 +3,10 @@ export interface ThrottleQuery {
   query(sql: string, parameters: unknown[]): Promise<{ rows: unknown[] }>;
 }
 export type ThrottlePolicy = {
-  limit: number;
+  /** Attempts per window on one account (credential guessing). */
+  accountLimit: number;
+  /** Attempts per window from one attributed client (broad abuse limit, much larger than the account limit). */
+  clientLimit: number;
   windowSeconds: number;
   blockSeconds: number;
 };
@@ -16,9 +19,12 @@ export class PostgresLoginLimiter {
   ) {
     if (
       key.length < 32 ||
-      !Number.isInteger(policy.limit) ||
-      policy.limit < 1 ||
-      policy.limit > 20 ||
+      !Number.isInteger(policy.accountLimit) ||
+      policy.accountLimit < 1 ||
+      policy.accountLimit > 20 ||
+      !Number.isInteger(policy.clientLimit) ||
+      policy.clientLimit < policy.accountLimit ||
+      policy.clientLimit > 10000 ||
       !Number.isInteger(policy.windowSeconds) ||
       policy.windowSeconds < 60 ||
       policy.windowSeconds > 3600 ||
@@ -37,11 +43,12 @@ export class PostgresLoginLimiter {
         .update(value, "utf8")
         .digest();
     const result = await this.database.query(
-      "SELECT authn.consume_login_attempt($1,$2,$3,$4,$5) AS allowed",
+      "SELECT authn.consume_login_attempt_v2($1,$2,$3,$4,$5,$6) AS allowed",
       [
         digest("account", loginName),
         digest("client", trustedClientKey),
-        this.policy.limit,
+        this.policy.accountLimit,
+        this.policy.clientLimit,
         this.policy.windowSeconds,
         this.policy.blockSeconds,
       ],

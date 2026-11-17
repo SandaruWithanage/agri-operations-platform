@@ -144,6 +144,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
     );
     await client.query(
       readFileSync(
+        "database/migrations/20261117_login_throttle_split_limits/up.sql",
+        "utf8",
+      ),
+    );
+    await client.query(
+      readFileSync(
         "database/migrations/20261115_zzzz_farmer_abac/up.sql",
         "utf8",
       ),
@@ -1104,7 +1110,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         new PostgresLoginLimiter(
           { query: queryAs("agri_login_throttle") },
           Buffer.alloc(32, 5),
-          { limit: 5, windowSeconds: 60, blockSeconds: 60 },
+          {
+            accountLimit: 5,
+            clientLimit: 100,
+            windowSeconds: 60,
+            blockSeconds: 60,
+          },
         ),
         issuer,
         { idleSeconds: 60, absoluteSeconds: 3600 },
@@ -1304,10 +1315,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "42501",
       );
       const limiter = new PostgresLoginLimiter(client, Buffer.alloc(32, 4), {
-        limit: 2,
+        accountLimit: 2,
+        clientLimit: 4,
         windowSeconds: 60,
         blockSeconds: 60,
       });
+      // The account bucket is small: a third try on one account is refused, from any client.
       expect(
         await limiter.consume("synthetic-account", "synthetic-client"),
       ).toBe(true);
@@ -1320,8 +1333,24 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(await limiter.consume("synthetic-account", "another-client")).toBe(
         false,
       );
+      // One account being guessed must not stop other officers behind the same client address.
       expect(await limiter.consume("another-account", "synthetic-client")).toBe(
+        true,
+      );
+      expect(await limiter.consume("third-account", "synthetic-client")).toBe(
+        true,
+      );
+      // The client bucket is a broad limit: a flood of random account names from one client is finally refused,
+      // yet a different client and its officers are unaffected.
+      expect(await limiter.consume("flood-account-1", "synthetic-client")).toBe(
         false,
+      );
+      expect(await limiter.consume("legit-officer", "synthetic-client")).toBe(
+        false,
+      );
+      expect(await limiter.consume("legit-officer", "other-client")).toBe(true);
+      expect(await limiter.consume("legit-officer-2", "other-client")).toBe(
+        true,
       );
       await client.query("RESET SESSION AUTHORIZATION");
       const rows = await client.query(
@@ -1337,6 +1366,42 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(JSON.stringify(rows.rows)).not.toContain("synthetic-account");
     } finally {
       await client.query("ROLLBACK TO SAVEPOINT throttle_check");
+    }
+  });
+  it("rejects invalid throttle arguments and no longer offers the single-limit function", async () => {
+    await client.query("SAVEPOINT throttle_args");
+    try {
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_login_throttle");
+      const a = Buffer.alloc(32, 31),
+        b = Buffer.alloc(32, 32);
+      const call = async (...args: unknown[]) =>
+        (
+          await client.query(
+            "SELECT authn.consume_login_attempt_v2($1,$2,$3,$4,$5,$6) AS allowed",
+            args,
+          )
+        ).rows[0].allowed;
+      // Valid shapes and their boundaries.
+      expect(await call(a, b, 20, 10000, 3600, 86400)).toBe(true);
+      // Invalid: identical or malformed keys and out-of-range limits or times.
+      expect(await call(a, a, 5, 100, 900, 900)).toBe(false);
+      expect(await call(Buffer.alloc(31), b, 5, 100, 900, 900)).toBe(false);
+      expect(await call(a, null, 5, 100, 900, 900)).toBe(false);
+      expect(await call(a, b, 0, 100, 900, 900)).toBe(false);
+      expect(await call(a, b, 21, 100, 900, 900)).toBe(false);
+      expect(await call(a, b, 5, 0, 900, 900)).toBe(false);
+      expect(await call(a, b, 5, 10001, 900, 900)).toBe(false);
+      expect(await call(a, b, 5, 100, 59, 900)).toBe(false);
+      expect(await call(a, b, 5, 100, 3601, 900)).toBe(false);
+      expect(await call(a, b, 5, 100, 900, 59)).toBe(false);
+      expect(await call(a, b, 5, 100, 900, 86401)).toBe(false);
+      await client.query("RESET SESSION AUTHORIZATION");
+      const old = await client.query(
+        "SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='authn' AND p.proname='consume_login_attempt'",
+      );
+      expect(old.rows[0].n).toBe(0);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT throttle_args");
     }
   });
   it("enforces signed actor context, create coverage, separate read permissions and audit", async () => {
@@ -1689,7 +1754,7 @@ suite("provisional authentication migration on PostgreSQL", () => {
         second.query("SET SESSION AUTHORIZATION agri_login_throttle"),
       ]);
       const query =
-        "SELECT authn.consume_login_attempt($1,$2,1,60,60) AS allowed";
+        "SELECT authn.consume_login_attempt_v2($1,$2,1,10,60,60) AS allowed";
       const args = [Buffer.alloc(32, 21), Buffer.alloc(32, 22)];
       const results = await Promise.all([
         first.query(query, args),
