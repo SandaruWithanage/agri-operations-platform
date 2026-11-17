@@ -11,6 +11,8 @@ import type {
   ProjectOrganizations,
   LandPage,
   LandDetail,
+  LandGeometryRead,
+  LandGeometryResult,
   LandRegistrationResult,
   LandGeographies,
   FarmerHistoryPage,
@@ -112,6 +114,12 @@ export interface PilotRuntime {
   ): Promise<LandRegistrationResult>;
   listLand(actor: VerifiedActor, input: unknown): Promise<LandPage>;
   landDetail(actor: VerifiedActor, input: unknown): Promise<LandDetail>;
+  recordLandGeometry(
+    actor: VerifiedActor,
+    source: RegistrationSource,
+    input: unknown,
+  ): Promise<LandGeometryResult>;
+  landGeometry(actor: VerifiedActor, input: unknown): Promise<LandGeometryRead>;
   landGeographies(
     actor: VerifiedActor,
     source: RegistrationSource,

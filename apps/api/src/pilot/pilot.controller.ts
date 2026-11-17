@@ -409,6 +409,37 @@ export class PilotController {
       runtime.landDetail(await runtime.authenticate(this.bearer(token)), query),
     );
   }
+  @Post("land/geometry")
+  @HttpCode(200)
+  recordLandGeometry(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Headers("x-agri-source") source: string | undefined,
+    @Headers("x-agri-origin") origin: string | undefined,
+    @Headers("x-csrf-token") csrf: string | undefined,
+    @Body() input: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () => {
+      const actor = await runtime.authenticate(this.bearer(token));
+      runtime.assertCsrf(actor, origin ?? "", csrf ?? "");
+      return runtime.recordLandGeometry(actor, this.source(source), input);
+    });
+  }
+  @Get("land/geometry")
+  landGeometry(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.landGeometry(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
   @Get("land/geographies")
   landGeographies(
     @Headers("x-agri-bff-key") key: string | undefined,

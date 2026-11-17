@@ -53,6 +53,8 @@ function fake(): PilotRuntime {
     registerLand: vi.fn(),
     listLand: vi.fn(),
     landDetail: vi.fn(),
+    recordLandGeometry: vi.fn(),
+    landGeometry: vi.fn(),
     landGeographies: vi.fn(),
     registerProject: vi.fn(),
     changeProject: vi.fn(),
@@ -177,5 +179,59 @@ describe("pilot internal routes", () => {
     const response = await send();
     expect(response.status).toBe(503);
     expect(JSON.stringify(response.body)).not.toContain("private");
+  });
+  it("requires the internal key, identity and CSRF for geometry writes and maps database errors safely", async () => {
+    const runtime = fake();
+    const http = await start(runtime);
+    const body = { landId: input.farmer.farmerId };
+    const post = () =>
+      http
+        .post("/pilot/land/geometry")
+        .set("authorization", "Bearer synthetic")
+        .set("x-agri-source", "field_officer")
+        .set("x-agri-origin", "https://field.example.test")
+        .set("x-csrf-token", "synthetic");
+    expect((await post().send(body)).status).toBe(401);
+    expect((await post().set("x-agri-bff-key", key).send(body)).status).toBe(
+      200,
+    );
+    expect(runtime.recordLandGeometry).toHaveBeenCalledWith(
+      actor,
+      "field_officer",
+      body,
+    );
+    vi.mocked(runtime.recordLandGeometry)
+      .mockRejectedValueOnce({ code: "22023", detail: "private" })
+      .mockRejectedValueOnce({ code: "40001", detail: "private" })
+      .mockRejectedValueOnce(new Error("private database details"));
+    const statuses = [];
+    for (let i = 0; i < 3; i += 1) {
+      const response = await post().set("x-agri-bff-key", key).send(body);
+      statuses.push(response.status);
+      expect(JSON.stringify(response.body)).not.toContain("private");
+    }
+    expect(statuses).toEqual([400, 409, 503]);
+    vi.mocked(runtime.assertCsrf).mockImplementation(() => {
+      throw new ForbiddenException();
+    });
+    expect((await post().set("x-agri-bff-key", key).send(body)).status).toBe(
+      403,
+    );
+    expect(runtime.recordLandGeometry).toHaveBeenCalledTimes(4);
+  });
+  it("reads geometry only with the internal key and a verified actor", async () => {
+    const runtime = fake();
+    const http = await start(runtime);
+    const get = () =>
+      http
+        .get("/pilot/land/geometry")
+        .query({ landId: input.farmer.farmerId, history: "true" })
+        .set("authorization", "Bearer synthetic");
+    expect((await get()).status).toBe(401);
+    expect((await get().set("x-agri-bff-key", key)).status).toBe(200);
+    expect(runtime.landGeometry).toHaveBeenCalledWith(actor, {
+      landId: input.farmer.farmerId,
+      history: "true",
+    });
   });
 });
