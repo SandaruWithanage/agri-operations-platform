@@ -89,7 +89,7 @@ async function checkLayout(page, name) {
     // Advisory: WCAG target size needs additional spacing considerations.
     const small = [...document.querySelectorAll("button,a,input[type=submit],select")].flatMap((node) => {
       const rect = node.getBoundingClientRect();
-      const style = getComputedStyle(node);
+      const style = window.getComputedStyle(node);
       if (!rect.width || !rect.height || style.visibility === "hidden") return [];
       if (rect.width >= 44 && rect.height >= 44) return [];
       return [{ role: node.tagName.toLowerCase(), label: (node.textContent || node.getAttribute("aria-label") || "").trim().slice(0,90), width: Math.round(rect.width), height: Math.round(rect.height) }];
@@ -119,16 +119,16 @@ async function runCase(name, app, origin, viewport, work) {
   } catch (error) {
     row.status = "fail";
     row.error = String(error?.stack ?? error).slice(0, 1500);
-    try { await page.screenshot({ path: join(output, safeName(name) + "-failed.png"), fullPage: true }); } catch {}
+    try { await page.screenshot({ path: join(output, safeName(name) + "-failed.png"), fullPage: true }); } catch { /* Best-effort screenshot/trace cleanup must not mask test failures. */ }
     process.stderr.write("FAIL " + name + ": " + String(error) + "\n");
   } finally {
-    try { await context.tracing.stop({ path: join(output, safeName(name) + "-trace.zip") }); } catch {}
+    try { await context.tracing.stop({ path: join(output, safeName(name) + "-trace.zip") }); } catch { /* Best-effort screenshot/trace cleanup must not mask test failures. */ }
     await context.close();
   }
 }
 function mockLandSurvey(page, getSessionActive) {
   return page.route("**/api/pilot/**", async (route) => {
-    const url = new URL(route.request().url());
+    const url = new globalThis.URL(route.request().url());
     const path = url.pathname.replace(/^\/api\/pilot\//, "");
     const send = (value, status = 200) => route.fulfill({
       status, contentType: "application/json",
@@ -204,7 +204,7 @@ try {
         await page.getByRole("button", { name: "Start recording" }).waitFor();
         await page.getByRole("button", { name: "Start recording" }).click();
         active = false;
-        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await page.evaluate(() => window.dispatchEvent(new window.Event("focus")));
         await page.getByText(/kept in memory but hidden/i).first().waitFor();
         // A signed-out browser must not show another officer the previous private land information.
         assert.equal(await page.getByText("Synthetic plot A").count(), 0);
@@ -217,7 +217,7 @@ try {
   findings.push({ name: "harness-startup", status: "fail", error: String(error?.stack ?? error).slice(0, 1500) });
   process.stderr.write("Harness startup failed: " + String(error) + "\n");
 } finally {
-  try { await browser?.close(); } catch {}
+  try { await browser?.close(); } catch { /* Best-effort screenshot/trace cleanup must not mask test failures. */ }
   for (const child of children) {
     child.kill("SIGTERM");
   }
