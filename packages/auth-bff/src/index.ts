@@ -1031,3 +1031,36 @@ export function createBffHandler(
     }
   };
 }
+
+/**
+ * One handler per server process. The rate limiter lives inside the handler, so a framework that calls
+ * `createBffHandler` on every request (as a route function naturally does) would give each request an empty
+ * limiter and no budget would ever accumulate. This builds the handler on first use and then reuses it.
+ *
+ * An invalid or missing configuration answers 503 and is **not** cached, so fixing the environment takes effect
+ * without a restart. The limiter state is process-local: several server instances, or a serverless runtime that
+ * starts a new process per request, do not share it, so an approved edge or shared-store limit is still required.
+ */
+export function createLazyBffHandler(
+  readConfig: () => BffConfig,
+  fetcher?: typeof fetch,
+): (request: Request) => Promise<Response> {
+  let handler: ((request: Request) => Promise<Response>) | undefined;
+  return async (request) => {
+    if (!handler) {
+      try {
+        handler = createBffHandler(
+          readConfig(),
+          // Late-bound so a replaced global fetch (tests, instrumentation) is honoured.
+          fetcher ?? ((input, init) => fetch(input, init)),
+        );
+      } catch {
+        return Response.json(
+          { error: "Authentication is not configured" },
+          { status: 503, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+    }
+    return handler(request);
+  };
+}
