@@ -316,6 +316,10 @@ export function previewAreaM2(
   }
   return Math.abs((sum * R * R) / 2);
 }
+/** One international acre in square metres (the canonical unit is m²; acres and hectares are display units). */
+export const squareMetresPerAcre = 4046.8564224;
+export const acresFromM2 = (squareMetres: number) =>
+  squareMetres / squareMetresPerAcre;
 export function reviewSurvey(state: SurveyState): SurveyReview {
   const { points } = state;
   return {
