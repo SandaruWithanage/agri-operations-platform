@@ -19,6 +19,15 @@ import {
   type HardeningOptions,
 } from "../src/security/http-hardening";
 
+/** Polls instead of sleeping, so the test does not depend on how loaded the machine is. */
+async function until(condition: () => boolean, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("Condition not reached in time");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 let release: () => void = () => undefined;
 @Controller("t")
 class TestController {
@@ -140,30 +149,34 @@ describe("API HTTP hardening", () => {
     const port = (nest.getHttpServer().address() as AddressInfo).port;
     const held = new Promise<number>((resolve, reject) => {
       http
-        .get({ port, host: "127.0.0.1", path: "/t/slow" }, (res) => {
-          res.resume();
-          res.on("end", () => resolve(res.statusCode ?? 0));
-        })
+        .get(
+          { port, host: "127.0.0.1", path: "/t/slow", agent: false },
+          (res) => {
+            res.resume();
+            res.on("end", () => resolve(res.statusCode ?? 0));
+          },
+        )
         .on("error", reject);
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(handle.inFlight()).toBe(1);
+    await until(() => handle.inFlight() === 1);
     const shed = await api.get("/t/fast");
     expect(shed.status).toBe(503);
     expect(shed.headers["retry-after"]).toBe("1");
     release();
     expect(await held).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(handle.inFlight()).toBe(0);
+    await until(() => handle.inFlight() === 0);
     expect((await api.get("/t/fast")).status).toBe(200);
     // A client that hangs up mid-request does not leak its slot.
-    const aborted = http.get({ port, host: "127.0.0.1", path: "/t/slow" });
+    const aborted = http.get({
+      port,
+      host: "127.0.0.1",
+      path: "/t/slow",
+      agent: false,
+    });
     aborted.on("error", () => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(handle.inFlight()).toBe(1);
+    await until(() => handle.inFlight() === 1);
     aborted.destroy();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(handle.inFlight()).toBe(0);
+    await until(() => handle.inFlight() === 0);
   });
 
   it("bounds connection and request time", async () => {
