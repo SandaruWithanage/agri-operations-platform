@@ -995,3 +995,47 @@ it("does not expose administrator-only enrollment routes through the field-offic
     "administrator",
   );
 });
+
+it("cannot reach administrator-only routes through path variants on the field-officer BFF", async () => {
+  const withdraw = {
+    mutationId: enrollmentIds.mutationId,
+    enrollmentId: enrollmentIds.enrollmentId,
+    expectedVersion: 1,
+  };
+  // Every variant must be refused (or normalized to a hidden route) before any session exchange or upstream call.
+  const variants = [
+    "enrollments/withdraw/",
+    "Enrollments/Withdraw",
+    "ENROLLMENTS/WITHDRAW",
+    "enrollments%2Fwithdraw",
+    "enrollments%2fwithdraw",
+    "enrollments//withdraw",
+    "enrollments/./withdraw",
+    "enrollments/detail/../withdraw",
+    "enrollments/withdraw%00",
+    "enrollments/withdraw%20",
+    "enrollments/withdraw;x=1",
+    "enrollment-policies/set/",
+    "enrollment-policies%2Fset",
+    "enrollment-policies/./set",
+  ];
+  for (const path of variants) {
+    const fetcher = vi.fn();
+    const response = await createBffHandler(
+      config,
+      fetcher,
+    )(req(path, "POST", withdraw));
+    expect(response.status, path).toBe(404);
+    expect(fetcher, path).not.toHaveBeenCalled();
+  }
+  // Method confusion: the same hidden route must not answer a different method either.
+  for (const method of ["GET", "PUT", "PATCH", "DELETE"] as const) {
+    const fetcher = vi.fn();
+    const response = await createBffHandler(
+      config,
+      fetcher,
+    )(req("enrollments/withdraw", method));
+    expect(response.status, method).toBe(404);
+    expect(fetcher, method).not.toHaveBeenCalled();
+  }
+});
