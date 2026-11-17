@@ -1,3 +1,4 @@
+import { FixedWindowLimiter } from "./rate-limit";
 import {
   projectChangeSchema,
   projectChangeResultSchema,
@@ -67,6 +68,19 @@ export type BffConfig = {
    * attributed to one shared "unattributed" client and only the (much larger) broad client limit applies.
    */
   trustedProxyHops?: number;
+  /** Per-minute request budgets for one BFF instance. Provisional values; the edge should add its own limit. */
+  rateLimits?: {
+    /** Unauthenticated routes (login, device challenge) per attributed client address. */
+    anonymousPerClient?: number;
+    /** The same routes when no client address could be attributed (one shared budget). */
+    anonymousUnattributed?: number;
+    /** Authenticated read requests per session. */
+    sessionReads?: number;
+    /** Authenticated write requests per session. */
+    sessionWrites?: number;
+  };
+  /** Clock for tests. */
+  now?: () => number;
 };
 /**
  * The client address as seen by the outermost trusted proxy: the `hops`-th entry from the right of
@@ -90,10 +104,17 @@ const clearCookie =
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 class Failure extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly retryAfterSeconds?: number,
+  ) {
     super("Request failed");
   }
 }
+const defaultBodyLimit = 16384;
+// A survey polygon may have up to 5000 vertices (about 30 bytes each as JSON), far more than other requests.
+const geometryBodyLimit = 163840;
+const maxUrlLength = 2048;
 const reply = (
   value: unknown,
   status = 200,
@@ -118,12 +139,31 @@ function opaqueCookie(request: Request): string {
   if (!/^[A-Za-z0-9_-]{43}$/.test(secret)) throw new Failure(401);
   return secret;
 }
-async function body(request: Request): Promise<unknown> {
+// The body is read at most once per request, as early as possible, so malformed or oversize input is refused
+// before the BFF makes any call to the API.
+const parsedBodies = new WeakMap<Request, unknown>();
+async function body(
+  request: Request,
+  limit = defaultBodyLimit,
+): Promise<unknown> {
+  if (parsedBodies.has(request)) return parsedBodies.get(request);
+  const value = await readBody(request, limit);
+  parsedBodies.set(request, value);
+  return value;
+}
+async function readBody(request: Request, limit: number): Promise<unknown> {
   if (
     request.headers.get("content-type")?.split(";")[0].trim() !==
     "application/json"
   )
     throw new Failure(400);
+  // Refuse a declared oversize body before reading any of it.
+  const declared = request.headers.get("content-length");
+  if (
+    declared !== null &&
+    (!/^\d{1,12}$/.test(declared) || Number(declared) > limit)
+  )
+    throw new Failure(413);
   if (!request.body) throw new Failure(400);
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -133,7 +173,7 @@ async function body(request: Request): Promise<unknown> {
       const next = await reader.read();
       if (next.done) break;
       length += next.value.length;
-      if (length > 16384) {
+      if (length > limit) {
         await reader.cancel();
         throw new Failure(413);
       }
@@ -178,6 +218,42 @@ export function createBffHandler(
   )
     throw new Error("Invalid BFF configuration");
   const hops = config.trustedProxyHops ?? 0;
+  const clock = config.now ?? (() => Date.now());
+  const budgets = {
+    anonymousPerClient: config.rateLimits?.anonymousPerClient ?? 30,
+    anonymousUnattributed: config.rateLimits?.anonymousUnattributed ?? 300,
+    sessionReads: config.rateLimits?.sessionReads ?? 240,
+    sessionWrites: config.rateLimits?.sessionWrites ?? 60,
+  };
+  for (const value of Object.values(budgets))
+    if (!Number.isInteger(value) || value < 1 || value > 100000)
+      throw new Error("Invalid BFF configuration");
+  const limiter = new FixedWindowLimiter(60_000, 10_000);
+  async function rateKey(request: Request, anonymousRoute: boolean) {
+    const write = request.method !== "GET";
+    if (!anonymousRoute) {
+      try {
+        // Hash the opaque cookie so a raw session secret is never kept as a map key.
+        const digest = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(opaqueCookie(request)),
+        );
+        const hex = Array.from(new Uint8Array(digest).slice(0, 16), (b) =>
+          b.toString(16).padStart(2, "0"),
+        ).join("");
+        return {
+          key: `s:${write ? "w" : "r"}:${hex}`,
+          limit: write ? budgets.sessionWrites : budgets.sessionReads,
+        };
+      } catch {
+        // A missing or malformed cookie falls through to the anonymous budget; it never gets a session budget.
+      }
+    }
+    const client = trustedClientAddress(request, hops);
+    return client
+      ? { key: `a:${client}`, limit: budgets.anonymousPerClient }
+      : { key: "a:unattributed", limit: budgets.anonymousUnattributed };
+  }
   async function call(
     path: string,
     method: string,
@@ -225,6 +301,7 @@ export function createBffHandler(
   }
   return async (request) => {
     try {
+      if (request.url.length > maxUrlLength) throw new Failure(414);
       const path = new URL(request.url).pathname.replace(/^\/api\/pilot\//, "");
       const allowed =
         (request.method === "POST" &&
@@ -280,6 +357,17 @@ export function createBffHandler(
         request.headers.get("sec-fetch-site") === "cross-site"
       )
         throw new Failure(403);
+      const anonymousRoute =
+        path === "auth/login" || path === "auth/device-challenge";
+      const budget = await rateKey(request, anonymousRoute);
+      const decision = limiter.consume(budget.key, budget.limit, clock());
+      if (!decision.allowed) throw new Failure(429, decision.retryAfterSeconds);
+      // Read and cap the body now (logout carries none): a bot cannot make the BFF call the API for bad input.
+      if (request.method === "POST" && path !== "auth/logout")
+        await body(
+          request,
+          path === "land/geometry" ? geometryBodyLimit : defaultBodyLimit,
+        );
       if (path === "auth/device-challenge") {
         const result = (await call(
           path,
@@ -600,7 +688,9 @@ export function createBffHandler(
         return reply(result.data);
       }
       if (path === "land/geometry" && request.method === "POST") {
-        const parsed = landGeometryRecordSchema.safeParse(await body(request));
+        const parsed = landGeometryRecordSchema.safeParse(
+          await body(request, geometryBodyLimit),
+        );
         if (!parsed.success) throw new Failure(400);
         const result = landGeometryResultSchema.safeParse(
           await call(
@@ -927,11 +1017,16 @@ export function createBffHandler(
                   ? "Not found"
                   : status === 409
                     ? "Conflict"
-                    : status === 400 || status === 413
+                    : status === 400 || status === 413 || status === 414
                       ? "Invalid request"
-                      : "Service unavailable",
+                      : status === 429
+                        ? "Too many requests"
+                        : "Service unavailable",
         },
         status,
+        error instanceof Failure && error.retryAfterSeconds
+          ? { "Retry-After": String(error.retryAfterSeconds) }
+          : {},
       );
     }
   };
