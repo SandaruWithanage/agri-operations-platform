@@ -100,4 +100,4 @@ Merged since the previous review: #46 (board and security review log), #47 (P1-0
 
 ## Issue triage
 
-The GitHub issue board is checked between tasks. Open QA findings are fixed ahead of new features: #59 (survey page stale data across an account switch) is fixed in the PR that references it; #60 (walk-survey save retries after editing) is next.
+The GitHub issue board is checked between tasks. Open QA findings are fixed ahead of new features: #59 (survey page stale data across an account switch) was fixed in PR #61 (merged). #60 (walk-survey save retries after editing) is fixed in PR #62 (open).

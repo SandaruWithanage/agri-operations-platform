@@ -20,7 +20,17 @@ vi.mock("../apps/field-pwa/components/walk-survey-screen", async () => {
           data-land={String(props.landId)}
           data-version={String(props.expectedVersion)}
           data-account={String(props.accountId)}
-        />
+        >
+          <button
+            onClick={() =>
+              (props.onBusyChange as ((busy: boolean) => void) | undefined)?.(
+                true,
+              )
+            }
+          >
+            simulate-busy
+          </button>
+        </div>
       );
     },
   };
@@ -196,6 +206,28 @@ describe("land survey workspace", () => {
   it("renders in Sinhala", async () => {
     mount(client(), "si");
     expect(await screen.findByText("ඉඩම් මායිම මැනීම")).toBeTruthy();
+  });
+
+  it("blocks switching land, loading more or going back while a save is busy", async () => {
+    const land = vi.fn().mockResolvedValue(page([a, b], "cursor-1"));
+    const user = mount(client({ land }));
+    await user.selectOptions(await screen.findByLabelText("Land"), a);
+    await screen.findByTestId("walk");
+    await user.click(screen.getByRole("button", { name: "simulate-busy" }));
+    expect((screen.getByLabelText("Land") as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Choose another land",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Load more" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   describe("account isolation", () => {

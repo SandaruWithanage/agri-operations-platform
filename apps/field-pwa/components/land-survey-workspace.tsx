@@ -77,6 +77,8 @@ export function LandSurveyWorkspace({
     | null
   >(null);
   const [sessionLost, setSessionLost] = useState(false);
+  // True while the survey has a save in flight or an unconfirmed outcome: the land must not change underneath it.
+  const [busy, setBusy] = useState(false);
   // Responses for a land the officer has already moved away from must never be applied.
   const sequence = useRef(0);
   // Every response is applied only if it belongs to the current session epoch. The epoch advances on
@@ -110,6 +112,7 @@ export function LandSurveyWorkspace({
     setChosen(null);
     setGeometry(null);
     setSessionLost(false);
+    setBusy(false);
     setState(next);
   }
   async function load(after?: string) {
@@ -264,6 +267,7 @@ export function LandSurveyWorkspace({
           <label htmlFor="survey-land">{w.pick}</label>
           <select
             id="survey-land"
+            disabled={busy}
             value={chosen ?? ""}
             style={{ minHeight: 48 }}
             onChange={(event) => void choose(event.target.value)}
@@ -276,7 +280,11 @@ export function LandSurveyWorkspace({
             ))}
           </select>
           {cursor && (
-            <button style={{ minHeight: 48 }} onClick={() => void load(cursor)}>
+            <button
+              style={{ minHeight: 48 }}
+              disabled={busy}
+              onClick={() => void load(cursor)}
+            >
               {w.more}
             </button>
           )}
@@ -312,8 +320,13 @@ export function LandSurveyWorkspace({
             onActivityChange={(active) => {
               surveyActive.current = active;
             }}
+            onBusyChange={setBusy}
           />
-          <button style={{ minHeight: 48 }} onClick={() => void choose("")}>
+          <button
+            style={{ minHeight: 48 }}
+            disabled={busy}
+            onClick={() => void choose("")}
+          >
             {w.back}
           </button>
         </>
