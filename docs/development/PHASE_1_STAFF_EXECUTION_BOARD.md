@@ -94,8 +94,8 @@ The 28 scenarios are listed in section 12 of the guide. They are cited here as "
 
 ## Open PRs at last review
 
-| PR  | Purpose                                                   | State                        |
-| --- | --------------------------------------------------------- | ---------------------------- |
-| #46 | This board update and the internal PR security review log | Open; CI re-run on this head |
+| PR  | Purpose                                         | State            |
+| --- | ----------------------------------------------- | ---------------- |
+| #47 | P1-09a provisional polygon store (migration 25) | Open; CI pending |
 
 Merged since the previous review: #41 (P1-00), #42 (farmer A/B tests), #43 (ENR-AUTH-01), #44 (ADR 0022 design), #45 (ADR 0021 draft amendment A). CI was green on each merged head; none has an independent security review.
