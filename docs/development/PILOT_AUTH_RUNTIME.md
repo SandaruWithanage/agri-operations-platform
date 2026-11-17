@@ -86,3 +86,5 @@ Each BFF instance applies these checks before it calls the API, after the allow-
 - **URL length:** requests with a URL over 2,048 characters are refused (414).
 
 These limits reduce abuse; they do not make the service attack-proof. The public edge (reverse proxy) must also provide TLS, connection and request-rate limits and request timeouts.
+
+**The handler must be a process-wide singleton (issue #72).** The limiter lives inside the BFF handler, so the Next.js route files use `createLazyBffHandler`, which builds the handler once per server process on first use and reuses it. An earlier version built a handler inside the per-request function, which gave every request an empty limiter, so no budget ever accumulated even though unit tests that reused one handler passed. A missing or invalid configuration answers 503 and is not cached. Because the state is per process, a serverless runtime that starts a new process per request, or several instances behind a load balancer, do not share budgets: an approved edge or shared-store limit is required before real deployment.
