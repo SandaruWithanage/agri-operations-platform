@@ -33,13 +33,13 @@
 
 ## Approval record (intentionally blank)
 
-| Item                                       | Record                                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Client legal entity / authorized signatory | _not recorded_                                                                       |
-| Signed Phase 1 staff SRS/baseline version  | _not recorded_ (SRS v0.9 and architecture v0.9 are not in the repository)            |
-| Scope, estimate and schedule               | _not recorded_; any earlier fee/duration is superseded as a proposal and unconfirmed |
-| G0 date and approver                       | _not recorded_                                                                       |
-| Real-data pilot                            | **Not authorized**                                                                   |
+| Item                                       | Record                                                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Client legal entity / authorized signatory | _not recorded_                                                                                                               |
+| Signed Phase 1 staff SRS/baseline version  | _not recorded_ (SRS v0.9 and architecture v0.9 are imported for reference under `review-package-v0.9/` but are not approved) |
+| Scope, estimate and schedule               | _not recorded_; any earlier fee/duration is superseded as a proposal and unconfirmed                                         |
+| G0 date and approver                       | _not recorded_                                                                                                               |
+| Real-data pilot                            | **Not authorized**                                                                                                           |
 
 ## Known unknowns that block specific work
 
