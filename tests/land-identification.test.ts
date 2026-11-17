@@ -292,3 +292,27 @@ it("reads geometry for the requested land only and rejects malformed identifiers
     `land/geometry?landId=${landId}&history=true`,
   );
 });
+it("reads a bounded viewport, passes the abort signal and rejects a result for another box", async () => {
+  const box = { west: 80.19, south: 8.29, east: 80.21, north: 8.31 };
+  const body = {
+    accountId,
+    bbox: box,
+    polygons: [],
+    points: [],
+    truncated: false,
+    provisionalIdentificationOnly: true,
+  };
+  const ok = vi.fn().mockResolvedValue(Response.json(body));
+  const controller = new AbortController();
+  expect(
+    await new PilotClient(ok).landViewport(box, 50, controller.signal),
+  ).toEqual(body);
+  expect(String(ok.mock.calls[0][0])).toContain("limit=50");
+  expect(ok.mock.calls[0][1].signal).toBeDefined();
+  const other = vi
+    .fn()
+    .mockResolvedValue(Response.json({ ...body, bbox: { ...box, east: 81 } }));
+  await expect(new PilotClient(other).landViewport(box)).rejects.toMatchObject({
+    status: 503,
+  });
+});

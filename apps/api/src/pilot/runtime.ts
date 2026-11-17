@@ -582,6 +582,14 @@ export async function createPilotRuntime(
           connection.release();
         }
       },
+      landViewport: async (actor, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await geometry.viewport(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
       landGeometry: async (actor, input) => {
         const connection = await pool("agri_land_runtime").connect();
         try {

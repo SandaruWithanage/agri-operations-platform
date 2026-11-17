@@ -28,7 +28,10 @@ export async function verifyLandGeometry({
   const geoA = id(),
     geoB = id(),
     landA = id(),
-    landB = id();
+    landB = id(),
+    landC = id(),
+    landD = id(),
+    landE = id();
   const grants: string[] = [],
     assignments: string[] = [];
   const makeOfficer = async () => {
@@ -144,6 +147,16 @@ export async function verifyLandGeometry({
       await owner.query(
         "INSERT INTO land.identification(id,organization_id,geography_id,registration_source,created_by) VALUES($1,$2,$3,'administrator',$4)",
         [land, organizationId, geo, officerA.accountId],
+      );
+    // Extra lands that carry a reported point inside the test viewport (two in A's scope, one in B's).
+    for (const [land, geo, lon] of [
+      [landC, geoA, 80.2002],
+      [landE, geoA, 80.2004],
+      [landD, geoB, 80.2006],
+    ] as const)
+      await owner.query(
+        "INSERT INTO land.identification(id,organization_id,geography_id,point,registration_source,created_by) VALUES($1,$2,$3,public.ST_SetSRID(public.ST_MakePoint($4,8.3005),4326),'administrator',$5)",
+        [land, organizationId, geo, lon, officerA.accountId],
       );
     await assign(officerA, geoA);
     await assign(officerB, geoB);
@@ -534,6 +547,41 @@ export async function verifyLandGeometry({
       (await service.read(db, officerB, { landId: landB })).current?.version,
     ).toBe(1);
 
+    // 10c. Viewport reads only ever contain what the caller may see, and truncation reveals nothing hidden.
+    const box = { west: 80.19, south: 8.29, east: 80.21, north: 8.31 };
+    const seenA = await service.viewport(db, officerA, box);
+    expect(seenA.polygons.map((x) => x.landId)).toEqual([landA]);
+    expect(seenA.points.map((x) => x.landId).sort()).toEqual(
+      [landC, landE].sort(),
+    );
+    expect(seenA.truncated).toBe(false);
+    const seenB = await service.viewport(db, officerB, box);
+    expect(seenB.polygons.map((x) => x.landId)).toEqual([landB]);
+    expect(seenB.points.map((x) => x.landId)).toEqual([landD]);
+    // Officer A has two visible points, so limit 1 truncates for A; B has one, and A's data never affects B.
+    const cut = await service.viewport(db, officerA, { ...box, limit: 1 });
+    expect(cut.points).toHaveLength(1);
+    expect(cut.truncated).toBe(true);
+    expect(
+      (await service.viewport(db, officerB, { ...box, limit: 1 })).truncated,
+    ).toBe(false);
+    expect(
+      await service.viewport(db, officerA, {
+        west: 81,
+        south: 8.29,
+        east: 82,
+        north: 8.31,
+      }),
+    ).toMatchObject({ polygons: [], points: [], truncated: false });
+    for (const bad of [
+      { ...box, west: 80.21, east: 80.19 },
+      { ...box, west: 70, east: 80 },
+      { ...box, extra: 1 },
+      { ...box, limit: 201 },
+      { west: 80.19, south: 8.29, east: 80.21 },
+    ])
+      await expect(service.viewport(db, officerA, bad)).rejects.toThrow();
+
     // 11. Revoking one officer's session affects only that officer.
     await owner.query(
       "UPDATE authn.login_session SET revoked_at=clock_timestamp() WHERE id=$1",
@@ -567,7 +615,7 @@ export async function verifyLandGeometry({
     await db.end();
     await db2.end();
     await owner.query("ROLLBACK").catch(() => undefined);
-    const lands = [landA, landB];
+    const lands = [landA, landB, landC, landD, landE];
     await owner.query(
       "DELETE FROM land.geometry_audit WHERE land_id=ANY($1::uuid[])",
       [lands],

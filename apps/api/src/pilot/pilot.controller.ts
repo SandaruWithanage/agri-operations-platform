@@ -440,6 +440,20 @@ export class PilotController {
       ),
     );
   }
+  @Get("land/viewport")
+  landViewport(
+    @Headers("x-agri-bff-key") key: string | undefined,
+    @Headers("authorization") token: string | undefined,
+    @Query() query: unknown,
+  ) {
+    const runtime = this.trusted(key);
+    return this.safe(async () =>
+      runtime.landViewport(
+        await runtime.authenticate(this.bearer(token)),
+        query,
+      ),
+    );
+  }
   @Get("land/geographies")
   landGeographies(
     @Headers("x-agri-bff-key") key: string | undefined,

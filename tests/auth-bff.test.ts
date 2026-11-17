@@ -703,6 +703,69 @@ it("uses strict geometry requests with CSRF, binds results to the request and st
   ).toBe(503);
 });
 
+it("bounds viewport reads, rejects scope parameters and binds the result to the requested box", async () => {
+  const accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const box = "west=80.19&south=8.29&east=80.21&north=8.31";
+  for (const query of [
+    "",
+    `${box}&organizationId=${accountId}`,
+    `${box}&west=80.18`,
+    "west=80.21&south=8.29&east=80.19&north=8.31",
+    "west=70&south=8.29&east=80&north=8.31",
+    `${box}&limit=201`,
+    "west=x&south=8.29&east=80.21&north=8.31",
+  ]) {
+    const calls = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect(
+      (await createBffHandler(config, calls)(req(`land/viewport?${query}`)))
+        .status,
+    ).toBe(400);
+    expect(calls).toHaveBeenCalledTimes(1);
+  }
+  const body = {
+    accountId,
+    bbox: { west: 80.19, south: 8.29, east: 80.21, north: 8.31 },
+    polygons: [],
+    points: [
+      {
+        landId: accountId,
+        longitude: 80.2,
+        latitude: 8.3,
+        accuracyM: null,
+        ownerId: "private",
+      },
+    ],
+    truncated: false,
+    provisionalIdentificationOnly: true,
+    hiddenCount: 7,
+  };
+  const ok = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(Response.json(body));
+  const response = await createBffHandler(
+    config,
+    ok,
+  )(req(`land/viewport?${box}`));
+  expect(response.status).toBe(200);
+  const json = await response.json();
+  expect(json.hiddenCount).toBeUndefined();
+  expect(json.points[0].ownerId).toBeUndefined();
+  expect(String(ok.mock.calls[1][0])).toContain("limit=100");
+  const shifted = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({ ...body, bbox: { ...body.bbox, west: 79 } }),
+    );
+  expect(
+    (await createBffHandler(config, shifted)(req(`land/viewport?${box}`)))
+      .status,
+  ).toBe(503);
+});
+
 it("sanitizes account-bound verification receipts and rejects scoped or mismatched lookups", async () => {
   const id = "06149451-4004-4a23-a5a2-64a24e485a82",
     accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";

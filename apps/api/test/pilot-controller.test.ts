@@ -55,6 +55,7 @@ function fake(): PilotRuntime {
     landDetail: vi.fn(),
     recordLandGeometry: vi.fn(),
     landGeometry: vi.fn(),
+    landViewport: vi.fn(),
     landGeographies: vi.fn(),
     registerProject: vi.fn(),
     changeProject: vi.fn(),
@@ -232,6 +233,23 @@ describe("pilot internal routes", () => {
     expect(runtime.landGeometry).toHaveBeenCalledWith(actor, {
       landId: input.farmer.farmerId,
       history: "true",
+    });
+  });
+  it("serves viewport reads only to the internal key with a verified actor", async () => {
+    const runtime = fake();
+    const http = await start(runtime);
+    const get = () =>
+      http
+        .get("/pilot/land/viewport")
+        .query({ west: "80.19", south: "8.29", east: "80.21", north: "8.31" })
+        .set("authorization", "Bearer synthetic");
+    expect((await get()).status).toBe(401);
+    expect((await get().set("x-agri-bff-key", key)).status).toBe(200);
+    expect(runtime.landViewport).toHaveBeenCalledWith(actor, {
+      west: "80.19",
+      south: "8.29",
+      east: "80.21",
+      north: "8.31",
     });
   });
 });
