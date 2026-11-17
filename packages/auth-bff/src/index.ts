@@ -226,7 +226,14 @@ export function createBffHandler(
             "registration/geographies",
             "registration/context",
           ].includes(path));
-      if (!allowed) return reply({ error: "Not found" }, 404);
+      // Administrator-only routes are not exposed by the field-officer BFF at all (PostgreSQL enforces the same rule).
+      const administratorOnly = [
+        "enrollments/withdraw",
+        "enrollment-policies",
+        "enrollment-policies/set",
+      ].includes(path);
+      if (!allowed || (administratorOnly && config.source !== "administrator"))
+        return reply({ error: "Not found" }, 404);
       const origin = request.headers.get("origin");
       if (
         (request.method !== "GET" && origin !== config.publicOrigin) ||
