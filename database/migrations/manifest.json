@@ -22,5 +22,6 @@
   "20261116_project_scope/up.sql",
   "20261116_project_enrollment/up.sql",
   "20261116_enrollment_policy_admin/up.sql",
-  "20261117_enrollment_withdraw_admin_only/up.sql"
+  "20261117_enrollment_withdraw_admin_only/up.sql",
+  "20261117_land_geometry_versions/up.sql"
 ]
