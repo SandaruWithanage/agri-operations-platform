@@ -1,0 +1,29 @@
+﻿Scenario ID,Scenario,Acceptance/pass condition,Source and rationale,Actual result,Evidence URL / ID,Reviewer,Approval status
+UAT-01,Same-session offline farmer + dependent enrollment,Farmer confirms first; child enrolls once; rejected parent blocks child without loss,"Q1–Q4, ADR 0021 amendment",,,,NOT TESTED - client review pending
+UAT-02,Officer A / B project/geography leakage,"Direct DB, API, BFF, query cache, map, reports and exports leak no B records","Q1, Q30, Q61",,,,NOT TESTED - client review pending
+UAT-03,Server commit then lost ACK then revocation,"Client shows `unconfirmed`, no duplicate event, admin reconciliation guarded","Q2,Q4",,,,NOT TESTED - client review pending
+UAT-04,100-item enrollment queue and retention,Warn at 80; 101st refused; 7/30 day states; zero auto-deletion,"Q5,Q6",,,,NOT TESTED - client review pending
+UAT-05,Offline seven-day session and device-clock tamper,Edits block at configured expiry; data preserved; limitation documented,Q37–Q39,,,,NOT TESTED - client review pending
+UAT-06,Lost phone and replacement,"Server access revoked, new device independently approved, only authorized recovery",Q39–Q41,,,,NOT TESTED - client review pending
+UAT-07,Vault forgotten passphrase recovery,"No backdoor, only preconfigured approved recovery; no material means no guaranteed restore",Q40,,,,NOT TESTED - client review pending
+UAT-08,GPS walking survey while fully offline,"Trace, pause/resume, correction, closure and provisional calculated area survive restart","Q48,Q50,Q52,Q53",,,,NOT TESTED - client review pending
+UAT-09,GPS foreground/background/battery matrix,Limitations observed and recorded per browser/OS; no fabricated track on interruption,Q53,,,,NOT TESTED - client review pending
+UAT-10,Invalid/self-intersecting polygon,Rejected or left provisional with actionable correction; no verified geometry,"Q49,Q50",,,,NOT TESTED - client review pending
+UAT-11,Two overlapping parcels,Area of overlap shown only to authorized reviewer; provisional saved; no double quota,Q55,,,,NOT TESTED - client review pending
+UAT-12,"Recorded 2.0 acres, GPS 2.3 acres","Both sources retained; quota uses configured validated measure, not unapproved estimate","Q52,Q28",,,,NOT TESTED - client review pending
+UAT-13,Two officers concurrently edit one polygon,One accepted as versioned mutation; other flagged and preserved for review,Q50,,,,NOT TESTED - client review pending
+UAT-14,Offline map package with unsupported tile provider,Download blocked; licensing evidence retained; allowed provider works offline,Q51,,,,NOT TESTED - client review pending
+UAT-15,Confirmed stock transfer with partial receipt,Dispatch doesn't make stock distributable; receiver confirmation does; discrepancies recorded,Q26,,,,NOT TESTED - client review pending
+UAT-16,Offline distribution double-spend,"Ledger remains non-negative/authorized, duplicate submission idempotent, conflicts retained","Q22,Q28",,,,NOT TESTED - client review pending
+UAT-17,Lot trace and compensating adjustment,Trace batch to authorized farmer; reversal preserves original history and approvals,"Q24,Q27",,,,NOT TESTED - client review pending
+UAT-18,Scheduled sensitive export after user revocation,"Artifact retrieval denied, link expires, download audit present, no PII in logs",Q29–Q31,,,,NOT TESTED - client review pending
+UAT-19,Excel import of duplicated/malformed farmer rows,Preview identifies errors; approval imports valid mapping once with lineage,Q67,,,,NOT TESTED - client review pending
+UAT-20,RPO/RTO restore drill,Isolated recovery verifies DB consistency + offsite keys and records actual RPO/RTO,Q45,,,,NOT TESTED - client review pending
+UAT-21,Protected VPS secret rotation cron,Recovery/active sessions remain coherent; key rotation logs no secrets; no data loss,Q46,,,,NOT TESTED - client review pending
+UAT-22,Privileged grant dual approval and temporary expiry,"Unapproved/self-grant denied, two-person high-risk grant works, expiry works",Q61–Q66,,,,NOT TESTED - client review pending
+UAT-23,Staff transfer with old device offline,New server reads denied; offline limits clearly disclosed; audit retains historic actor,Q64,,,,NOT TESTED - client review pending
+UAT-24,WCAG 2.2 AA on maps and forms,"Keyboard/non-drag alternatives, contrast, screen reader/language and mobile touch verified",Q59,,,,NOT TESTED - client review pending
+UAT-25,Full approved pilot deployment and rollback,Release gate and restoration drill protect both DB and unsynced offline work,"Q58,Q68,Q70",,,,NOT TESTED - client review pending
+UAT-26,"Planning source 2,700 vs 2,760",Import/report baseline blocked pending signed client correction,Q56,,,,NOT TESTED - client review pending
+UAT-27,English/Sinhala role-specific training,"Trained users complete representative forms, GPS survey and sync in both locales","Q59,Q60",,,,NOT TESTED - client review pending
+UAT-28,Contract exit and data handover,"Authorized complete structured export, recipient identity/review, deletion/hold decision trace",Q44,,,,NOT TESTED - client review pending
