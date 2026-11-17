@@ -72,6 +72,8 @@ const words = {
     accept: "Accept this jump",
     submit: "Save provisional polygon",
     saving: "Saving…",
+    signedOutLock:
+      "You are signed out. The survey is kept in this device's memory but hidden, and recording is paused. Sign in again as the same account on the same approved device to continue; signing in as another account removes it.",
     retrySame: "Retry the same save",
     unknownOutcome:
       "We could not confirm whether the server saved this polygon. Retrying sends exactly the same save, which is safe to repeat. Editing stays locked until the result is known.",
@@ -140,6 +142,8 @@ const words = {
     accept: "මෙම පැනීම පිළිගන්න",
     submit: "තාවකාලික බහුඅස්‍රය සුරකින්න",
     saving: "සුරකිමින්…",
+    signedOutLock:
+      "ඔබ වරන ලදී. මැනුම මෙම උපාංගයේ මතකයේ රැඳී ඇති නමුත් සඟවා ඇති අතර වාර්තා කිරීම විරාම කර ඇත. ඉදිරියට යාමට අනුමත එම උපාංගයෙන් එම ගිණුමෙන්ම නැවත පුරන්න; වෙනත් ගිණුමකින් පුරනය වීමෙන් එය ඉවත් වේ.",
     retrySame: "එම සුරැකීමම නැවත යවන්න",
     unknownOutcome:
       "සේවාදායකය මෙම බහුඅස්‍රය සුරැකුවාදැයි තහවුරු කළ නොහැකි විය. නැවත යැවීමෙන් හරියටම එම සුරැකීමම යැවේ; එය නැවත කිරීම ආරක්ෂිතයි. ප්‍රතිඵලය දැනගන්නා තුරු සංස්කරණය අගුළු දමා ඇත.",
@@ -178,6 +182,7 @@ export function WalkSurveyScreen({
   clock = () => Date.now(),
   onActivityChange,
   onBusyChange,
+  locked: signedOut = false,
 }: {
   language: Language;
   accountId: string;
@@ -191,6 +196,8 @@ export function WalkSurveyScreen({
   onActivityChange?: (active: boolean) => void;
   /** True while a save is in flight or its outcome is unknown, so a host page does not switch land or leave. */
   onBusyChange?: (busy: boolean) => void;
+  /** Signed out or session lost: keep the unsaved survey in memory but render nothing sensitive and stop recording. */
+  locked?: boolean;
 }) {
   const w = words[language];
   const geo =
@@ -279,6 +286,14 @@ export function WalkSurveyScreen({
     activity.current?.(survey.status !== "idle");
   }, [survey.status]);
   useEffect(() => () => activity.current?.(false), []);
+
+  // Losing the session never discards the walk, but it stops recording and releases location at once.
+  useEffect(() => {
+    if (!signedOut) return;
+    // Pausing also releases location through the status effect above.
+    setSurvey((s) => pauseSurvey(s, clock()));
+    setNotice(null);
+  }, [signedOut, clock]);
 
   const review = useMemo(() => reviewSurvey(survey), [survey]);
   const last = survey.points[survey.points.length - 1];
@@ -398,6 +413,14 @@ export function WalkSurveyScreen({
           ? w.review
           : "";
   const big = { minHeight: 48, minWidth: 48 };
+
+  if (signedOut)
+    return (
+      <section aria-labelledby="walk-title">
+        <h2 id="walk-title">{w.title}</h2>
+        <p role="alert">{w.signedOutLock}</p>
+      </section>
+    );
 
   return (
     <section aria-labelledby="walk-title">
