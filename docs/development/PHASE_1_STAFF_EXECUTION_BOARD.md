@@ -100,3 +100,5 @@ The 28 scenarios are listed in section 12 of the guide. They are cited here as "
 | #43 | ENR-AUTH-01 administrator-only withdrawal (migration 24)          | Open; conflict resolved with main; CI re-run |
 | #44 | ADR 0022 dynamic role and assignment administration (design only) | Open; conflict resolved with main; CI re-run |
 | #45 | ADR 0021 draft amendment A (design only)                          | Open; conflict resolved with main; CI re-run |
+
+Internal engineering security review of these PRs (not independent; Gate G1 not satisfied): [PHASE_1_PR_SECURITY_REVIEW_LOG.md](../testing/PHASE_1_PR_SECURITY_REVIEW_LOG.md).
