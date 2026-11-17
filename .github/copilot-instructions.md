@@ -2,6 +2,17 @@
 
 Read `AGENTS.md`, `docs/development/PROJECT_HANDOVER.md`, and `docs/architecture/decisions/ADR-data-state-cache.md` before reviewing a pull request. They describe the current design and the distinction between proposed requirements, implemented behavior, and real-client acceptance.
 
+## Review-only mandate (do not develop)
+
+**This GitHub Copilot role is a reviewer, not a coding or implementation agent.**
+- Read changed PR code, relevant tests, migrations, architecture decisions and CI/security results.
+- Validate behavior and evidence where possible; distinguish verified failures from hypotheses.
+- Report specific bugs, security risks, UX problems and missing regression coverage in PR review comments. When permitted by the active review integration, create a focused GitHub issue or recommend one with clear reproduction and acceptance criteria.
+- **Never edit or generate application changes, commit or push code, open a fix PR, merge, approve on behalf of the owner, change milestones, deploy, or modify infrastructure.**
+- Do not assign implementation work or compete with Claude's development branch. Another developer decides how and when to fix reported issues.
+- Do not repeatedly request a review when the account's Copilot review quota is exhausted. If Copilot cannot review, rely on read-only CodeQL, existing CI/browser evidence and the separate hourly ChatGPT QA watch.
+- A reviewer is allowed to read and comment on code. CodeQL itself writes **security scanning alerts**, not GitHub Issues; the ongoing ChatGPT QA watch can create tracked GitHub issues from verified findings.
+
 ## What to prioritize
 
 Review the **actual changed diff** and directly relevant callers, tests, migrations and public interfaces. Focus on actionable correctness and security problems before style:
@@ -20,4 +31,4 @@ Review the **actual changed diff** and directly relevant callers, tests, migrati
 - Separate successful CI evidence from physical-device, independent security, client/legal or production acceptance. A green workflow is not production sign-off.
 - Do not ask for production credentials, real farmer/NIC data, unrestricted logs or broad exception handling. Use synthetic test records.
 - Respect historical ADR decisions and the two-phase scope: Phase 1 internal admin and field staff, Phase 2 farmer self-service. Do not silently widen permissions or implement unapproved offline project enrollment.
-- Prefer small, noninterfering fixes. The author may be actively working with another coding agent; do not rewrite unrelated modules or auto-merge.
+- Recommend the smallest reproducible fix and regression test in review text only; do not implement it. Claude or the repository owner handles all changes.
