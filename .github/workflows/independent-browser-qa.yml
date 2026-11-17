@@ -49,12 +49,6 @@ jobs:
       - name: Install exact dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Print formatted synthetic QA source for maintainer review
-        run: |
-          echo QA_FORMATTED_SOURCE_START
-          pnpm exec prettier tests/browser/qa-ui-ux.mjs
-          echo QA_FORMATTED_SOURCE_END
-
       - name: Run database and API regression tests
         run: pnpm test
 
