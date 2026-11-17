@@ -301,6 +301,71 @@ export async function verifyProjectEnrollment({
     await expect(withdraw(withdrawal, "field_officer")).rejects.toMatchObject({
       code: "42501",
     });
+    // ENR-AUTH-01: withdrawal is administrator-only in PostgreSQL. A new field-officer-source withdraw grant cannot
+    // be created, and a legacy one (constraint temporarily removed, as it could pre-date the rule) stays inert.
+    await expect(
+      owner.query(
+        "INSERT INTO authz.project_permission_grant(id,account_id,organization_id,project_id,permission,registration_source,starts_at) VALUES($1,$2,$3,$4,'enrollment.withdraw','field_officer',now()-interval '1 hour')",
+        [id(), actor.accountId, organizationId, project],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    const legacyGrant = id();
+    await owner.query(
+      "ALTER TABLE authz.project_permission_grant DROP CONSTRAINT project_permission_grant_withdraw_admin_check",
+    );
+    try {
+      await owner.query(
+        "INSERT INTO authz.project_permission_grant(id,account_id,organization_id,project_id,permission,registration_source,starts_at) VALUES($1,$2,$3,$4,'enrollment.withdraw','field_officer',now()-interval '1 hour')",
+        [legacyGrant, actor.accountId, organizationId, project],
+      );
+      await expect(withdraw(withdrawal, "field_officer")).rejects.toMatchObject(
+        { code: "42501" },
+      );
+      expect(
+        (
+          await owner.query(
+            "SELECT status FROM operations.enrollment WHERE id=$1",
+            [first.enrollmentId],
+          )
+        ).rows[0].status,
+      ).toBe("enrolled");
+      // Only the legacy field-officer grant remains active: neither source may withdraw with it.
+      await owner.query(
+        "UPDATE authz.project_permission_grant SET active=false WHERE id=$1",
+        [withdrawGrant],
+      );
+      for (const source of ["field_officer", "administrator"] as const)
+        await expect(withdraw(withdrawal, source)).rejects.toMatchObject({
+          code: "42501",
+        });
+      await owner.query(
+        "UPDATE authz.project_permission_grant SET active=true WHERE id=$1",
+        [withdrawGrant],
+      );
+      // The runtime login can neither create a grant nor alter the guarding constraint.
+      for (const statement of [
+        "INSERT INTO authz.project_permission_grant(id,account_id,organization_id,project_id,permission,registration_source,starts_at) VALUES(gen_random_uuid(),'" +
+          actor.accountId +
+          "','" +
+          organizationId +
+          "','" +
+          project +
+          "','enrollment.withdraw','administrator',now())",
+        "ALTER TABLE authz.project_permission_grant DROP CONSTRAINT project_permission_grant_withdraw_admin_check",
+        "UPDATE authz.project_permission_grant SET registration_source='administrator'",
+      ])
+        await expect(
+          context.run(db, actor, (c) => c.query(statement)),
+        ).rejects.toMatchObject({ code: "42501" });
+    } finally {
+      await owner.query(
+        "DELETE FROM authz.project_permission_grant WHERE id=$1",
+        [legacyGrant],
+      );
+      await owner.query(
+        "ALTER TABLE authz.project_permission_grant ADD CONSTRAINT project_permission_grant_withdraw_admin_check CHECK(permission<>'enrollment.withdraw' OR registration_source='administrator') NOT VALID",
+      );
+    }
     await expect(
       withdraw({ ...withdrawal, expectedVersion: 2 }),
     ).rejects.toMatchObject({ code: "40001" });

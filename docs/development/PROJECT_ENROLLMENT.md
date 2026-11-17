@@ -29,3 +29,7 @@ HTTP mapping: 403 denied, 409 duplicate/idempotency/version/provisional-eligibil
 - No BFF/UI/offline/sync, bulk enrollment, role or scope administration, reports, exports or maps (RPT-01 must recheck scopes and must not count enrollments from privileged queries).
 - Per-row predicate evaluation takes a short organizational-unit lock; list capacity is bounded but unmeasured (OPS-05).
 - Evidence is synthetic PostgreSQL/PostGIS 16 locally and does not cover production, devices or client acceptance. See [results](../testing/PROJECT_ENROLLMENT_RESULTS.md).
+
+## Withdrawal is administrator-only (ENR-AUTH-01)
+
+Under the provisional owner policy (DEC-12, not client-approved), only the administrator source may withdraw. PostgreSQL refuses any other source in `operations.enrollment_permitted`, new field-officer-source `enrollment.withdraw` grants are rejected by a constraint, and the field-officer BFF does not expose the withdrawal or policy-administration routes. The administrator screens are unaffected.

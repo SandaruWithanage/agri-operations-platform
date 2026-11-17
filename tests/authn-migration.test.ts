@@ -312,6 +312,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261117_enrollment_withdraw_admin_only/up.sql",
+        "utf8",
+      ),
+    );
 
     const upgradeAudit = (
       await client.query(

@@ -65,7 +65,7 @@ export async function verifyEnrollmentIsolation({
     for (const [permission, source] of [
       ["enrollment.read", null],
       ["enrollment.create", "field_officer"],
-      ["enrollment.withdraw", "field_officer"],
+      ["enrollment.withdraw", "administrator"],
     ] as const) {
       const grant = id();
       grants.push(grant);
@@ -210,7 +210,7 @@ export async function verifyEnrollmentIsolation({
       [officerA, b],
     ] as const)
       await expect(
-        service.withdraw(db, officer, "field_officer", {
+        service.withdraw(db, officer, "administrator", {
           mutationId: id(),
           enrollmentId: target.enrollmentId,
           expectedVersion: 1,
@@ -224,6 +224,24 @@ export async function verifyEnrollmentIsolation({
         )
       ).rows.every((row) => row.status === "enrolled"),
     ).toBe(true);
+
+    // 4b. ENR-AUTH-01: even the enrollment's own officer, holding an administrator-source withdraw grant for their
+    // scope, cannot withdraw through the field-officer source.
+    await expect(
+      service.withdraw(db, officerA, "field_officer", {
+        mutationId: id(),
+        enrollmentId: a.enrollmentId,
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({ code: "42501" });
+    expect(
+      (
+        await owner.query(
+          "SELECT status FROM operations.enrollment WHERE id=$1",
+          [a.enrollmentId],
+        )
+      ).rows[0].status,
+    ).toBe("enrolled");
 
     // 5. A mutation ID belongs to its actor: another officer reusing it cannot replay or read the result.
     await expect(
@@ -249,7 +267,7 @@ export async function verifyEnrollmentIsolation({
     expect(await rowsFor(officerA)).toEqual([]);
     expect(await rowsFor(officerB)).toEqual([b.enrollmentId]);
     await expect(
-      service.withdraw(db, officerA, "field_officer", {
+      service.withdraw(db, officerA, "administrator", {
         mutationId: id(),
         enrollmentId: a.enrollmentId,
         expectedVersion: 1,

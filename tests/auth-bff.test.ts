@@ -11,6 +11,7 @@ const config = {
   internalKey: internal,
   source: "field_officer" as const,
 };
+const adminConfig = { ...config, source: "administrator" as const };
 const cookie = `__Host-agri_session=${opaque}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=3600`;
 function req(
   path: string,
@@ -739,7 +740,7 @@ it("binds enrollment commands to the request, requires CSRF and strips extra fie
   expect(
     (
       await createBffHandler(
-        config,
+        adminConfig,
         withdrawn,
       )(
         req("enrollments/withdraw", "POST", {
@@ -768,7 +769,7 @@ it("validates policy administration requests and read bindings", async () => {
     expect(
       (
         await createBffHandler(
-          config,
+          adminConfig,
           bffSession(),
         )(req("enrollment-policies/set", "POST", { ...input, ...bad }))
       ).status,
@@ -779,7 +780,7 @@ it("validates policy administration requests and read bindings", async () => {
   expect(
     (
       await createBffHandler(
-        config,
+        adminConfig,
         ok,
       )(req("enrollment-policies/set", "POST", input))
     ).status,
@@ -795,7 +796,7 @@ it("validates policy administration requests and read bindings", async () => {
   expect(
     (
       await createBffHandler(
-        config,
+        adminConfig,
         other,
       )(req(`enrollment-policies?projectId=${input.projectId}`))
     ).status,
@@ -806,7 +807,7 @@ it("validates policy administration requests and read bindings", async () => {
   expect(
     await (
       await createBffHandler(
-        config,
+        adminConfig,
         good,
       )(req(`enrollment-policies?projectId=${input.projectId}`))
     ).json(),
@@ -816,7 +817,7 @@ it("validates policy administration requests and read bindings", async () => {
   expect(
     (
       await createBffHandler(
-        config,
+        adminConfig,
         unknown,
       )(req(`enrollment-policies?projectId=${input.projectId}&role=admin`))
     ).status,
@@ -949,6 +950,95 @@ it("keeps two officers' concurrent enrollment requests on separate server-issued
   ).toEqual([secretA, secretB].sort());
 });
 
+it("does not expose administrator-only enrollment routes through the field-officer BFF", async () => {
+  const withdraw = {
+    mutationId: enrollmentIds.mutationId,
+    enrollmentId: enrollmentIds.enrollmentId,
+    expectedVersion: 1,
+  };
+  const policy = {
+    mutationId: enrollmentIds.mutationId,
+    projectId: enrollmentIds.projectId,
+    expectedVersion: 0,
+    enabled: true,
+    eligibleFarmerStatuses: ["verified"],
+  };
+  const hidden: Array<[string, "GET" | "POST", unknown?]> = [
+    ["enrollments/withdraw", "POST", withdraw],
+    ["enrollment-policies/set", "POST", policy],
+    [`enrollment-policies?projectId=${enrollmentIds.projectId}`, "GET"],
+  ];
+  for (const [path, method, body] of hidden) {
+    const fetcher = vi.fn();
+    const response = await createBffHandler(
+      config,
+      fetcher,
+    )(req(path, method, body));
+    // Refused before any session exchange or upstream call.
+    expect(response.status).toBe(404);
+    expect(fetcher).not.toHaveBeenCalled();
+  }
+  // The administrator BFF still forwards them and pins the administrator source upstream.
+  const fetcher = bffSession().mockResolvedValueOnce(
+    Response.json({
+      enrollmentId: enrollmentIds.enrollmentId,
+      version: 2,
+      replayed: false,
+    }),
+  );
+  const response = await createBffHandler(
+    adminConfig,
+    fetcher,
+  )(req("enrollments/withdraw", "POST", withdraw));
+  expect(response.status).toBe(200);
+  expect(fetcher.mock.calls[1][1].headers["x-agri-source"]).toBe(
+    "administrator",
+  );
+});
+
+it("cannot reach administrator-only routes through path variants on the field-officer BFF", async () => {
+  const withdraw = {
+    mutationId: enrollmentIds.mutationId,
+    enrollmentId: enrollmentIds.enrollmentId,
+    expectedVersion: 1,
+  };
+  // Every variant must be refused (or normalized to a hidden route) before any session exchange or upstream call.
+  const variants = [
+    "enrollments/withdraw/",
+    "Enrollments/Withdraw",
+    "ENROLLMENTS/WITHDRAW",
+    "enrollments%2Fwithdraw",
+    "enrollments%2fwithdraw",
+    "enrollments//withdraw",
+    "enrollments/./withdraw",
+    "enrollments/detail/../withdraw",
+    "enrollments/withdraw%00",
+    "enrollments/withdraw%20",
+    "enrollments/withdraw;x=1",
+    "enrollment-policies/set/",
+    "enrollment-policies%2Fset",
+    "enrollment-policies/./set",
+  ];
+  for (const path of variants) {
+    const fetcher = vi.fn();
+    const response = await createBffHandler(
+      config,
+      fetcher,
+    )(req(path, "POST", withdraw));
+    expect(response.status, path).toBe(404);
+    expect(fetcher, path).not.toHaveBeenCalled();
+  }
+  // Method confusion: the same hidden route must not answer a different method either.
+  for (const method of ["GET", "PUT", "PATCH", "DELETE"] as const) {
+    const fetcher = vi.fn();
+    const response = await createBffHandler(
+      config,
+      fetcher,
+    )(req("enrollments/withdraw", method));
+    expect(response.status, method).toBe(404);
+    expect(fetcher, method).not.toHaveBeenCalled();
+  }
+});
 describe("farmer and land routes never forward browser-chosen identity", () => {
   const farmerId = enrollmentIds.farmerId,
     landId = enrollmentIds.projectId;
