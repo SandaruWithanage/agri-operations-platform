@@ -32,3 +32,5 @@ Important future worker events require a PostgreSQL transactional outbox before 
 TanStack Query now owns protected online reads and mutation state; Zustand owns persisted English/Sinhala preference only. New domains must preserve the existing cancellation, isolation and tab-draft controls. Redis is optional and absent. The current PostgreSQL shared login throttle remains in use. Farmer offline persistence and encrypted archive recovery are implemented; offline GPS, full deauthorization/erasure, optional sensitive fields and actual device security still require work. Do not grow custom server-state infrastructure instead of completing the planned TanStack integration.
 
 [M0_FOUNDATION.md](M0_FOUNDATION.md) is the historical M0 snapshot, not today's implementation inventory. Historical ADR implementation notes also describe their original milestone; use delivery status for current behavior. Passing development tests does not establish production operating conditions.
+
+See also the [cross-domain invariants and additive migration plan](CROSS_DOMAIN_INVARIANTS.md) (proposed working record).
