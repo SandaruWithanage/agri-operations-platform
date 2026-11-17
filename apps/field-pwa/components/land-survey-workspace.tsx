@@ -23,6 +23,8 @@ const words = {
     noneYet: "This land has no polygon yet.",
     back: "Choose another land",
     auth: "Sign in on the home page, then return here.",
+    sessionLost:
+      "You are signed out. Your survey on this screen is kept; sign in again as the same account to save it. Signing in as another account removes it.",
     denied: "You do not have permission to read this land's geometry.",
     failure: "Could not load. Check your connection and try again.",
     retry: "Try again",
@@ -42,6 +44,8 @@ const words = {
     noneYet: "මෙම ඉඩමට තවම බහුඅස්‍රයක් නැත.",
     back: "වෙනත් ඉඩමක් තෝරන්න",
     auth: "මුල් පිටුවෙන් පුරන්න, ඉන්පසු මෙතැනට ආපසු එන්න.",
+    sessionLost:
+      "ඔබ වරන ලදී. මෙම තිරයේ ඇති මැනුම රැඳී පවතී; සුරැකීමට එම ගිණුමෙන්ම නැවත පුරන්න. වෙනත් ගිණුමකින් පුරනය වීමෙන් එය ඉවත් වේ.",
     denied: "මෙම ඉඩමේ ජ්‍යාමිතිය කියවීමට ඔබට අවසර නැත.",
     failure: "පූරණය කළ නොහැකි විය. සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
     retry: "නැවත උත්සාහ කරන්න",
@@ -72,18 +76,64 @@ export function LandSurveyWorkspace({
     | "failure"
     | null
   >(null);
+  const [sessionLost, setSessionLost] = useState(false);
   // Responses for a land the officer has already moved away from must never be applied.
   const sequence = useRef(0);
+  // Every response is applied only if it belongs to the current session epoch. The epoch advances on
+  // an account switch, a restart of the load, and unmount, and each advance aborts in-flight requests.
+  const epoch = useRef(0);
+  const controller = useRef<AbortController | null>(null);
+  const accountRef = useRef<string | null>(null);
+  const surveyActive = useRef(false);
 
   function problem(error: unknown) {
     const status = error instanceof PilotRequestError ? error.status : 503;
     return status === 401 ? "auth" : status === 403 ? "denied" : "failure";
   }
+  function newEpoch() {
+    epoch.current += 1;
+    controller.current?.abort();
+    controller.current = new AbortController();
+    return { mine: epoch.current, signal: controller.current.signal };
+  }
+  /** Drops every piece of account-scoped state, including an in-progress survey, before anyone else can see it. */
+  function wipe(next: "loading" | "auth" | "denied" | "failure") {
+    epoch.current += 1;
+    controller.current?.abort();
+    controller.current = null;
+    sequence.current += 1;
+    accountRef.current = null;
+    surveyActive.current = false;
+    setAccountId(null);
+    setLands([]);
+    setCursor(null);
+    setChosen(null);
+    setGeometry(null);
+    setSessionLost(false);
+    setState(next);
+  }
   async function load(after?: string) {
+    const { mine, signal } = after
+      ? { mine: epoch.current, signal: controller.current?.signal }
+      : newEpoch();
     try {
-      const identity = await client.sessionIdentity();
+      const identity = await client.sessionIdentity(signal);
+      if (mine !== epoch.current) return;
+      if (accountRef.current && accountRef.current !== identity.accountId) {
+        // Another account signed in while this page was open: nothing from the previous account may remain.
+        wipe("loading");
+        void load();
+        return;
+      }
+      accountRef.current = identity.accountId;
       setAccountId(identity.accountId);
-      const page = await client.land(after);
+      const page = await client.land(after, signal);
+      if (mine !== epoch.current) return;
+      if (page.accountId !== identity.accountId) {
+        wipe("auth");
+        return;
+      }
+      setSessionLost(false);
       setLands((current) => [
         ...(after ? current : []),
         ...page.items.map((item) => ({
@@ -95,28 +145,80 @@ export function LandSurveyWorkspace({
       setCursor(page.nextCursor);
       setState("ready");
     } catch (error) {
-      setState(problem(error));
+      if (mine !== epoch.current) return;
+      handleSessionError(error);
+    }
+  }
+  /** A 401 clears the picker unless a survey is in progress, whose unsaved walk must not be destroyed by a timeout. */
+  function handleSessionError(error: unknown) {
+    const kind = problem(error);
+    if (kind === "auth" && surveyActive.current) setSessionLost(true);
+    else if (kind === "auth") wipe("auth");
+    else setState(kind);
+  }
+  /** Re-checks who is signed in when the page returns to the foreground, so an account switch cannot leave stale data. */
+  async function recheck() {
+    if (!accountRef.current) return;
+    const mine = epoch.current;
+    try {
+      const identity = await client.sessionIdentity(controller.current?.signal);
+      if (mine !== epoch.current) return;
+      if (identity.accountId !== accountRef.current) {
+        wipe("loading");
+        void load();
+      } else setSessionLost(false);
+    } catch (error) {
+      if (mine !== epoch.current) return;
+      if (error instanceof PilotRequestError && error.status === 401)
+        handleSessionError(error);
     }
   }
   useEffect(() => {
     void load();
+    const visible = () => {
+      if (document.visibilityState === "visible") void recheck();
+    };
+    const focus = () => void recheck();
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", focus);
+    window.addEventListener("pageshow", focus);
+    return () => {
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("pageshow", focus);
+      epoch.current += 1;
+      controller.current?.abort();
+    };
   }, []);
 
   async function choose(id: string) {
     const mine = ++sequence.current;
+    const generation = epoch.current;
+    const signal = controller.current?.signal;
     setChosen(id || null);
     setGeometry(id ? "loading" : null);
     if (!id) return;
     try {
-      const read = await client.landGeometry(id);
-      if (mine !== sequence.current) return;
+      const identity = await client.sessionIdentity(signal);
+      if (mine !== sequence.current || generation !== epoch.current) return;
+      if (identity.accountId !== accountRef.current) {
+        wipe("loading");
+        void load();
+        return;
+      }
+      const read = await client.landGeometry(id, false, signal);
+      if (mine !== sequence.current || generation !== epoch.current) return;
+      if (read.accountId !== accountRef.current) {
+        wipe("auth");
+        return;
+      }
       setGeometry({
         landId: id,
         version: read.current?.version ?? 0,
         area: read.current?.calculatedAreaM2 ?? null,
       });
     } catch (error) {
-      if (mine !== sequence.current) return;
+      if (mine !== sequence.current || generation !== epoch.current) return;
       // 404 means no polygon exists yet (or none is visible); the first version is expected at 0.
       if (error instanceof PilotRequestError && error.status === 404)
         setGeometry({ landId: id, version: 0, area: null });
@@ -124,7 +226,7 @@ export function LandSurveyWorkspace({
       else {
         setChosen(null);
         setGeometry(null);
-        setState(problem(error));
+        handleSessionError(error);
       }
     }
   }
@@ -192,6 +294,7 @@ export function LandSurveyWorkspace({
           </button>
         </p>
       )}
+      {sessionLost && <p role="alert">{w.sessionLost}</p>}
       {ready && accountId && (
         <>
           <p role="status">
@@ -206,6 +309,9 @@ export function LandSurveyWorkspace({
             landId={ready.landId}
             expectedVersion={ready.version}
             client={client}
+            onActivityChange={(active) => {
+              surveyActive.current = active;
+            }}
           />
           <button style={{ minHeight: 48 }} onClick={() => void choose("")}>
             {w.back}

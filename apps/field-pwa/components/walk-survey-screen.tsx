@@ -164,6 +164,7 @@ export function WalkSurveyScreen({
   geolocation,
   newId = () => crypto.randomUUID(),
   clock = () => Date.now(),
+  onActivityChange,
 }: {
   language: Language;
   accountId: string;
@@ -173,6 +174,8 @@ export function WalkSurveyScreen({
   geolocation?: GeolocationLike | null;
   newId?: () => string;
   clock?: () => number;
+  /** True while a survey is recording, paused or in review, so a host page never discards unsaved work on a timeout. */
+  onActivityChange?: (active: boolean) => void;
 }) {
   const w = words[language];
   const geo =
@@ -247,6 +250,13 @@ export function WalkSurveyScreen({
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [clock, w.hidden]);
+
+  const activity = useRef(onActivityChange);
+  activity.current = onActivityChange;
+  useEffect(() => {
+    activity.current?.(survey.status !== "idle");
+  }, [survey.status]);
+  useEffect(() => () => activity.current?.(false), []);
 
   const review = useMemo(() => reviewSurvey(survey), [survey]);
   const last = survey.points[survey.points.length - 1];

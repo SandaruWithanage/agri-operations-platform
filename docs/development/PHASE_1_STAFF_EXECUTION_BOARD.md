@@ -97,3 +97,7 @@ The 28 scenarios are listed in section 12 of the guide. They are cited here as "
 None open at this review (the review itself is this board update).
 
 Merged since the previous review: #46 (board and security review log), #47 (P1-09a polygon store), #48 (P1-09b geometry service), #49 (P1-09c geometry BFF/client), #50 (P1-10a viewport reads), #51 (ADR 0023 proposal), #52 (P1-11a walk survey engine). CI was green on each merged head and each has an internal review row in the security review log; none has an independent security review (Gate G1).
+
+## Issue triage
+
+The GitHub issue board is checked between tasks. Open QA findings are fixed ahead of new features: #59 (survey page stale data across an account switch) is fixed in the PR that references it; #60 (walk-survey save retries after editing) is next.
