@@ -204,23 +204,32 @@ describe("walk survey screen", () => {
     expect(geo.watchPosition).toHaveBeenCalledTimes(2);
   });
 
-  it("reviews a full walk and saves the validated closed ring with one idempotency id, even across a retry", async () => {
-    const { geo, client, newId, user } = setup();
-    client.recordLandGeometry.mockRejectedValueOnce({ status: 409 });
-    await user.click(screen.getByRole("button", { name: "Start recording" }));
-    await walkAll(geo);
-    await user.click(screen.getByRole("button", { name: "Finish and review" }));
+  async function reviewed(over: Parameters<typeof setup>[0] = {}) {
+    const ctx = setup(over);
+    await ctx.user.click(
+      screen.getByRole("button", { name: "Start recording" }),
+    );
+    await walkAll(ctx.geo);
+    await ctx.user.click(
+      screen.getByRole("button", { name: "Finish and review" }),
+    );
+    return ctx;
+  }
+  const saveButton = () =>
+    screen.getByRole("button", { name: "Save provisional polygon" });
+  const editsLocked = () => {
+    for (const b of screen.getAllByRole("button", { name: "Remove point" }))
+      expect(b).toBeDisabled();
+    for (const i of screen.getAllByLabelText("Reason (required)"))
+      expect(i).toBeDisabled();
+  };
+
+  it("saves the validated closed ring once and shows the result", async () => {
+    const { client, newId, user } = await reviewed();
     expect(screen.getByText(/m² \(/)).toBeInTheDocument();
     expect(screen.getByText(/3\.0\d\d acres/)).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "Save provisional polygon" }),
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent("polygon changed");
-    await user.click(
-      screen.getByRole("button", { name: "Save provisional polygon" }),
-    );
-    expect(client.recordLandGeometry).toHaveBeenCalledTimes(2);
-    const [account, input] = client.recordLandGeometry.mock.calls[1];
+    await user.click(saveButton());
+    const [account, input] = client.recordLandGeometry.mock.calls[0];
     expect(account).toBe(accountId);
     expect(input).toMatchObject({
       landId,
@@ -228,16 +237,142 @@ describe("walk survey screen", () => {
       source: "gps_walk",
     });
     expect(input.ring[0]).toEqual(input.ring[input.ring.length - 1]);
-    expect(client.recordLandGeometry.mock.calls[0][1].mutationId).toBe(
-      input.mutationId,
-    );
     expect(newId).toHaveBeenCalledTimes(1);
     expect(
       screen.getByText(/Saved on the server as a provisional polygon/),
     ).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it("locks editing, discard and the host while a save is pending, then retries the identical request after an unknown outcome", async () => {
+    let fail: (reason: unknown) => void = () => undefined;
+    const onBusyChange = vi.fn();
+    const { client, newId, user } = await reviewed({ onBusyChange });
+    client.recordLandGeometry
+      .mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
+      .mockResolvedValueOnce({
+        version: 1,
+        replayed: true,
+        calculatedAreaM2: 12000,
+      });
+    await user.click(saveButton());
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Save provisional polygon" }),
-    ).toBeDisabled();
+      (
+        screen.getByRole("button", {
+          name: "Discard survey",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    editsLocked();
+    expect(onBusyChange).toHaveBeenLastCalledWith(true);
+    await act(async () => fail(new TypeError("network timeout")));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "could not confirm whether the server saved",
+    );
+    editsLocked();
+    expect(onBusyChange).toHaveBeenLastCalledWith(true);
+    await user.click(
+      screen.getByRole("button", { name: "Retry the same save" }),
+    );
+    expect(client.recordLandGeometry).toHaveBeenCalledTimes(2);
+    expect(client.recordLandGeometry.mock.calls[1][1]).toEqual(
+      client.recordLandGeometry.mock.calls[0][1],
+    );
+    expect(newId).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/already recorded/)).toBeInTheDocument();
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("treats a 503 as unknown, never regenerates the id, and warns before discarding", async () => {
+    const { client, user } = await reviewed();
+    client.recordLandGeometry.mockRejectedValueOnce({ status: 503 });
+    await user.click(saveButton());
+    expect(
+      screen.getByRole("button", { name: "Retry the same save" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Discard (an earlier save may already be recorded)",
+      }),
+    ).toBeEnabled();
+    editsLocked();
+    await user.click(
+      screen.getByRole("button", { name: "Retry the same save" }),
+    );
+    expect(client.recordLandGeometry.mock.calls[1][1].mutationId).toBe(
+      client.recordLandGeometry.mock.calls[0][1].mutationId,
+    );
+  });
+
+  it("does not auto-retry a definitive refusal: editing stays locked until an explicit correction, which uses a new request id", async () => {
+    const { client, newId, user } = await reviewed();
+    client.recordLandGeometry
+      .mockRejectedValueOnce({ status: 403 })
+      .mockResolvedValueOnce({
+        version: 1,
+        replayed: false,
+        calculatedAreaM2: 12000,
+      });
+    await user.click(saveButton());
+    expect(screen.getByRole("alert")).toHaveTextContent("Saving was denied");
+    expect(
+      screen.queryByRole("button", { name: "Save provisional polygon" }),
+    ).toBeNull();
+    expect(client.recordLandGeometry).toHaveBeenCalledTimes(1);
+    editsLocked();
+    await user.click(
+      screen.getByRole("button", { name: "Correct the survey and save again" }),
+    );
+    await user.type(
+      screen.getAllByLabelText("Reason (required)")[0],
+      "Stood in a doorway",
+    );
+    await user.click(
+      screen.getAllByRole("button", { name: "Remove point" })[0],
+    );
+    await user.click(saveButton());
+    const [first, second] = client.recordLandGeometry.mock.calls.map(
+      (call) => call[1],
+    );
+    expect(second.mutationId).not.toBe(first.mutationId);
+    expect(second.ring).toHaveLength(first.ring.length - 1);
+    expect(newId).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a version conflict as final: no retry or correction, only discard", async () => {
+    const { client, user } = await reviewed();
+    client.recordLandGeometry.mockRejectedValueOnce({ status: 409 });
+    await user.click(saveButton());
+    expect(screen.getByRole("alert")).toHaveTextContent("polygon changed");
+    expect(
+      screen.queryByRole("button", { name: "Save provisional polygon" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "Correct the survey and save again",
+      }),
+    ).toBeNull();
+    expect(client.recordLandGeometry).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Discard survey" }));
+    expect(
+      screen.getByRole("button", { name: "Start recording" }),
+    ).toBeInTheDocument();
+  });
+
+  it("after a sign-in failure (never reached the server) the survey stays editable and the next save is a fresh request", async () => {
+    const { client, newId, user } = await reviewed();
+    client.recordLandGeometry.mockRejectedValueOnce({ status: 401 });
+    await user.click(saveButton());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Sign in again to save",
+    );
+    expect(saveButton()).toBeEnabled();
+    await user.click(saveButton());
+    expect(newId).toHaveBeenCalledTimes(2);
+    expect(client.recordLandGeometry.mock.calls[1][1].mutationId).not.toBe(
+      client.recordLandGeometry.mock.calls[0][1].mutationId,
+    );
   });
 
   it("blocks saving an unclosed outline and explains why", async () => {

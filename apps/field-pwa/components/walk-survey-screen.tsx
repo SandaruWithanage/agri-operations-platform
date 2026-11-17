@@ -72,6 +72,12 @@ const words = {
     accept: "Accept this jump",
     submit: "Save provisional polygon",
     saving: "Saving…",
+    retrySame: "Retry the same save",
+    unknownOutcome:
+      "We could not confirm whether the server saved this polygon. Retrying sends exactly the same save, which is safe to repeat. Editing stays locked until the result is known.",
+    locked: "Editing is locked while a save is pending or unconfirmed.",
+    correct: "Correct the survey and save again",
+    discardUnsure: "Discard (an earlier save may already be recorded)",
     saved: "Saved on the server as a provisional polygon.",
     replayed: "This save was already recorded.",
     version: "Version",
@@ -134,6 +140,12 @@ const words = {
     accept: "මෙම පැනීම පිළිගන්න",
     submit: "තාවකාලික බහුඅස්‍රය සුරකින්න",
     saving: "සුරකිමින්…",
+    retrySame: "එම සුරැකීමම නැවත යවන්න",
+    unknownOutcome:
+      "සේවාදායකය මෙම බහුඅස්‍රය සුරැකුවාදැයි තහවුරු කළ නොහැකි විය. නැවත යැවීමෙන් හරියටම එම සුරැකීමම යැවේ; එය නැවත කිරීම ආරක්ෂිතයි. ප්‍රතිඵලය දැනගන්නා තුරු සංස්කරණය අගුළු දමා ඇත.",
+    locked: "සුරැකීමක් පොරොත්තුවේ හෝ තහවුරු නොවී ඇති විට සංස්කරණය අගුළු දමා ඇත.",
+    correct: "මැනුම නිවැරදි කර නැවත සුරකින්න",
+    discardUnsure: "ඉවත දමන්න (කලින් සුරැකීම දැනටමත් වාර්තා වී තිබිය හැක)",
     saved: "සේවාදායකයේ තාවකාලික බහුඅස්‍රයක් ලෙස සුරැකිණි.",
     replayed: "මෙම සුරැකීම දැනටමත් වාර්තා වී ඇත.",
     version: "අනුවාදය",
@@ -165,6 +177,7 @@ export function WalkSurveyScreen({
   newId = () => crypto.randomUUID(),
   clock = () => Date.now(),
   onActivityChange,
+  onBusyChange,
 }: {
   language: Language;
   accountId: string;
@@ -176,6 +189,8 @@ export function WalkSurveyScreen({
   clock?: () => number;
   /** True while a survey is recording, paused or in review, so a host page never discards unsaved work on a timeout. */
   onActivityChange?: (active: boolean) => void;
+  /** True while a save is in flight or its outcome is unknown, so a host page does not switch land or leave. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const w = words[language];
   const geo =
@@ -190,11 +205,18 @@ export function WalkSurveyScreen({
     kind: "saved" | "error";
     text: string;
   } | null>(null);
-  const [saving, setSaving] = useState(false);
+  // idle: editable. saving: request in flight. unknown: outcome not confirmed, same request may be retried.
+  // refused: the server definitively refused (400/403); needs an explicit correction. conflict: stale version.
+  // saved: done. Editing is locked in every state except idle.
+  const [phase, setPhase] = useState<
+    "idle" | "saving" | "unknown" | "refused" | "conflict" | "saved"
+  >("idle");
+  const saving = phase === "saving";
   const [reasons, setReasons] = useState<Record<number, string>>({});
   const watchId = useRef<number | null>(null);
-  // One mutation id per review so a retry after a network failure is an idempotent replay, not a second save.
-  const mutationId = useRef<string | null>(null);
+  // The exact request of the first save attempt (mutation id, land, version, ring, source, accuracy).
+  // Every retry resends this object unchanged; a new id is created only after an explicit correction.
+  const attempt = useRef<Readonly<LandGeometryRecord> | null>(null);
 
   const stopWatch = useCallback(() => {
     if (watchId.current !== null && geo) geo.clearWatch(watchId.current);
@@ -269,7 +291,8 @@ export function WalkSurveyScreen({
   function begin() {
     setNotice(null);
     setResult(null);
-    mutationId.current = null;
+    attempt.current = null;
+    setPhase("idle");
     setSurvey((s) => startSurvey(s, clock()));
     startWatch();
   }
@@ -280,7 +303,8 @@ export function WalkSurveyScreen({
   }
   function discard() {
     stopWatch();
-    mutationId.current = null;
+    attempt.current = null;
+    setPhase("idle");
     setNotice(null);
     setResult(null);
     setReasons({});
@@ -300,40 +324,65 @@ export function WalkSurveyScreen({
     }
   }
   async function save() {
-    if (saving || survey.status !== "review") return;
-    mutationId.current ??= newId();
-    setSaving(true);
-    setResult(null);
-    try {
-      const input = toGeometryInput(survey, {
-        mutationId: mutationId.current,
+    if (phase === "saving" || phase === "saved" || survey.status !== "review")
+      return;
+    if (phase === "refused" || phase === "conflict") return;
+    // First attempt: freeze the request. Retries after an unknown outcome reuse it byte for byte.
+    if (!attempt.current) {
+      const built = toGeometryInput(survey, {
+        mutationId: newId(),
         landId,
         expectedVersion,
       });
-      const saved = await client.recordLandGeometry(accountId, input);
+      attempt.current = Object.freeze(JSON.parse(JSON.stringify(built)));
+    }
+    const request = attempt.current as LandGeometryRecord;
+    setPhase("saving");
+    setResult(null);
+    try {
+      const saved = await client.recordLandGeometry(accountId, request);
+      setPhase("saved");
       setResult({
         kind: "saved",
         text: `${w.saved} ${w.version} ${saved.version}.${saved.replayed ? ` ${w.replayed}` : ""}`,
       });
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setResult({
-        kind: "error",
-        text:
-          status === 401
-            ? w.authError
-            : status === 403
-              ? w.deniedSave
-              : status === 409
-                ? w.conflict
-                : status === 400
-                  ? w.invalid
-                  : w.failure,
-      });
-    } finally {
-      setSaving(false);
+      if (status === 401) {
+        // Rejected before it reached the database, so nothing can have been saved: safe to start over.
+        attempt.current = null;
+        setPhase("idle");
+        setResult({ kind: "error", text: w.authError });
+      } else if (status === 409) {
+        setPhase("conflict");
+        setResult({ kind: "error", text: w.conflict });
+      } else if (status === 400 || status === 403) {
+        setPhase("refused");
+        setResult({
+          kind: "error",
+          text: status === 403 ? w.deniedSave : w.invalid,
+        });
+      } else {
+        // Timeout, network loss, 5xx or an unreadable answer: the server may or may not have committed.
+        setPhase("unknown");
+        setResult({ kind: "error", text: w.unknownOutcome });
+      }
     }
   }
+  /** Explicit user action after a definitive refusal: the next save is a new request with a new id. */
+  function correctAndRetry() {
+    attempt.current = null;
+    setResult(null);
+    setPhase("idle");
+  }
+  const locked = phase !== "idle";
+  const busy = phase === "saving" || phase === "unknown";
+  const notifyBusy = useRef(onBusyChange);
+  notifyBusy.current = onBusyChange;
+  useEffect(() => {
+    notifyBusy.current?.(busy);
+  }, [busy]);
+  useEffect(() => () => notifyBusy.current?.(false), []);
 
   const accuracyText =
     last === undefined
@@ -464,6 +513,7 @@ export function WalkSurveyScreen({
                   <label>
                     {w.reason}
                     <input
+                      disabled={locked}
                       value={reasons[index] ?? ""}
                       onChange={(event) =>
                         setReasons({ ...reasons, [index]: event.target.value })
@@ -472,7 +522,7 @@ export function WalkSurveyScreen({
                   </label>
                   <button
                     style={big}
-                    disabled={!(reasons[index] ?? "").trim()}
+                    disabled={locked || !(reasons[index] ?? "").trim()}
                     onClick={() => {
                       setSurvey((s) =>
                         removePoint(s, index, reasons[index] ?? "", clock()),
@@ -485,7 +535,7 @@ export function WalkSurveyScreen({
                   {point.jumpFlag && (
                     <button
                       style={big}
-                      disabled={!(reasons[index] ?? "").trim()}
+                      disabled={locked || !(reasons[index] ?? "").trim()}
                       onClick={() => {
                         setSurvey((s) =>
                           acceptJump(s, index, reasons[index] ?? "", clock()),
@@ -501,21 +551,33 @@ export function WalkSurveyScreen({
             ))}
           </ol>
           {notReady && <p role="alert">{w.notReady[notReady]}</p>}
-          <button
-            style={big}
-            onClick={save}
-            disabled={saving || notReady !== null || result?.kind === "saved"}
-          >
-            {saving ? w.saving : w.submit}
-          </button>
+          {locked && phase !== "saved" && <p role="status">{w.locked}</p>}
+          {phase !== "refused" && phase !== "conflict" && (
+            <button
+              style={big}
+              onClick={save}
+              disabled={
+                saving ||
+                phase === "saved" ||
+                (phase !== "unknown" && notReady !== null)
+              }
+            >
+              {saving ? w.saving : phase === "unknown" ? w.retrySame : w.submit}
+            </button>
+          )}
+          {phase === "refused" && (
+            <button style={big} onClick={correctAndRetry}>
+              {w.correct}
+            </button>
+          )}
         </>
       )}
       {result && (
         <p role={result.kind === "error" ? "alert" : "status"}>{result.text}</p>
       )}
       {survey.status !== "idle" && (
-        <button style={big} onClick={discard}>
-          {w.discard}
+        <button style={big} onClick={discard} disabled={saving}>
+          {phase === "unknown" ? w.discardUnsure : w.discard}
         </button>
       )}
     </section>
