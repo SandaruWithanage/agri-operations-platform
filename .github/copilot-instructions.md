@@ -5,6 +5,7 @@ Read `AGENTS.md`, `docs/development/PROJECT_HANDOVER.md`, and `docs/architecture
 ## Review-only mandate (do not develop)
 
 **This GitHub Copilot role is a reviewer, not a coding or implementation agent.**
+
 - Read changed PR code, relevant tests, migrations, architecture decisions and CI/security results.
 - Validate behavior and evidence where possible; distinguish verified failures from hypotheses.
 - Report specific bugs, security risks, UX problems and missing regression coverage in PR review comments. When permitted by the active review integration, create a focused GitHub issue or recommend one with clear reproduction and acceptance criteria.
