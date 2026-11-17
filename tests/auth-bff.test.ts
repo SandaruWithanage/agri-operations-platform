@@ -149,6 +149,195 @@ describe("server-only authentication BFF", () => {
         ).toThrow("Invalid BFF configuration");
     });
   });
+  describe("abuse controls", () => {
+    const login = {
+      loginName: "synthetic",
+      password: "synthetic",
+      otp: "123456",
+      deviceId: "synthetic",
+    };
+    function handlerWith(rateLimits: Record<string, number>, hops = 1) {
+      let now = 1_800_000_000_000;
+      const fetcher = vi
+        .fn()
+        .mockImplementation(async () => Response.json({ cookie }));
+      const handler = createBffHandler(
+        { ...config, trustedProxyHops: hops, rateLimits, now: () => now },
+        fetcher,
+      );
+      return { handler, fetcher, advance: (ms: number) => (now += ms) };
+    }
+    const from = (address: string) => ({ "x-forwarded-for": address });
+
+    it("limits unauthenticated logins per attributed client, with Retry-After and no API call once limited", async () => {
+      const { handler, fetcher, advance } = handlerWith({
+        anonymousPerClient: 3,
+      });
+      for (let i = 0; i < 3; i += 1)
+        expect(
+          (await handler(req("auth/login", "POST", login, from("203.0.113.7"))))
+            .status,
+        ).toBe(200);
+      const limited = await handler(
+        req("auth/login", "POST", login, from("203.0.113.7")),
+      );
+      expect(limited.status).toBe(429);
+      expect(Number(limited.headers.get("retry-after"))).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(await limited.json()).toEqual({ error: "Too many requests" });
+      expect(limited.headers.get("cache-control")).toBe("no-store");
+      expect(fetcher).toHaveBeenCalledTimes(3);
+      // Another client is unaffected, and the first recovers after the window.
+      expect(
+        (await handler(req("auth/login", "POST", login, from("198.51.100.4"))))
+          .status,
+      ).toBe(200);
+      advance(61_000);
+      expect(
+        (await handler(req("auth/login", "POST", login, from("203.0.113.7"))))
+          .status,
+      ).toBe(200);
+    });
+
+    it("uses one broader shared budget when no client address is attributed", async () => {
+      const { handler } = handlerWith(
+        { anonymousPerClient: 1, anonymousUnattributed: 3 },
+        0,
+      );
+      for (let i = 0; i < 3; i += 1)
+        expect(
+          (
+            await handler(
+              req("auth/login", "POST", login, from(`203.0.113.${i + 1}`)),
+            )
+          ).status,
+        ).toBe(200);
+      expect(
+        (await handler(req("auth/login", "POST", login, from("203.0.113.9"))))
+          .status,
+      ).toBe(429);
+    });
+
+    it("gives each session its own read and write budgets, and a bad cookie never gets a session budget", async () => {
+      const other = "B".repeat(43);
+      const { handler } = handlerWith({
+        sessionReads: 2,
+        sessionWrites: 1,
+        anonymousPerClient: 2,
+      });
+      const read = (cookieValue: string) =>
+        handler(
+          req("land/geographies", "GET", undefined, {
+            cookie: `__Host-agri_session=${cookieValue}`,
+          }),
+        );
+      // The real session cannot be fully served by the stub, so only the budget decision matters here.
+      const statuses = async (cookieValue: string, n: number) => {
+        const out = [];
+        for (let i = 0; i < n; i += 1)
+          out.push((await read(cookieValue)).status === 429);
+        return out;
+      };
+      expect(await statuses(opaque, 3)).toEqual([false, false, true]);
+      expect(await statuses(other, 3)).toEqual([false, false, true]);
+      // Writes have a separate budget, so a read flood does not block them.
+      const write = await handler(req("farmers/register", "POST", {}));
+      expect(write.status).not.toBe(429);
+      expect((await handler(req("farmers/register", "POST", {}))).status).toBe(
+        429,
+      );
+      // Malformed cookies share the anonymous budget of their client instead of creating fresh session budgets.
+      const junk = async (n: number) => {
+        const out = [];
+        for (let i = 0; i < n; i += 1)
+          out.push(
+            (
+              await handler(
+                req("land/geographies", "GET", undefined, {
+                  cookie: `__Host-agri_session=junk-${i}`,
+                  ...from("203.0.113.77"),
+                }),
+              )
+            ).status,
+          );
+        return out;
+      };
+      expect(await junk(4)).toEqual([401, 401, 429, 429]);
+    });
+
+    it("refuses oversize bodies per route and declared oversize before reading", async () => {
+      const { handler, fetcher } = handlerWith({});
+      const big = (points: number) => ({
+        mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+        landId: "06149451-4004-4a23-a5a2-64a24e485a82",
+        expectedVersion: 0,
+        source: "gps_walk",
+        ring: [
+          ...Array.from({ length: points - 1 }, (_, i) => [
+            80.2 + i * 1e-7,
+            8.3 + (i % 7) * 1e-7,
+          ]),
+          [80.2, 8.3],
+        ],
+      });
+      // A 2,000-point survey (well over 16 KB) is accepted on the geometry route (then rejected by validation as needed).
+      const ok = await handler(req("land/geometry", "POST", big(2000)));
+      expect(ok.status).not.toBe(413);
+      // The same size is refused on any other route, before the BFF makes any API call.
+      const calls = fetcher.mock.calls.length;
+      expect(
+        (
+          await handler(
+            req("land/register", "POST", { filler: "x".repeat(20000) }),
+          )
+        ).status,
+      ).toBe(413);
+      expect(
+        (
+          await handler(
+            req("land/geometry", "POST", { filler: "x".repeat(170000) }),
+          )
+        ).status,
+      ).toBe(413);
+      expect(fetcher.mock.calls.length).toBe(calls);
+      const before = fetcher.mock.calls.length;
+      expect(
+        (
+          await handler(
+            req("land/register", "POST", {}, { "content-length": "999999" }),
+          )
+        ).status,
+      ).toBe(413);
+      expect(
+        (
+          await handler(
+            req("land/register", "POST", {}, { "content-length": "12abc" }),
+          )
+        ).status,
+      ).toBe(413);
+      expect(fetcher.mock.calls.length).toBe(before);
+    });
+
+    it("rejects overlong URLs and rejects unsafe limit configuration", async () => {
+      const { handler } = handlerWith({});
+      expect((await handler(req(`land?${"a".repeat(2100)}=1`))).status).toBe(
+        414,
+      );
+      expect(() =>
+        createBffHandler(
+          { ...config, rateLimits: { sessionReads: 0 } },
+          vi.fn(),
+        ),
+      ).toThrow("Invalid BFF configuration");
+      expect(() =>
+        createBffHandler(
+          { ...config, rateLimits: { sessionWrites: 1.5 } },
+          vi.fn(),
+        ),
+      ).toThrow("Invalid BFF configuration");
+    });
+  });
   it("rejects foreign origins, missing CSRF and duplicate cookies before forwarding a request", async () => {
     const fetcher = vi.fn();
     const handler = createBffHandler(config, fetcher);
