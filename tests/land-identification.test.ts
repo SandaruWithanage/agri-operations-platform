@@ -214,3 +214,81 @@ it("cancels the land-create catalog fetch", async () => {
   await pending;
   expect(sent.aborted).toBe(true);
 });
+const geometry = {
+  mutationId: input.mutationId,
+  landId,
+  expectedVersion: 0,
+  ring: [
+    [80.2, 8.3],
+    [80.201, 8.3],
+    [80.201, 8.301],
+    [80.2, 8.3],
+  ],
+  source: "gps_walk" as const,
+};
+it("records provisional geometry only under the matching account session and binds the result to the land", async () => {
+  const wrongAccount = vi
+    .fn()
+    .mockResolvedValue(Response.json({ accountId: landId, csrfToken }));
+  await expect(
+    new PilotClient(wrongAccount).recordLandGeometry(accountId, geometry),
+  ).rejects.toMatchObject({ status: 401 });
+  expect(wrongAccount).toHaveBeenCalledOnce();
+  await expect(
+    new PilotClient(vi.fn()).recordLandGeometry(accountId, {
+      ...geometry,
+      source: "official_survey",
+    } as never),
+  ).rejects.toThrow();
+  const result = {
+    status: "synced",
+    landId,
+    version: 1,
+    calculatedAreaM2: 12000.5,
+    replayed: false,
+  };
+  const ok = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accountId, csrfToken }))
+    .mockResolvedValueOnce(Response.json(result));
+  expect(
+    await new PilotClient(ok).recordLandGeometry(accountId, geometry),
+  ).toEqual(result);
+  const other = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accountId, csrfToken }))
+    .mockResolvedValueOnce(Response.json({ ...result, landId: accountId }));
+  await expect(
+    new PilotClient(other).recordLandGeometry(accountId, geometry),
+  ).rejects.toMatchObject({ status: 503 });
+});
+it("reads geometry for the requested land only and rejects malformed identifiers", async () => {
+  await expect(
+    new PilotClient(vi.fn()).landGeometry("not-a-uuid"),
+  ).rejects.toMatchObject({ status: 400 });
+  const wrong = vi.fn().mockResolvedValue(
+    Response.json({
+      accountId,
+      landId: accountId,
+      current: null,
+      history: [],
+    }),
+  );
+  await expect(
+    new PilotClient(wrong).landGeometry(landId),
+  ).rejects.toMatchObject({ status: 503 });
+  const ok = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json({ accountId, landId, current: null, history: [] }),
+    );
+  expect(await new PilotClient(ok).landGeometry(landId, true)).toEqual({
+    accountId,
+    landId,
+    current: null,
+    history: [],
+  });
+  expect(String(ok.mock.calls[0][0])).toContain(
+    `land/geometry?landId=${landId}&history=true`,
+  );
+});

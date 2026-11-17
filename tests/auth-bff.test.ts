@@ -552,6 +552,157 @@ it("filters land reads without forwarding untrusted scopes or private extra fiel
   }
 });
 
+it("uses strict geometry requests with CSRF, binds results to the request and strips private extras", async () => {
+  const landId = "06149451-4004-4a23-a5a2-64a24e485a82",
+    accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
+  const ring = [
+    [80.2, 8.3],
+    [80.201, 8.3],
+    [80.201, 8.301],
+    [80.2, 8.3],
+  ];
+  const input = {
+    mutationId: "c8a85c92-740b-48d5-99d0-1cda6c4cd31c",
+    landId,
+    expectedVersion: 0,
+    ring,
+    source: "gps_walk",
+  };
+  const untouched = vi.fn();
+  for (const bad of [
+    { ...input, source: "official_survey" },
+    { ...input, verified: true },
+    { ...input, ring: ring.slice(0, 3) },
+    { ...input, accountId },
+  ]) {
+    const calls = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect(
+      (await createBffHandler(config, calls)(req("land/geometry", "POST", bad)))
+        .status,
+    ).toBe(400);
+    expect(calls).toHaveBeenCalledTimes(1); // token only; never forwarded to the API
+  }
+  expect(
+    (
+      await createBffHandler(
+        config,
+        untouched,
+      )(req("land/geometry", "POST", input, { "x-csrf-token": "" }))
+    ).status,
+  ).toBe(403);
+  expect(untouched).not.toHaveBeenCalled();
+  const result = {
+    status: "synced",
+    landId,
+    version: 1,
+    calculatedAreaM2: 12000.5,
+    replayed: false,
+  };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(Response.json({ ...result, createdBy: "private" }));
+  const response = await createBffHandler(
+    config,
+    fetcher,
+  )(req("land/geometry", "POST", input));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual(result);
+  expect(fetcher.mock.calls[1][1].headers["x-agri-source"]).toBe(
+    "field_officer",
+  );
+  // A result for a different land is a server fault, not a success.
+  const mismatched = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(Response.json({ ...result, landId: accountId }));
+  expect(
+    (
+      await createBffHandler(
+        config,
+        mismatched,
+      )(req("land/geometry", "POST", input))
+    ).status,
+  ).toBe(503);
+  // Reads: strict query, no forwarded scopes, bound to the requested land.
+  for (const query of [
+    "",
+    `landId=${landId}&organizationId=${accountId}`,
+    `landId=${landId}&landId=${landId}`,
+    `landId=${landId}&history=0`,
+    "landId=not-a-uuid",
+  ]) {
+    const calls = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: "server-only-jwt" }));
+    expect(
+      (await createBffHandler(config, calls)(req(`land/geometry?${query}`)))
+        .status,
+    ).toBe(400);
+    expect(calls).toHaveBeenCalledTimes(1);
+  }
+  const version = {
+    id: accountId,
+    landId,
+    version: 1,
+    status: "provisional",
+    source: "gps_walk",
+    ring,
+    accuracyM: null,
+    vertexCount: 4,
+    calculatedAreaM2: 12000.5,
+    createdAt: "2026-11-17T00:00:00.000Z",
+    provisionalIdentificationOnly: true,
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        landId,
+        current: { ...version, createdBy: "private" },
+        history: [],
+        hidden: 1,
+      }),
+    );
+  const ok = await createBffHandler(
+    config,
+    read,
+  )(req(`land/geometry?landId=${landId}&history=true`));
+  expect(ok.status).toBe(200);
+  expect(await ok.json()).toEqual({
+    accountId,
+    landId,
+    current: version,
+    history: [],
+  });
+  expect(String(read.mock.calls[1][0])).toContain(
+    `landId=${landId}&history=true`,
+  );
+  const wrong = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ accessToken: "server-only-jwt" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        landId: accountId,
+        current: null,
+        history: [],
+      }),
+    );
+  expect(
+    (
+      await createBffHandler(
+        config,
+        wrong,
+      )(req(`land/geometry?landId=${landId}`))
+    ).status,
+  ).toBe(503);
+});
+
 it("sanitizes account-bound verification receipts and rejects scoped or mismatched lookups", async () => {
   const id = "06149451-4004-4a23-a5a2-64a24e485a82",
     accountId = "a50456eb-af66-41f0-8c38-0bc827249cd2";
@@ -1066,6 +1217,22 @@ describe("farmer and land routes never forward browser-chosen identity", () => {
         mutationId: enrollmentIds.mutationId,
         landId,
         geographyId: enrollmentIds.enrollmentId,
+      },
+    ],
+    [
+      "land/geometry",
+      "POST",
+      {
+        mutationId: enrollmentIds.mutationId,
+        landId,
+        expectedVersion: 0,
+        ring: [
+          [80.2, 8.3],
+          [80.201, 8.3],
+          [80.201, 8.301],
+          [80.2, 8.3],
+        ],
+        source: "gps_walk",
       },
     ],
   ];
