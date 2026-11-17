@@ -28,6 +28,7 @@ const words = {
       "Use your organization-issued account, authenticator and approved device ID. Contact your administrator if these have not been issued.",
     offlineLink: "Open encrypted offline workspace",
     surveyLink: "Survey a land perimeter (online)",
+    navigation: "Field navigation",
     online: "Account and device access",
     limitation:
       "Sign in on your approved device, then open the encrypted workspace. All field registrations are saved there before synchronization.",
@@ -62,6 +63,7 @@ const words = {
       "ආයතනයෙන් ලබා දුන් ගිණුම, සත්‍යාපකය සහ අනුමත උපාංග හැඳුනුම් අංකය භාවිත කරන්න. ඒවා නොමැති නම් පරිපාලක අමතන්න.",
     offlineLink: "සංකේතනය කළ නොබැඳි වැඩපොළ විවෘත කරන්න",
     surveyLink: "ඉඩම් මායිම මැනීම (සබැඳිව)",
+    navigation: "ක්ෂේත්‍ර සංචලනය",
     online: "ගිණුම් සහ උපාංග ප්‍රවේශය",
     limitation:
       "අනුමත උපාංගයෙන් පුරනය වී සංකේතනය කළ වැඩපොළ විවෘත කරන්න. සමමුහුර්ත කිරීමට පෙර සියලු ක්ෂේත්‍ර ලියාපදිංචි එහි සුරකී.",
@@ -205,12 +207,14 @@ function SessionView({
   return (
     <section className="pilot-workspace" aria-label={c.online}>
       <p className="status">{c.limitation}</p>
-      <p>
-        <a href="/offline-workspace">{c.offlineLink}</a>
-      </p>
-      <p>
-        <a href="/land-survey">{c.surveyLink}</a>
-      </p>
+      <nav className="workspace-nav" aria-label={c.navigation}>
+        <a className="nav-link" href="/offline-workspace">
+          {c.offlineLink}
+        </a>
+        <a className="nav-link" href="/land-survey">
+          {c.surveyLink}
+        </a>
+      </nav>
       {checking ? (
         <p role="status">{c.checking}</p>
       ) : (
