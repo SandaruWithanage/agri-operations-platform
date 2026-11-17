@@ -2,6 +2,7 @@ import { verifyProjectCatalog } from "./support/project-integration";
 import { ReadinessController } from "../apps/api/src/readiness.controller";
 import { verifyCorrectionReceipt } from "./support/correction-receipt-integration";
 import { verifyLandIdentification } from "./support/land-integration";
+import { verifyFarmerIsolation } from "./support/farmer-isolation-integration";
 // @vitest-environment node
 import "fake-indexeddb/auto";
 import { verifyCorrectionOptions } from "./support/correction-options-integration";
@@ -3208,6 +3209,16 @@ suite("provisional authentication migration on PostgreSQL", () => {
         runtimeUrl: mappings.agri_land_runtime,
         runtimeEnv: env,
         browser,
+      });
+      await verifyFarmerIsolation({
+        owner: client,
+        organizationId: (
+          await client.query(
+            "SELECT organization_id FROM farm.geography WHERE id=$1",
+            [locations[0].id],
+          )
+        ).rows[0].organization_id,
+        runtimeUrl: mappings.agri_farmer_runtime,
       });
       await client.query(
         "UPDATE authz.permission_grant SET active=false WHERE id=$1",

@@ -1039,3 +1039,81 @@ it("cannot reach administrator-only routes through path variants on the field-of
     expect(fetcher, method).not.toHaveBeenCalled();
   }
 });
+describe("farmer and land routes never forward browser-chosen identity", () => {
+  const farmerId = enrollmentIds.farmerId,
+    landId = enrollmentIds.projectId;
+  const routes: Array<[string, "GET" | "POST", unknown?]> = [
+    ["farmers?limit=5", "GET"],
+    [`farmers/detail?id=${farmerId}`, "GET"],
+    [`farmers/history?id=${farmerId}`, "GET"],
+    ["land?limit=5", "GET"],
+    [`land/detail?id=${landId}`, "GET"],
+    [
+      "farmers/change",
+      "POST",
+      {
+        mutationId: enrollmentIds.mutationId,
+        farmerId,
+        expectedVersion: 1,
+        action: "verification",
+        reason: "Synthetic isolation check",
+      },
+    ],
+    [
+      "land/register",
+      "POST",
+      {
+        mutationId: enrollmentIds.mutationId,
+        landId,
+        geographyId: enrollmentIds.enrollmentId,
+      },
+    ],
+  ];
+  const spoof = {
+    authorization: "Bearer browser-chosen-token",
+    "x-agri-source": "administrator",
+    "x-agri-bff-key": "browser-chosen-key",
+    "x-agri-session": "browser-chosen-session",
+    "x-agri-actor": enrollmentIds.farmerId,
+    "x-agri-account": enrollmentIds.projectId,
+  };
+  it.each(routes)(
+    "sends only server-owned headers upstream for %s",
+    async (path, method, body) => {
+      const fetcher = bffSession().mockResolvedValueOnce(Response.json({}));
+      await createBffHandler(config, fetcher)(req(path, method, body, spoof));
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      const headers = fetcher.mock.calls[1][1].headers as Record<
+        string,
+        string
+      >;
+      const expected = [
+        "authorization",
+        "x-agri-bff-key",
+        "x-agri-origin",
+        "x-agri-source",
+        ...(method === "POST" ? ["Content-Type", "x-csrf-token"] : []),
+      ];
+      // The exact header set proves nothing extra, such as a browser actor, was forwarded.
+      expect(Object.keys(headers).sort()).toEqual(expected.sort());
+      expect(headers.authorization).toBe("Bearer server-only-jwt");
+      expect(headers["x-agri-source"]).toBe("field_officer");
+      expect(headers["x-agri-bff-key"]).toBe(internal);
+      expect(JSON.stringify(fetcher.mock.calls)).not.toContain(
+        "browser-chosen",
+      );
+    },
+  );
+  it.each(routes.filter(([, method]) => method === "GET"))(
+    "rejects an unknown identity query parameter on %s before any upstream data call",
+    async (path) => {
+      const fetcher = bffSession();
+      const response = await createBffHandler(
+        config,
+        fetcher,
+      )(req(`${path}&accountId=${enrollmentIds.projectId}`));
+      expect(response.status).toBe(400);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+});
