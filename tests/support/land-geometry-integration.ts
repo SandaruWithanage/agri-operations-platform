@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import pg from "pg";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { LandGeometryService } from "../../apps/api/src/land/geometry-service";
 import {
   TransactionActorContext,
   type VerifiedActor,
@@ -450,6 +452,88 @@ export async function verifyLandGeometry({
       ),
     ).rejects.toMatchObject({ code: "23503" });
 
+    // 10b. The API service layer: validated input, projection, scoping and error mapping.
+    const service = new LandGeometryService(context);
+    const input = (extra: Record<string, unknown> = {}) => ({
+      mutationId: id(),
+      landId: landA,
+      expectedVersion: 3,
+      ring: square,
+      source: "gps_walk",
+      accuracyM: 4,
+      ...extra,
+    });
+    await expect(
+      service.record(
+        db,
+        officerA,
+        "field_officer",
+        input({ source: "official_survey" }),
+      ),
+    ).rejects.toThrow(); // clients cannot label a polygon as an official survey
+    await expect(
+      service.record(db, officerA, "field_officer", input({ extra: 1 })),
+    ).rejects.toThrow(); // strict schema
+    await expect(
+      service.record(
+        db,
+        officerA,
+        "field_officer",
+        input({
+          ring: [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [2, 2],
+          ],
+        }),
+      ),
+    ).rejects.toThrow(); // unclosed ring rejected before the database
+    await expect(
+      service.record(db, officerB, "field_officer", input()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const saved = await service.record(db, officerA, "field_officer", input());
+    expect(saved).toMatchObject({
+      status: "synced",
+      landId: landA,
+      version: 4,
+      replayed: false,
+    });
+    expect(saved.calculatedAreaM2).toBeGreaterThan(12000);
+    expect(saved.calculatedAreaM2).toBeLessThan(12400);
+    const current = await service.read(db, officerA, { landId: landA });
+    expect(current.current).toMatchObject({
+      version: 4,
+      status: "provisional",
+      source: "gps_walk",
+      ring: square,
+      provisionalIdentificationOnly: true,
+    });
+    expect(current.history).toEqual([]);
+    const full = await service.read(db, officerA, {
+      landId: landA,
+      history: "true",
+    });
+    expect(full.history.map((v) => `${v.version}:${v.status}`)).toEqual([
+      "4:provisional",
+      "3:superseded",
+      "2:superseded",
+      "1:superseded",
+    ]);
+    await expect(
+      service.read(db, officerA, { landId: landA, history: "yes" }),
+    ).rejects.toThrow();
+    // Officer B cannot see Officer A's polygon: indistinguishable from a land with no geometry.
+    await expect(
+      service.read(db, officerB, { landId: landA }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.read(db, officerA, { landId: id() }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      (await service.read(db, officerB, { landId: landB })).current?.version,
+    ).toBe(1);
+
     // 11. Revoking one officer's session affects only that officer.
     await owner.query(
       "UPDATE authn.login_session SET revoked_at=clock_timestamp() WHERE id=$1",
@@ -462,7 +546,7 @@ export async function verifyLandGeometry({
     expect(await versionsSeenBy(officerB)).toEqual([`${landB}:1:provisional`]);
 
     // 12. Audit attributes each recorded version to its own officer, one row per version.
-    expect(await count("geometry_audit", landA)).toBe(3);
+    expect(await count("geometry_audit", landA)).toBe(4);
     expect(
       (
         await owner.query(

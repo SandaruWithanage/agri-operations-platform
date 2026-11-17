@@ -3,6 +3,7 @@ import { ProjectEnrollmentService } from "../project/enrollment-service";
 import { EnrollmentPolicyService } from "../project/enrollment-policy-service";
 import { RuntimeReadiness } from "./readiness";
 import { LandIdentificationService } from "../land/identification-service";
+import { LandGeometryService } from "../land/geometry-service";
 import { FarmerHistoryService } from "../farmer/history-service";
 import { FarmerChangeService } from "../farmer/change-service";
 import { FarmerRegistryService } from "../farmer/registry-service";
@@ -284,6 +285,7 @@ export async function createPilotRuntime(
     const history = new FarmerHistoryService(context);
     const registry = new FarmerRegistryService(context);
     const land = new LandIdentificationService(context);
+    const geometry = new LandGeometryService(context);
     const projects = new ProjectCatalogService(context);
     const enrollments = new ProjectEnrollmentService(context);
     const enrollmentPolicies = new EnrollmentPolicyService(context);
@@ -568,6 +570,22 @@ export async function createPilotRuntime(
         const connection = await pool("agri_land_runtime").connect();
         try {
           return await land.detail(connection, actor, input);
+        } finally {
+          connection.release();
+        }
+      },
+      recordLandGeometry: async (actor, source, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await geometry.record(connection, actor, source, input);
+        } finally {
+          connection.release();
+        }
+      },
+      landGeometry: async (actor, input) => {
+        const connection = await pool("agri_land_runtime").connect();
+        try {
+          return await geometry.read(connection, actor, input);
         } finally {
           connection.release();
         }
