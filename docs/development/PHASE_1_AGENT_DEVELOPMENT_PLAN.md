@@ -2,6 +2,8 @@
 
 # PHASE 1 — AI CODING AGENT IMPLEMENTATION PLAN
 
+> **Superseded as a scope proposal (17 Nov 2026).** The owner's two-phase direction in [PHASE_1_COMPLETE_ADMIN_FIELD_AGENT_GUIDE.md](PHASE_1_COMPLETE_ADMIN_FIELD_AGENT_GUIDE.md) replaces this lean scope, fee and calendar as the working proposal; see [PHASE_1_STAFF_SCOPE_PROPOSED.md](../requirements/PHASE_1_STAFF_SCOPE_PROPOSED.md) and the [conflict register](../requirements/PHASE_1_SOURCE_CONFLICTS.md) (SC-01). This file is kept unchanged below as historical audit evidence; its audit findings and test mapping remain useful, and no approval is implied by either document.
+
 **Document:** `AGRI_PHASE_1_AGENT_DEVELOPMENT_PLAN.md`  
 **Version:** 1.0 | **Prepared:** 16 November 2026  
 **Target repository:** `https://github.com/SandaruWithanage/agri-operations-platform` | **Baseline branch:** `main`  
