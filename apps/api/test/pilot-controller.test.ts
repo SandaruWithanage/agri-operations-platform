@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NestFactory } from "@nestjs/core";
 import { ForbiddenException, type INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { PilotController } from "../src/pilot/pilot.controller";
+import {
+  PilotController,
+  clientThrottleKey,
+} from "../src/pilot/pilot.controller";
 import { PILOT_RUNTIME, type PilotRuntime } from "../src/pilot/contracts";
 import { createPilotRuntime } from "../src/pilot/runtime";
 import { registrationEnvelopeSchema } from "../src/farmer/registration-service";
@@ -129,7 +132,8 @@ describe("pilot internal routes", () => {
         },
       });
     expect(response.status).toBe(200);
-    expect(vi.mocked(runtime.login).mock.calls[0][1]).not.toBe("attacker");
+    // Neither the forged header nor the BFF's own socket address is used: no BFF-attested client means "unattributed".
+    expect(vi.mocked(runtime.login).mock.calls[0][1]).toBe("unattributed");
     expect(
       (
         await http
@@ -251,5 +255,62 @@ describe("pilot internal routes", () => {
       east: "80.21",
       north: "8.31",
     });
+  });
+  it("attributes a login to the client address the BFF attests, validated as an IP literal", async () => {
+    const runtime = fake();
+    const http = await start(runtime);
+    const body = {
+      loginName: "synthetic",
+      password: "synthetic-password",
+      otp: "123456",
+      deviceId: "38f0dbdd-85db-4c75-bced-066e8ea54b86",
+      deviceProof: {
+        nonce: "A".repeat(43),
+        expiresAt: 1,
+        mac: "B".repeat(43),
+        signature: "C".repeat(86),
+      },
+    };
+    const send = (client?: string) => {
+      const r = http.post("/pilot/auth/login").set("x-agri-bff-key", key);
+      return (client === undefined ? r : r.set("x-agri-client", client)).send(
+        body,
+      );
+    };
+    expect((await send("203.0.113.7")).status).toBe(200);
+    expect((await send("2001:DB8::7")).status).toBe(200);
+    expect((await send("not-an-ip")).status).toBe(200);
+    expect((await send()).status).toBe(200);
+    expect(vi.mocked(runtime.login).mock.calls.map((call) => call[1])).toEqual([
+      "ip:203.0.113.7",
+      "ip:2001:db8::7",
+      "unattributed",
+      "unattributed",
+    ]);
+    // Without the internal key nothing is read at all.
+    expect(
+      (
+        await http
+          .post("/pilot/auth/login")
+          .set("x-agri-client", "203.0.113.7")
+          .send(body)
+      ).status,
+    ).toBe(401);
+  });
+  it("maps only well-formed single addresses to a client throttle key", () => {
+    expect(clientThrottleKey(" 203.0.113.7 ")).toBe("ip:203.0.113.7");
+    expect(clientThrottleKey("2001:DB8::1")).toBe("ip:2001:db8::1");
+    for (const bad of [
+      undefined,
+      "",
+      "   ",
+      "unknown",
+      "1.2.3.4, 5.6.7.8",
+      "1.2.3.4:80",
+      "a".repeat(46),
+      "999.1.1.1",
+      "1.2.3.4\nX: y",
+    ])
+      expect(clientThrottleKey(bad)).toBe("unattributed");
   });
 });

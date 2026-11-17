@@ -8,7 +8,6 @@ import {
   Headers,
   Inject,
   Post,
-  Req,
   ServiceUnavailableException,
   UnauthorizedException,
   ForbiddenException,
@@ -17,7 +16,7 @@ import {
   HttpCode,
 } from "@nestjs/common";
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { Request } from "express";
+import { isIP } from "node:net";
 import { ZodError } from "zod";
 import {
   PILOT_RUNTIME,
@@ -26,6 +25,18 @@ import {
   type PilotRuntime,
 } from "./contracts";
 
+/**
+ * The client address comes only from the BFF, which the shared internal key has already authenticated, and only
+ * when the BFF is configured with a trusted proxy depth. Anything else (absent, malformed, not an IP literal) falls
+ * into one shared "unattributed" bucket. The API never uses its own socket address, which is the BFF's, so one BFF
+ * can no longer stand in for every officer.
+ */
+export function clientThrottleKey(value: string | undefined) {
+  const candidate = value?.trim();
+  if (!candidate || candidate.length > 45 || isIP(candidate) === 0)
+    return "unattributed";
+  return `ip:${candidate.toLowerCase()}`;
+}
 @Controller("pilot")
 export class PilotController {
   constructor(
@@ -113,7 +124,7 @@ export class PilotController {
     @Headers("x-agri-bff-key") key: string | undefined,
     @Body() input: unknown,
     @Headers("x-agri-origin") origin: string | undefined,
-    @Req() req: Request,
+    @Headers("x-agri-client") client: string | undefined,
   ) {
     const runtime = this.trusted(key);
     return this.safe(async () => {
@@ -121,7 +132,7 @@ export class PilotController {
       try {
         return await runtime.login(
           data,
-          req.socket.remoteAddress ?? "unknown-bff",
+          clientThrottleKey(client),
           origin ?? "",
         );
       } catch (error) {

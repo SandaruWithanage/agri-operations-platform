@@ -251,7 +251,13 @@ export async function createPilotRuntime(
       new PostgresLoginLimiter(
         pool("agri_login_throttle"),
         key(c.PILOT_THROTTLE_KEY),
-        { limit: 5, windowSeconds: 900, blockSeconds: 900 },
+        // Provisional pilot policy (owner decision pending): 5 attempts per account, 100 per attributed client.
+        {
+          accountLimit: 5,
+          clientLimit: 100,
+          windowSeconds: 900,
+          blockSeconds: 900,
+        },
       ),
       new PostgresSessionIssuer({
         executeCommitted: (sql, args) =>

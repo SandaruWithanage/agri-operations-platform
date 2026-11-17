@@ -13,6 +13,7 @@ Use the tracked runner described in [database/README.md](../../database/README.m
 5. `20261115_z_session_issuance/up.sql`
 6. `20261115_zz_credential_lookup/up.sql`
 7. `20261115_zzz_login_throttle/up.sql`
+   (and later `20261117_login_throttle_split_limits/up.sql`, which replaces its single-limit function)
 8. `20261115_zzzz_farmer_abac/up.sql`
 9. `20261115_zzzzz_registration_reference/up.sql`
 10. `20261115_zzzzzz_device_proof/up.sql`
@@ -59,3 +60,11 @@ Sign in on the configured HTTPS field origin with an enrolled device key, accoun
 The authenticated registration context binds current account/device identity, the enrolled key fingerprint, authorized configured locations and a server-configured local drafting window. It is cached drafting configuration, never accepted as server authorization. All synchronization uses the HttpOnly session/BFF path and fresh NestJS plus database ABAC/RLS checks. `PILOT_OFFLINE_SECONDS` defaults provisionally to 3600 and can be configured from 60 to 86400 seconds.
 
 The workspace saves only minimal encrypted data; browser passwords, OTPs, CSRF/JWT/session/refresh secrets are never persisted. IndexedDB separately retains the non-exportable device signing key for online authentication. See the offline guide for persistence/shell prerequisites, locking, retry/rejection semantics and unfinished recovery/device operating requirements.
+
+## Login throttling and client attribution (SEC-04, issue #64)
+
+Every login attempt, successful or not, counts against two PostgreSQL buckets keyed by HMACs (no plaintext identifiers): one per **account** and one per **client**. Limits are separate: the account bucket is small (provisional pilot value 5 attempts per 15 minutes, blocked for 15 minutes) to stop guessing against one account; the client bucket is a broad abuse limit (provisional 100 per 15 minutes). An exhausted bucket is not extended by further refused attempts.
+
+The API never uses its own socket address (which is the BFF's) as the client. The BFF derives the client only from `X-Forwarded-For` and only when `PILOT_TRUSTED_PROXY_HOPS` is set to the number of trusted reverse proxies in front of it: the entry that many positions from the right is used, entries to its left (which the caller controls) are ignored, and an absent, short or malformed chain yields no attribution. The BFF forwards it in `X-Agri-Client` on the login call only, the API accepts it only on a request that carries the internal BFF key, validates it as an IP literal and otherwise uses one shared `unattributed` client. A browser-supplied `X-Agri-Client` is never forwarded.
+
+Trade-offs the owner must approve before any real-data pilot: with `PILOT_TRUSTED_PROXY_HOPS=0` every login shares the `unattributed` client bucket, so a flood of bad attempts can still lock all logins for the block period once the broad limit is reached (acceptable for local development only); many officers behind one NAT share one address and one client bucket; the numbers above are placeholders pending measurement. Production must run behind the approved proxy chain with the matching hop count, and the edge (reverse proxy) should add its own request-rate limit. Rate limits do not replace MFA or device proof.
