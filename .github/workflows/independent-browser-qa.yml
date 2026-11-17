@@ -1,0 +1,75 @@
+name: Independent Browser QA (UI/UX)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-browser-qa:
+    name: Chromium UI/UX and regression evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DATABASE_TEST_URL: postgresql://agri_test:synthetic_local_test@localhost:5432/agri_test
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+      NEXT_TELEMETRY_DISABLED: "1"
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5-alpine@sha256:894f570c0cf0664ed5576a8fd5d5bfb8fb1b19d592885b686c3a88c8bd90c41f
+        env:
+          POSTGRES_USER: agri_test
+          POSTGRES_PASSWORD: synthetic_local_test
+          POSTGRES_DB: agri_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U agri_test -d agri_test && psql -U agri_test -d agri_test -c 'SELECT PostGIS_Version()' >/dev/null 2>&1"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Check out reviewed commit
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure pnpm
+        uses: pnpm/action-setup@v6.1.1
+
+      - name: Configure Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "26.13.1"
+          cache: pnpm
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run database and API regression tests
+        run: pnpm test
+
+      - name: Build the production API and Next.js apps
+        run: pnpm build
+
+      - name: Install Chromium and its system dependencies
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run existing browser regression suite
+        run: pnpm test:browser
+
+      - name: Run independent responsive UI and UX smoke checks
+        run: node tests/browser/qa-ui-ux.mjs
+
+      - name: Upload synthetic browser screenshots, traces and structured QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-browser-ui-ux
+          path: qa-artifacts/ui-ux/
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6
