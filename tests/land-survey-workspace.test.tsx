@@ -20,6 +20,7 @@ vi.mock("../apps/field-pwa/components/walk-survey-screen", async () => {
           data-land={String(props.landId)}
           data-version={String(props.expectedVersion)}
           data-account={String(props.accountId)}
+          data-locked={String(props.locked)}
         >
           <button
             onClick={() =>
@@ -363,7 +364,7 @@ describe("land survey workspace", () => {
       expect(screen.queryByText(/Land 1111/)).toBeNull();
     });
 
-    it("clears the picker on sign-out, but keeps an in-progress survey and says so", async () => {
+    it("clears the picker on sign-out when no survey is in progress", async () => {
       const sessionIdentity = vi
         .fn()
         .mockResolvedValueOnce({ accountId, deviceId: "d" })
@@ -375,31 +376,50 @@ describe("land survey workspace", () => {
         "Sign in",
       );
       expect(screen.queryByLabelText("Land")).toBeNull();
-      cleanup();
+    });
+
+    it("hides every land label and locks the survey on sign-out, keeps its state, and restores it only for the same account", async () => {
       const si = vi
         .fn()
         .mockResolvedValueOnce({ accountId, deviceId: "d" })
         .mockResolvedValueOnce({ accountId, deviceId: "d" })
         .mockRejectedValueOnce(new PilotRequestError(401))
         .mockResolvedValueOnce({ accountId, deviceId: "d" })
+        .mockRejectedValueOnce(new PilotRequestError(401))
         .mockResolvedValue({ accountId: accountB, deviceId: "d" });
       const user = mount(client({ sessionIdentity: si }));
       await user.selectOptions(await screen.findByLabelText("Land"), a);
-      await screen.findByTestId("walk");
+      expect((await screen.findByTestId("walk")).dataset.locked).toBe("false");
       await switchTo();
       expect((await screen.findByRole("alert")).textContent).toContain(
-        "Your survey on this screen is kept",
+        "kept in memory but hidden",
       );
-      expect(screen.getByTestId("walk")).toBeTruthy();
+      // Nothing identifying the land or the account's other lands is rendered while signed out.
+      expect(screen.queryByLabelText("Land")).toBeNull();
+      expect(screen.queryByRole("option")).toBeNull();
+      expect(
+        screen.queryByText(
+          /Plot A|Synthetic village|Existing provisional polygon/,
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Choose another land" }),
+      ).toBeNull();
+      expect(screen.getByTestId("walk").dataset.locked).toBe("true");
+      // The same account signing in again restores the same survey instance.
       await switchTo();
       await waitFor(() =>
-        expect(
-          screen.queryByText(/Your survey on this screen is kept/),
-        ).toBeNull(),
+        expect(screen.getByTestId("walk").dataset.locked).toBe("false"),
       );
-      expect(screen.getByTestId("walk")).toBeTruthy();
+      expect(screen.getByLabelText("Land")).toBeTruthy();
+      // Signed out again, then a different account: the survey and every label are gone.
+      await switchTo();
+      await waitFor(() =>
+        expect(screen.getByTestId("walk").dataset.locked).toBe("true"),
+      );
       await switchTo();
       await waitFor(() => expect(screen.queryByTestId("walk")).toBeNull());
+      expect(screen.queryByText(/Plot A/)).toBeNull();
     });
 
     it("re-checks the signed-in account when a land is chosen, even if the geometry response looks valid", async () => {

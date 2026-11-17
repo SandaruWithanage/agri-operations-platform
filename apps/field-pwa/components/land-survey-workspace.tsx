@@ -24,7 +24,7 @@ const words = {
     back: "Choose another land",
     auth: "Sign in on the home page, then return here.",
     sessionLost:
-      "You are signed out. Your survey on this screen is kept; sign in again as the same account to save it. Signing in as another account removes it.",
+      "You are signed out. Your survey is kept in memory but hidden until you sign in again as the same account on the same approved device. Signing in as another account removes it.",
     denied: "You do not have permission to read this land's geometry.",
     failure: "Could not load. Check your connection and try again.",
     retry: "Try again",
@@ -45,7 +45,7 @@ const words = {
     back: "වෙනත් ඉඩමක් තෝරන්න",
     auth: "මුල් පිටුවෙන් පුරන්න, ඉන්පසු මෙතැනට ආපසු එන්න.",
     sessionLost:
-      "ඔබ වරන ලදී. මෙම තිරයේ ඇති මැනුම රැඳී පවතී; සුරැකීමට එම ගිණුමෙන්ම නැවත පුරන්න. වෙනත් ගිණුමකින් පුරනය වීමෙන් එය ඉවත් වේ.",
+      "ඔබ වරන ලදී. ඔබේ මැනුම මතකයේ රැඳී ඇති නමුත් අනුමත එම උපාංගයෙන් එම ගිණුමෙන්ම නැවත පුරනය වන තුරු සඟවා ඇත. වෙනත් ගිණුමකින් පුරනය වීමෙන් එය ඉවත් වේ.",
     denied: "මෙම ඉඩමේ ජ්‍යාමිතිය කියවීමට ඔබට අවසර නැත.",
     failure: "පූරණය කළ නොහැකි විය. සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
     retry: "නැවත උත්සාහ කරන්න",
@@ -259,8 +259,8 @@ export function LandSurveyWorkspace({
   return (
     <section aria-labelledby="survey-title">
       <h2 id="survey-title">{w.title}</h2>
-      <p>{w.intro}</p>
-      {lands.length === 0 ? (
+      {!sessionLost && <p>{w.intro}</p>}
+      {sessionLost ? null : lands.length === 0 ? (
         <p role="status">{w.none}</p>
       ) : (
         <>
@@ -290,8 +290,10 @@ export function LandSurveyWorkspace({
           )}
         </>
       )}
-      {geometry === "loading" && <p role="status">{w.loading}</p>}
-      {geometry === "failure" && (
+      {!sessionLost && geometry === "loading" && (
+        <p role="status">{w.loading}</p>
+      )}
+      {!sessionLost && geometry === "failure" && (
         <p role="alert">
           {w.failure}{" "}
           <button
@@ -305,11 +307,13 @@ export function LandSurveyWorkspace({
       {sessionLost && <p role="alert">{w.sessionLost}</p>}
       {ready && accountId && (
         <>
-          <p role="status">
-            {ready.version === 0
-              ? w.noneYet
-              : `${w.existing} ${ready.version}. ${w.existingNote}`}
-          </p>
+          {!sessionLost && (
+            <p role="status">
+              {ready.version === 0
+                ? w.noneYet
+                : `${w.existing} ${ready.version}. ${w.existingNote}`}
+            </p>
+          )}
           <WalkSurveyScreen
             key={`${ready.landId}:${ready.version}`}
             language={language}
@@ -321,14 +325,17 @@ export function LandSurveyWorkspace({
               surveyActive.current = active;
             }}
             onBusyChange={setBusy}
+            locked={sessionLost}
           />
-          <button
-            style={{ minHeight: 48 }}
-            disabled={busy}
-            onClick={() => void choose("")}
-          >
-            {w.back}
-          </button>
+          {!sessionLost && (
+            <button
+              style={{ minHeight: 48 }}
+              disabled={busy}
+              onClick={() => void choose("")}
+            >
+              {w.back}
+            </button>
+          )}
         </>
       )}
     </section>

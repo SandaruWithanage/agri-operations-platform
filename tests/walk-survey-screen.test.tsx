@@ -375,6 +375,72 @@ describe("walk survey screen", () => {
     );
   });
 
+  describe("signed-out lock (issue #63)", () => {
+    function mountLockable(geo = fakeGeo()) {
+      const client = { recordLandGeometry: vi.fn() };
+      const props = {
+        language: "en" as const,
+        accountId,
+        landId,
+        expectedVersion: 0,
+        client,
+        geolocation: geo as never,
+        newId: () => "00000000-0000-4000-8000-000000000001",
+        clock: () => t0,
+      };
+      const view = render(<WalkSurveyScreen {...props} />);
+      return { geo, client, view, props };
+    }
+
+    it("hides coordinates and controls, pauses and releases location, keeps the walk, and restores it on unlock while recording", async () => {
+      const user = userEvent.setup();
+      const { geo, view, props } = mountLockable();
+      await user.click(screen.getByRole("button", { name: "Start recording" }));
+      const fixes = walk().slice(0, 3);
+      for (const f of fixes) await geo.emit(f.lon, f.lat, 5, f.ts);
+      view.rerender(<WalkSurveyScreen {...props} locked />);
+      expect(screen.getByRole("alert")).toHaveTextContent("signed out");
+      expect(document.body.textContent).not.toMatch(
+        /8\.3|80\.2|Points recorded|Accuracy/,
+      );
+      expect(screen.queryAllByRole("button")).toHaveLength(0);
+      expect(geo.clearWatch).toHaveBeenCalled();
+      // A late fix delivered while signed out is not recorded.
+      const late = walk()[5];
+      await geo.emit(late.lon, late.lat, 5, late.ts);
+      view.rerender(<WalkSurveyScreen {...props} locked={false} />);
+      expect(screen.getByRole("status")).toHaveTextContent("Paused");
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Points recorded: 3",
+      );
+      expect(
+        screen.getByRole("button", { name: "Resume" }),
+      ).toBeInTheDocument();
+    });
+
+    it("hides the review (points, area, controls) while locked and keeps it for the same account", async () => {
+      const user = userEvent.setup();
+      const { geo, view, props } = mountLockable();
+      await user.click(screen.getByRole("button", { name: "Start recording" }));
+      await walkAll(geo);
+      await user.click(
+        screen.getByRole("button", { name: "Finish and review" }),
+      );
+      expect(
+        screen.getAllByRole("button", { name: "Remove point" }),
+      ).toHaveLength(44);
+      view.rerender(<WalkSurveyScreen {...props} locked />);
+      expect(screen.queryAllByRole("button")).toHaveLength(0);
+      expect(screen.queryByLabelText("Reason (required)")).toBeNull();
+      expect(document.body.textContent).not.toMatch(/acres|m²|8\.30|80\.20/);
+      view.rerender(<WalkSurveyScreen {...props} locked={false} />);
+      expect(
+        screen.getAllByRole("button", { name: "Remove point" }),
+      ).toHaveLength(44);
+      expect(screen.getByText(/3\.0\d\d acres/)).toBeInTheDocument();
+    });
+  });
+
   it("blocks saving an unclosed outline and explains why", async () => {
     const { geo, client, user } = setup();
     await user.click(screen.getByRole("button", { name: "Start recording" }));
