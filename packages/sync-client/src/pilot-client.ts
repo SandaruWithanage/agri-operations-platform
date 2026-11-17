@@ -34,6 +34,7 @@ import {
   landGeometryRecordSchema,
   landGeometryResultSchema,
   landGeometryReadSchema,
+  landViewportSchema,
   type LandGeometryRecord,
   type LandRegistration,
 } from "@agri/validation";
@@ -559,6 +560,37 @@ export class PilotClient {
       ),
     );
     if (!result.success || result.data.landId !== landId)
+      throw new PilotRequestError(503);
+    return result.data;
+  }
+  /** Bounded viewport read; pass an AbortSignal so a pan or zoom cancels the stale request. */
+  async landViewport(
+    box: { west: number; south: number; east: number; north: number },
+    limit = 100,
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams({
+      west: String(box.west),
+      south: String(box.south),
+      east: String(box.east),
+      north: String(box.north),
+      limit: String(limit),
+    });
+    const result = landViewportSchema.safeParse(
+      await this.request(
+        `land/viewport?${params}`,
+        undefined,
+        undefined,
+        signal,
+      ),
+    );
+    if (
+      !result.success ||
+      result.data.bbox.west !== box.west ||
+      result.data.bbox.south !== box.south ||
+      result.data.bbox.east !== box.east ||
+      result.data.bbox.north !== box.north
+    )
       throw new PilotRequestError(503);
     return result.data;
   }

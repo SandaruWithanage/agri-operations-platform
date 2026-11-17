@@ -146,3 +146,59 @@ export const landGeometryReadSchema = z.object({
 export type LandGeometryRecord = z.input<typeof landGeometryRecordSchema>;
 export type LandGeometryResult = z.infer<typeof landGeometryResultSchema>;
 export type LandGeometryRead = z.infer<typeof landGeometryReadSchema>;
+
+const degrees = (min: number, max: number) =>
+  z.coerce.number().finite().min(min).max(max);
+// A viewport cannot cross the antimeridian and is capped, so a bulk export is not a viewport.
+export const maxViewportSpanDegrees = 5;
+export const landViewportQuerySchema = z
+  .object({
+    west: degrees(-180, 180),
+    south: degrees(-90, 90),
+    east: degrees(-180, 180),
+    north: degrees(-90, 90),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.west < v.east &&
+      v.south < v.north &&
+      v.east - v.west <= maxViewportSpanDegrees &&
+      v.north - v.south <= maxViewportSpanDegrees,
+    "Invalid viewport",
+  );
+export const landViewportSchema = z.object({
+  accountId: z.guid(),
+  bbox: z.object({
+    west: z.number(),
+    south: z.number(),
+    east: z.number(),
+    north: z.number(),
+  }),
+  polygons: z
+    .array(
+      z.object({
+        landId: z.guid(),
+        version: z.number().int().positive(),
+        ring: ringSchema,
+        calculatedAreaM2: z.number().finite().positive(),
+        source: z.enum(["gps_walk", "digitized", "official_survey"]),
+      }),
+    )
+    .max(200),
+  points: z
+    .array(
+      z.object({
+        landId: z.guid(),
+        longitude: z.number().min(-180).max(180),
+        latitude: z.number().min(-90).max(90),
+        accuracyM: z.number().finite().min(0).nullable(),
+      }),
+    )
+    .max(200),
+  // Computed only over features the caller may see; never reveals how many hidden features exist.
+  truncated: z.boolean(),
+  provisionalIdentificationOnly: z.literal(true),
+});
+export type LandViewport = z.infer<typeof landViewportSchema>;

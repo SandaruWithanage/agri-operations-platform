@@ -34,6 +34,8 @@ import {
   landGeometryResultSchema,
   landGeometryQuerySchema,
   landGeometryReadSchema,
+  landViewportQuerySchema,
+  landViewportSchema,
 } from "@agri/validation";
 import {
   farmerHistoryQuerySchema,
@@ -222,6 +224,7 @@ export function createBffHandler(
             "land",
             "land/detail",
             "land/geometry",
+            "land/viewport",
             "land/geographies",
             "projects",
             "projects/detail",
@@ -601,6 +604,40 @@ export function createBffHandler(
           ),
         );
         if (!result.success || result.data.landId !== query.data.landId)
+          throw new Failure(503);
+        return reply(result.data);
+      }
+      if (path === "land/viewport") {
+        const params = new URL(request.url).searchParams;
+        if (new Set(params.keys()).size !== Array.from(params.keys()).length)
+          throw new Failure(400);
+        const query = landViewportQuerySchema.safeParse(
+          Object.fromEntries(params),
+        );
+        if (!query.success) throw new Failure(400);
+        const result = landViewportSchema.safeParse(
+          await call(
+            `${path}?${new URLSearchParams(
+              Object.entries(query.data).map(([key, value]) => [
+                key,
+                String(value),
+              ]),
+            )}`,
+            "GET",
+            undefined,
+            signed.accessToken,
+          ),
+        );
+        const { west, south, east, north } = query.data;
+        if (
+          !result.success ||
+          result.data.bbox.west !== west ||
+          result.data.bbox.south !== south ||
+          result.data.bbox.east !== east ||
+          result.data.bbox.north !== north ||
+          result.data.polygons.length > query.data.limit ||
+          result.data.points.length > query.data.limit
+        )
           throw new Failure(503);
         return reply(result.data);
       }

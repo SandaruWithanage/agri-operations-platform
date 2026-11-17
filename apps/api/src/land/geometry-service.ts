@@ -5,6 +5,8 @@ import {
   landGeometryRecordSchema,
   landGeometryResultSchema,
   landGeometryVersionSchema,
+  landViewportQuerySchema,
+  landViewportSchema,
 } from "@agri/validation";
 import {
   TransactionActorContext,
@@ -102,6 +104,46 @@ export class LandGeometryService {
         landId: query.landId,
         current: rows.find((row) => row.status === "provisional") ?? null,
         history: query.history ? rows : [],
+      });
+    });
+  }
+
+  async viewport(connection: ActorQuery, actor: VerifiedActor, input: unknown) {
+    const q = landViewportQuerySchema.parse(input);
+    return this.context.run(connection, actor, async (db) => {
+      const envelope = "public.ST_MakeEnvelope($1,$2,$3,$4,4326)";
+      const box = [q.west, q.south, q.east, q.north];
+      // Visibility comes from PostgreSQL: RLS on geometry versions, the land.read predicate on points.
+      const polygons = (
+        await db.query(
+          `SELECT land_id,version,source,public.ST_AsGeoJSON(boundary,9)::jsonb AS geojson,calculated_area_m2::double precision AS area FROM land.geometry_version WHERE status='provisional' AND boundary && ${envelope} AND public.ST_Intersects(boundary,${envelope}) ORDER BY land_id LIMIT $5`,
+          [...box, q.limit + 1],
+        )
+      ).rows as Record<string, unknown>[];
+      const points = (
+        await db.query(
+          `SELECT id,public.ST_X(point) AS longitude,public.ST_Y(point) AS latitude,accuracy_m FROM land.identification WHERE point IS NOT NULL AND point && ${envelope} AND authz.allowed(geography_id,'land.read',NULL) ORDER BY id LIMIT $5`,
+          [...box, q.limit + 1],
+        )
+      ).rows as Record<string, unknown>[];
+      return landViewportSchema.parse({
+        accountId: actor.accountId,
+        bbox: { west: q.west, south: q.south, east: q.east, north: q.north },
+        polygons: polygons.slice(0, q.limit).map((row) => ({
+          landId: row.land_id,
+          version: row.version,
+          ring: (row.geojson as { coordinates: unknown[] }).coordinates[0],
+          calculatedAreaM2: row.area,
+          source: row.source,
+        })),
+        points: points.slice(0, q.limit).map((row) => ({
+          landId: row.id,
+          longitude: row.longitude,
+          latitude: row.latitude,
+          accuracyM: row.accuracy_m,
+        })),
+        truncated: polygons.length > q.limit || points.length > q.limit,
+        provisionalIdentificationOnly: true,
       });
     });
   }

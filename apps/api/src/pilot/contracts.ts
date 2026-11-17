@@ -12,6 +12,7 @@ import type {
   LandPage,
   LandDetail,
   LandGeometryRead,
+  LandViewport,
   LandGeometryResult,
   LandRegistrationResult,
   LandGeographies,
@@ -120,6 +121,7 @@ export interface PilotRuntime {
     input: unknown,
   ): Promise<LandGeometryResult>;
   landGeometry(actor: VerifiedActor, input: unknown): Promise<LandGeometryRead>;
+  landViewport(actor: VerifiedActor, input: unknown): Promise<LandViewport>;
   landGeographies(
     actor: VerifiedActor,
     source: RegistrationSource,
