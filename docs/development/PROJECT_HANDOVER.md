@@ -94,7 +94,7 @@ Existing direct account grants, organization/geography records and scoped checks
 
 **Dependencies:** SEC-01/02 and the client permission matrix. **Done when:** authorized admins can manage permitted scopes without self-escalation, cross-organization leakage or Zone OR Project broadening; direct restricted SQL, source/expiry/revocation, version/idempotency and audit rollback tests pass. Role names/counts stay database-configurable.
 
-**Design (17 Nov 2026):** [ADR 0022](../decisions/ADR-0022-dynamic-role-and-assignment-administration.md) proposes roles as versioned data that materialize into the existing grant tables, delegation ceilings, no self-grant and dual approval for high-risk changes. It is a design proposal only: nothing is implemented, no role or grant is seeded, and implementation needs independent security review (G1) and the DEC-02 decisions.
+**Design (17 Nov 2026):** [ADR 0022](../decisions/ADR-0022-dynamic-role-and-assignment-administration.md) proposes roles as versioned data that materialize into the existing grant tables, delegation ceilings, no self-grant and dual approval for high-risk changes. It is a design proposal only: nothing is implemented, no role or grant is seeded, and implementation needs independent security review (G1) and the DEC-02 decisions. An internal engineering threat review (ADR section 11, not independent) added fourteen binding requirements.
 
 ### IAM-02 — Account and MFA enrollment/recovery administration — Pending
 
