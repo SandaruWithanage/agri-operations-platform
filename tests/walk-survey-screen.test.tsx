@@ -211,6 +211,7 @@ describe("walk survey screen", () => {
     await walkAll(geo);
     await user.click(screen.getByRole("button", { name: "Finish and review" }));
     expect(screen.getByText(/m² \(/)).toBeInTheDocument();
+    expect(screen.getByText(/3\.0\d\d acres/)).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "Save provisional polygon" }),
     );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acceptJump,
+  acresFromM2,
   addFix,
   finishSurvey,
   newSurvey,
@@ -271,5 +272,12 @@ describe("review and submission", () => {
     const after = addFix(state, walk()[0]);
     expect(state.points).toHaveLength(0);
     expect(after.points).toHaveLength(1);
+  });
+
+  it("converts square metres to international acres", () => {
+    expect(acresFromM2(4046.8564224)).toBeCloseTo(1, 10);
+    expect(acresFromM2(0)).toBe(0);
+    expect(acresFromM2(12177)).toBeGreaterThan(3);
+    expect(acresFromM2(12177)).toBeLessThan(3.02);
   });
 });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LandGeometryRecord } from "@agri/validation";
 import {
   acceptJump,
+  acresFromM2,
   addFix,
   finishSurvey,
   newSurvey,
@@ -45,6 +46,7 @@ const words = {
     points: "Points recorded",
     accuracy: "Latest accuracy",
     meters: "m",
+    acres: "acres",
     good: "good",
     poor: "too weak, ignored",
     noFix: "waiting for a location",
@@ -107,6 +109,7 @@ const words = {
     points: "වාර්තා කළ ලක්ෂ්‍ය",
     accuracy: "අවසන් නිරවද්‍යතාව",
     meters: "මී",
+    acres: "අක්කර",
     good: "හොඳයි",
     poor: "දුර්වලයි, නොසලකා හැරියා",
     noFix: "ස්ථානයක් බලාපොරොත්තුවෙන්",
@@ -428,7 +431,8 @@ export function WalkSurveyScreen({
             <dt>{w.area}</dt>
             <dd>
               {Math.round(review.previewAreaM2).toLocaleString("en")} m² (
-              {(review.previewAreaM2 / 10000).toFixed(3)} ha)
+              {(review.previewAreaM2 / 10000).toFixed(3)} ha,{" "}
+              {acresFromM2(review.previewAreaM2).toFixed(3)} {w.acres})
             </dd>
             <dt>{w.closure}</dt>
             <dd>
