@@ -180,6 +180,24 @@ export async function verifyFarmerIsolation({
         context.run(db, officerB, (c) => c.query(statement)),
       ).rejects.toMatchObject({ code: "42501" });
 
+    // 5b. Private journals, audit, grant and identity tables are not readable through the runtime login at all,
+    // so one officer cannot learn another's activity, mutations, permissions or account.
+    for (const table of [
+      "farm.registration_mutation",
+      "farm.registration_risk",
+      "farm.farmer_audit",
+      "farm.farmer_change",
+      "authz.permission_grant",
+      "authz.assignment",
+      "authz.context_key",
+      "authn.account",
+      "authn.login_session",
+    ])
+      await expect(
+        context.run(db, officerB, (c) => c.query(`SELECT 1 FROM ${table}`)),
+        table,
+      ).rejects.toMatchObject({ code: "42501" });
+
     // 6. Corrections need the action permission on both source and destination coverage.
     await grant(officerA, "farmer.correct", geoA);
     await grant(officerB, "farmer.correct", geoB);
