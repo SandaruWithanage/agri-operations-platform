@@ -33,7 +33,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod --audit-level low
-      - run: pnpm audit --audit-level high
+      - name: pnpm audit --audit-level high (one time-boxed exemption)
+        run: |
+          # GHSA-fc5q-39xc-vjpf (picomatch ReDoS, dev tooling only, no patched release).
+          # Time-boxed exemption; see docs/development/DEPENDENCY_POLICY.md. Fails after the expiry date.
+          [[ "$(date -u +%F)" < "2026-12-15" ]] || { echo "The picomatch audit exemption has expired; re-evaluate it."; exit 1; }
+          pnpm audit --audit-level high --ignore GHSA-fc5q-39xc-vjpf
+          # pnpm 12 may record --ignore in pnpm-workspace.yaml; never let it persist.
+          git checkout -- pnpm-workspace.yaml
       - run: pnpm peers check
       - run: pnpm check:structure
       - run: pnpm lint
