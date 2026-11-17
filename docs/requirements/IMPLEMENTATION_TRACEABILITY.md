@@ -18,9 +18,9 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 
 - Implemented (bounded): 8
 - Partial: 47
-- Design only: 9
+- Design only: 11
 - Blocked: 5
-- Not started: 95
+- Not started: 93
 
 ## Organization, access and devices (FR-ORG)
 
@@ -100,7 +100,7 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 | FR-LAND-010 | Field officers shall be able to initiate a walk-the-boundary session that samples GPS as they wa… | Partial     | Walk-the-boundary engine, screen and online route (PRs #52, #54, #55); no phone trials                                              |
 | FR-LAND-011 | Tracking shall support explicit start/stop/pause/resume, display accuracy, and warn about stale … | Partial     | Start, pause, resume, accuracy gating, jump and gap warnings; background GPS limits untested on devices                             |
 | FR-LAND-012 | Officer shall be able to review and manually correct GPS points/segments without destroying the … | Partial     | Point removal and jump acceptance with a reason and an audit event; gap markers and manual fill are not done (alignment note GA-04) |
-| FR-LAND-013 | Authorized offline boundary capture/edit shall write encrypted local survey drafts and queued ge… | Not started | Offline survey drafts: design not written (P1-12)                                                                                   |
+| FR-LAND-013 | Authorized offline boundary capture/edit shall write encrypted local survey drafts and queued ge… | Design only | ADR 0025 (proposed): encrypted survey drafts in the existing vault; needs crypto review; not implemented                            |
 | FR-LAND-014 | The server shall validate polygon geometry, area, tenant/org boundary, current permissions, expe… | Partial     | Server validates ring, validity, area, permissions and expected version in `land.record_geometry` (migration 25)                    |
 | FR-LAND-015 | Overlap detection shall calculate candidate overlap area and affected parcel identities only wit… | Design only | ADR 0024 (global detection, scope-limited disclosure); owner decision pending                                                       |
 | FR-LAND-016 | Overlapping parcels may be saved provisionally but conflicted portions shall not become verified… | Design only | ADR 0024 (conflicted portion excluded from allocatable area); not implemented                                                       |
@@ -220,7 +220,7 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 | ---------- | ------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
 | NFR-OFF-01 | Pilot offline authoring policy shall propose a 7-day maximum since trusted successful online aut… | Not started | No implementation or design yet                                                                                  |
 | NFR-OFF-02 | An interrupted/retried offline mutation shall retain stable identities and be idempotent; no con… | Partial     | Idempotent journals for registration, land, geometry and enrollment; offline retry proven for farmer drafts only |
-| NFR-OFF-03 | Offline data shall survive ordinary restart/browser application updates where supported and rema… | Not started | No implementation or design yet                                                                                  |
+| NFR-OFF-03 | Offline data shall survive ordinary restart/browser application updates where supported and rema… | Design only | ADR 0025 (proposed): survives restart via the existing vault; not implemented                                    |
 | NFR-OFF-04 | Survey capture shall visibly detect loss of position updates or low confidence, never invent a w… | Partial     | Walk engine flags weak fixes, jumps and gaps and never interpolates; device behavior untested                    |
 | NFR-OFF-05 | Offline map package download shall be limited to authorized areas with rights-verified provider … | Not started | No implementation or design yet                                                                                  |
 
