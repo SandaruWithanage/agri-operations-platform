@@ -42,6 +42,10 @@ Reviewed: 16 November 2026. Direct project-owner pilot decisions and accepted ar
 
 Approval steps before ADR 0021 may be marked Accepted, and the later enablement gate, are listed in the ADR (sections 9 and 10).
 
+## Owner provisional decision trace Q1–Q71 (17 Nov 2026)
+
+The owner's 71 provisional decisions are reproduced as an implementation trace in Appendix A of the [staff Phase 1 guide](../development/PHASE_1_COMPLETE_ADMIN_FIELD_AGENT_GUIDE.md). **They are owner proposals, not client approval**, and the register file itself, SRS v0.9 and architecture v0.9 are not in this repository. Where they differ from recorded decisions they are logged in the [conflict register](PHASE_1_SOURCE_CONFLICTS.md), notably Q3 and Q4 against the recorded DEC-12 policy (SC-02, SC-03). No decision above changes status because of this trace.
+
 ## Outside current Phase 1
 
 Farmer self-service is Phase 2. Harvest procurement/logistics/transport, advanced financial settlement, insurance and legal land-survey workflows remain excluded. Questions about those future responsibilities are not blockers that require implementing those modules in this pilot; an explicit scope change is required first.

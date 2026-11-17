@@ -20,6 +20,7 @@ See the [living project handover](PROJECT_HANDOVER.md) for stable task IDs, impl
 4. Keep Dexie as the durable pending-work owner. Online mutation status/invalidation must not create a second queue or replace stable entity/mutation IDs. Preserve encrypted legacy drafts, recovery versions and interruption/idempotency behavior during integration.
 5. Preserve [the implemented transient per-mutation Syncing presentation and tested interruption/retry behavior](FIELD_SESSION_SYNC.md). Extend land/GPS offline data only after the minimal-data/device policy is reviewed; selection of Dexie alone grants no additional storage permission.
 6. Offline enrollment follows [ADR 0021](../decisions/ADR-0021-offline-enrollment-design.md) (reviewed direction, not Accepted). The owner's DEC-12 policy is a provisional recommendation pending client confirmation and independent security review. Sequence after acceptance: ENR-AUTH-01, ENR-AUDIT-01 and audited grant provisioning, then OFF-04A–D behind a default-off flag, then a separate enablement decision after real-device acceptance. Reuses the existing vault; adds no second database or sync engine.
+7. The owner's [staff Phase 1 guide](PHASE_1_COMPLETE_ADMIN_FIELD_AGENT_GUIDE.md) (17 Nov 2026) is an additive, **proposed** development direction tracked on the [staff execution board](PHASE_1_STAFF_EXECUTION_BOARD.md); it supersedes the lean Phase 1 scope proposal, adds no client approval, and keeps every security and approval gate (including ADR 0021). Phase 2 (farmer portal) is out of scope.
 
 ## Conditional Redis work at M3+
 
