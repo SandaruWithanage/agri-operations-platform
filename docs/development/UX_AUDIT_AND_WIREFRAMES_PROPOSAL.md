@@ -117,6 +117,8 @@ For each, the first implementation step records current friction with synthetic 
 
 OWNER-D1 in the [decision register](../requirements/OPEN_DECISIONS.md) adopts the layout direction. Question 1 (sidebar admin shell and task-first field home): **approved**. Question 3 (restrained agricultural palette): **approved**, no brand guidance supplied. Question 4 (recent work): **status and opaque labels only**, no personal data without authorization. Question 2 (role-specific navigation) **waits on DEC-02**. Question 5 (real-user session) is **open**. Steps 2 onward of the delivery plan may proceed as bounded PRs with no behaviour change.
 
+**Delivery progress:** step 2 (tokens) is done in `@agri/design-tokens` with a contrast and drift test and no change on screen; the admin shell, the field task home and the workflow forms (steps 3 to 5) are not started.
+
 ## Not decided here
 
 Visual identity, the final component set, role-specific navigation, and anything about the Phase 2 farmer portal. Green CI will not prove visual quality; screenshots are evidence, not approval.

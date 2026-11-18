@@ -7,6 +7,16 @@ import { vi } from "vitest";
 
 afterEach(() => cleanup());
 const css = readFileSync("apps/field-pwa/app/globals.css", "utf8");
+const tokens = readFileSync("packages/design-tokens/src/tokens.css", "utf8");
+// Resolve a `min-height` value that may be a design token (var(--agri-...)) to px.
+const minHeightPx = (declarations: string): number => {
+  const raw = /min-height:\s*([^;]+);/.exec(declarations)?.[1]?.trim() ?? "";
+  const name = /^var\((--agri-[a-z-]+)\)$/.exec(raw)?.[1];
+  const value = name
+    ? new RegExp(`${name}:\\s*([^;]+);`).exec(tokens)?.[1]?.trim()
+    : raw;
+  return Number(/^(\d+)px$/.exec(value ?? "")?.[1]);
+};
 const rule = (selector: string) => {
   const start = css.indexOf(`${selector} {`);
   expect(start, `${selector} rule exists`).toBeGreaterThanOrEqual(0);
@@ -48,9 +58,7 @@ describe("field navigation links (issue #69)", () => {
 
   it("sizes, spaces and outlines the links in the stylesheet", () => {
     const link = rule(".nav-link");
-    expect(
-      Number(/min-height:\s*(\d+)px/.exec(link)?.[1]),
-    ).toBeGreaterThanOrEqual(44);
+    expect(minHeightPx(link)).toBeGreaterThanOrEqual(44);
     expect(link).toMatch(/padding:\s*\d+px/);
     expect(link).toContain("overflow-wrap: anywhere");
     expect(

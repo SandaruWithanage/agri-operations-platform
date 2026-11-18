@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@agri/design-tokens/tokens.css";
 * {
   box-sizing: border-box;
 }
@@ -12,11 +13,11 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f5f7f5;
-  color: #172b28;
+  background: var(--agri-color-bg);
+  color: var(--agri-color-text);
 }
 a {
-  color: #16724e;
+  color: var(--agri-color-link);
 }
 main {
   max-width: 900px;
@@ -24,9 +25,9 @@ main {
   padding: 36px 24px;
 }
 .card {
-  background: white;
-  border: 1px solid #e0e7e2;
-  border-radius: 14px;
+  background: var(--agri-color-surface);
+  border: 1px solid var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
   padding: 24px;
 }
 .kicker {
@@ -34,30 +35,30 @@ main {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #16724e;
+  color: var(--agri-color-brand);
 }
 .status {
   padding: 12px 16px;
-  border-radius: 9px;
-  background: #e4f3ea;
-  color: #103c32;
+  border-radius: var(--agri-radius-status);
+  background: var(--agri-color-status-bg);
+  color: var(--agri-color-status-text);
 }
 button {
   font: inherit;
 }
 
 button {
-  min-height: 44px;
+  min-height: var(--agri-tap-min);
   padding: 8px 16px;
-  border: 1px solid #16724e;
-  border-radius: 8px;
+  border: 1px solid var(--agri-color-brand);
+  border-radius: var(--agri-radius-control-large);
 }
 button[aria-pressed="true"] {
-  background: #16724e;
+  background: var(--agri-color-brand);
   color: white;
 }
 button:focus-visible {
-  outline: 3px solid #172b28;
+  outline: 3px solid var(--agri-color-text);
   outline-offset: 3px;
 }
 
@@ -70,13 +71,13 @@ button:focus-visible {
 .registration-form select {
   width: 100%;
   min-width: 0;
-  min-height: 48px;
+  min-height: var(--agri-tap-comfortable);
   padding: 10px;
   font: inherit;
-  color: #172b28;
-  background: white;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
+  color: var(--agri-color-text);
+  background: var(--agri-color-surface);
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
 }
 .registration-form input[type="checkbox"] {
   width: 24px;
@@ -84,15 +85,15 @@ button:focus-visible {
   vertical-align: middle;
 }
 .registration-form [role="alert"] {
-  color: #7f1d1d;
+  color: var(--agri-color-danger-text);
 }
 .registration-form :focus-visible {
-  outline: 3px solid #172b28;
+  outline: 3px solid var(--agri-color-text);
   outline-offset: 3px;
 }
 
 .pilot-workspace [role="alert"] {
-  color: #7f1d1d;
+  color: var(--agri-color-danger-text);
 }
 /* Navigation links are touch targets like the buttons: at least 48px high, spaced so neighbours are not hit by accident. */
 .workspace-nav {
@@ -104,25 +105,25 @@ button:focus-visible {
 .nav-link {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: var(--agri-tap-comfortable);
   padding: 8px 16px;
-  border: 2px solid #16724e;
-  border-radius: 8px;
-  color: #103c32;
-  background: white;
+  border: 2px solid var(--agri-color-brand);
+  border-radius: var(--agri-radius-control-large);
+  color: var(--agri-color-status-text);
+  background: var(--agri-color-surface);
   font-weight: 600;
   line-height: 1.3;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 .nav-link:hover {
-  background: #e4f3ea;
+  background: var(--agri-color-status-bg);
 }
 .nav-link:active {
-  background: #cfe8da;
+  background: var(--agri-color-pressed-bg);
 }
 .nav-link:focus-visible {
-  outline: 3px solid #172b28;
+  outline: 3px solid var(--agri-color-text);
   outline-offset: 3px;
 }
 .workspace-actions {
@@ -139,16 +140,16 @@ button:disabled {
 #offline-vault {
   display: block;
   width: 100%;
-  min-height: 48px;
+  min-height: var(--agri-tap-comfortable);
   padding: 10px;
   font: inherit;
-  background: white;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
+  background: var(--agri-color-surface);
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
 }
 
 .registration-form label:has(input[type="checkbox"]) {
-  min-height: 48px;
+  min-height: var(--agri-tap-comfortable);
   display: flex;
   align-items: center;
   gap: 12px;

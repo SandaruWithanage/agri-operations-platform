@@ -253,6 +253,9 @@ importers:
       '@agri/auth-bff':
         specifier: workspace:*
         version: link:../../packages/auth-bff
+      '@agri/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@agri/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -345,6 +348,9 @@ importers:
       '@agri/auth-bff':
         specifier: workspace:*
         version: link:../../packages/auth-bff
+      '@agri/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@agri/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
