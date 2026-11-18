@@ -113,6 +113,10 @@ For each, the first implementation step records current friction with synthetic 
 4. Should the field home show recent work (names are personal data, so this would list only status and opaque labels unless approved)?
 5. Who can take part in the real-user session, and when?
 
+## Owner response (18 Nov 2026, provisional)
+
+OWNER-D1 in the [decision register](../requirements/OPEN_DECISIONS.md) adopts the layout direction. Question 1 (sidebar admin shell and task-first field home): **approved**. Question 3 (restrained agricultural palette): **approved**, no brand guidance supplied. Question 4 (recent work): **status and opaque labels only**, no personal data without authorization. Question 2 (role-specific navigation) **waits on DEC-02**. Question 5 (real-user session) is **open**. Steps 2 onward of the delivery plan may proceed as bounded PRs with no behaviour change.
+
 ## Not decided here
 
 Visual identity, the final component set, role-specific navigation, and anything about the Phase 2 farmer portal. Green CI will not prove visual quality; screenshots are evidence, not approval.

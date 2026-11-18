@@ -1,6 +1,6 @@
 # Phase 1 staff platform — living execution board
 
-Last reviewed commit: `c76ae25` (`main`, merge of PR #82), 17 Nov 2026
+Last reviewed commit: `5284884` (`main`, merge of PR #85), 18 Nov 2026
 Scope: owner-proposed full internal admin + field platform ([guide](PHASE_1_COMPLETE_ADMIN_FIELD_AGENT_GUIDE.md), [proposed scope](../requirements/PHASE_1_STAFF_SCOPE_PROPOSED.md)); the farmer portal is Phase 2 and is not touched.
 Client baseline approval: **pending** (nothing signed; every domain rule is provisional).
 Stable engineering task IDs and evidence remain in [PROJECT_HANDOVER.md](PROJECT_HANDOVER.md). The earlier lean board, [PHASE_1_EXECUTION_BOARD.md](PHASE_1_EXECUTION_BOARD.md), is kept as dated audit evidence; conflicts between sources are in the [conflict register](../requirements/PHASE_1_SOURCE_CONFLICTS.md).
@@ -93,20 +93,22 @@ The 28 scenarios are listed in section 12 of the guide. They are cited here as "
 
 **No code is unblocked at this review; design work continues where a board-listed safe alternative exists** (P1-18 resource ledger, ADR 0026). Every remaining task waits on an owner decision, an independent review or physical devices, and building any of them now would mean inventing a decision. Design work that does not need a decision is finished: ADR 0022 (IAM), 0023 (map), 0024 (overlap) and 0025 (offline survey drafts) are proposed, the cross-domain invariants are recorded, and issues #64 and #71 each have a decision document.
 
-What is needed from the owner, in the order that unlocks the most work:
+Owner direction recorded on 18 Nov 2026 (provisional, not client-approved; see the [decision register](../requirements/OPEN_DECISIONS.md)): **OWNER-D1** UX direction approved, so issue #71 step 3 onward may proceed as bounded PRs with no behaviour change; **OWNER-D2** IAM principle (configurable roles, scoped permissions, audited approvals), with a proposed role and permission matrix to be drafted for review; **OWNER-D3** offline survey data preservation (answers ADR 0025 Q2 and Q3); **OWNER-D4** staging direction and proxy/limit testing before real data.
 
-1. **DEC-02 role and permission matrix** (and review of ADR 0022): unblocks IAM administration (P1-03a, P1-04 to P1-08, P1-26) and every real grant.
-2. **ADR 0025 questions Q2, Q3 and Q6** plus an independent cryptographic reviewer: unblocks encrypted offline survey drafts (P1-12a, then P1-27).
-3. **The five login-throttle decisions** in [LOGIN_THROTTLE_DECISION_BRIEF.md](../security/LOGIN_THROTTLE_DECISION_BRIEF.md): closes issue #64 and the proxy/edge part of SEC-04.
-4. **UX direction** (the five questions in [UX_AUDIT_AND_WIREFRAMES_PROPOSAL.md](UX_AUDIT_AND_WIREFRAMES_PROPOSAL.md)): unblocks the bounded redesign PRs for issue #71.
+What is still needed, in the order that unlocks the most work:
+
+1. **DEC-02 matrix review and named approvers**: a proposed matrix is drafted for the owner's review; ADR 0022 also needs the independent review before any IAM code or real grant (P1-03a, P1-04 to P1-08, P1-26).
+2. **ADR 0025 Q6 and an independent cryptographic reviewer**: unblocks encrypted offline survey drafts (P1-12a, then P1-27).
+3. **The five login-throttle decisions** in [LOGIN_THROTTLE_DECISION_BRIEF.md](../security/LOGIN_THROTTLE_DECISION_BRIEF.md): the proxy hop count and limits are fixed and tested before real data (OWNER-D4); closes issue #64.
+4. **UX questions 2 and 5** (role-specific navigation after DEC-02; real-user session participants).
 5. **ADR 0023 acceptance and the DEC-09 tile licence**: unblocks the map UI (P1-10c) and offline map packages (P1-14, only if lawful).
 6. **Owner disclosure decision and review of ADR 0024**: unblocks overlap detection (P1-13).
-7. **DEC-05, DEC-06, DEC-07, DEC-08, DEC-10 and ADR 0021 A1–A4 / Gate E**: inventory, retention and notices, approved phones, hosting, planning baseline and offline enrollment.
-8. **The dependency exemption** below expires on 2026-12-15 and needs a person to re-evaluate it; and the owner's draft PR #73 (CodeQL) needs the default-setup decision.
+7. **DEC-05 (answers to ADR 0026 Q1, Q3, Q5, Q7), DEC-06, DEC-07, DEC-08 provider and key custody, DEC-10 and ADR 0021 A1–A4 / Gate E**: inventory code, retention and notices, approved phones, hosting, planning baseline and offline enrollment.
+8. **The dependency exemption** expires on 2026-12-15 and needs a person to re-evaluate it.
 
 ## Open PRs at last review
 
-One open: #73 (the owner's draft CodeQL and Copilot-instructions PR). Its formatting failure was fixed (one blank line) and all four checks are green; merging it waits on the owner's CodeQL default-setup decision. No work PR from this session is open.
+None open at this review. #73 (the owner's CodeQL and Copilot-instructions PR) was merged after its formatting failure was fixed; CodeQL now runs on pull requests and `main`, and its alerts are read in the GitHub Security tab (the delivery tooling here cannot read them).
 
 Merged since the previous review: #53 (board refresh), #54 and #55 (walk survey screen and route), #56 (SRS package import), #57 (ADR 0024), #58 (acres), #61 (survey account isolation), #62 (survey save integrity), #65 (signed-out lock), #66 (login throttle split), #68 (BFF abuse controls), #70 (API and web header hardening), #74 (navigation touch targets) and #75 (BFF limiter singleton). CI was green on each merged head and each has an internal review row in the security review log; none has an independent security review (Gate G1), a device test or client acceptance.
 
