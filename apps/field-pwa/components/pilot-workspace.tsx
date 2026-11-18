@@ -6,6 +6,10 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { applicationName } from "@agri/ui";
+import { AuthShell } from "@agri/ui/auth-shell";
+import { LocaleToggle, type Locale } from "@agri/ui/locale-toggle";
+import { copy as shared } from "@agri/i18n";
 import { createFieldQueryClient } from "../lib/online-query";
 import { PilotClient, PilotRequestError } from "../lib/pilot-client";
 
@@ -29,6 +33,17 @@ const words = {
     offlineLink: "Open encrypted offline workspace",
     surveyLink: "Survey a land perimeter (online)",
     navigation: "Field navigation",
+    language: "Language",
+    skipToSignIn: "Skip to sign-in",
+    points: [
+      "Your account, authenticator code and approved device are all required.",
+      "Your work is saved encrypted on this device before it is synchronized.",
+      "The server checks your permissions again when your work is synchronized.",
+    ],
+    otpHint: "6 digits from your authenticator app.",
+    deviceHint: "Provided by your administrator when your device was approved.",
+    prepareHint:
+      "Device not approved yet? Create an enrollment request for your administrator.",
     online: "Account and device access",
     limitation:
       "Sign in on your approved device, then open the encrypted workspace. All field registrations are saved there before synchronization.",
@@ -64,6 +79,17 @@ const words = {
     offlineLink: "සංකේතනය කළ නොබැඳි වැඩපොළ විවෘත කරන්න",
     surveyLink: "ඉඩම් මායිම මැනීම (සබැඳිව)",
     navigation: "ක්ෂේත්‍ර සංචලනය",
+    language: "භාෂාව",
+    skipToSignIn: "පුරන්න වෙත යන්න",
+    points: [
+      "ඔබේ ගිණුම, සත්‍යාපක කේතය සහ අනුමත උපාංගය යන සියල්ල අවශ්‍ය වේ.",
+      "ඔබේ වැඩ සමමුහුර්ත කිරීමට පෙර මෙම උපාංගයේ සංකේතනය කර සුරැකේ.",
+      "ඔබේ වැඩ සමමුහුර්ත කරන විට සේවාදායකය ඔබේ අවසර නැවත පරීක්ෂා කරයි.",
+    ],
+    otpHint: "ඔබේ සත්‍යාපක යෙදුමෙන් ඉලක්කම් 6ක්.",
+    deviceHint: "ඔබේ උපාංගය අනුමත කළ විට පරිපාලක විසින් ලබා දෙයි.",
+    prepareHint:
+      "උපාංගය තවමත් අනුමත කර නැද්ද? ඔබේ පරිපාලකයා සඳහා ලියාපදිංචි ඉල්ලීමක් සාදන්න.",
     online: "ගිණුම් සහ උපාංග ප්‍රවේශය",
     limitation:
       "අනුමත උපාංගයෙන් පුරනය වී සංකේතනය කළ වැඩපොළ විවෘත කරන්න. සමමුහුර්ත කිරීමට පෙර සියලු ක්ෂේත්‍ර ලියාපදිංචි එහි සුරකී.",
@@ -89,9 +115,21 @@ type Message =
   | "failure"
   | "loginFailure";
 
-type Props = { language: "en" | "si"; client?: PilotClient };
+type Props = {
+  language: "en" | "si";
+  client?: PilotClient;
+  /** Device connectivity (page-level). Omit in tests to hide the network notice. */
+  online?: boolean | null;
+  /** Provide to render the full page frame (language switch, title, network state). */
+  onLanguageChange?: (language: Locale) => void;
+};
 let nextBoundary = 0;
-export function PilotWorkspace({ language, client: supplied }: Props) {
+export function PilotWorkspace({
+  language,
+  client: supplied,
+  online,
+  onLanguageChange,
+}: Props) {
   const [fallback] = useState(() => new PilotClient());
   const client = supplied ?? fallback;
   const boundary = useMemo(
@@ -100,16 +138,25 @@ export function PilotWorkspace({ language, client: supplied }: Props) {
   );
   return (
     <QueryClientProvider key={boundary.id} client={boundary.queries}>
-      <SessionView client={client} language={language} />
+      <SessionView
+        client={client}
+        language={language}
+        online={online}
+        onLanguageChange={onLanguageChange}
+      />
     </QueryClientProvider>
   );
 }
 function SessionView({
   language,
   client,
+  online,
+  onLanguageChange,
 }: {
   language: "en" | "si";
   client: PilotClient;
+  online?: boolean | null;
+  onLanguageChange?: (language: Locale) => void;
 }) {
   const queries = useQueryClient();
   const [revision, setRevision] = useState(0);
@@ -218,40 +265,65 @@ function SessionView({
       </a>
     </nav>
   );
-  const showTasksAfterSignIn = !checking && !signedIn;
 
-  return (
-    <section className="pilot-workspace" aria-label={c.online}>
-      {showTasksAfterSignIn ? null : taskLinks}
-      {checking ? (
-        <p role="status">{c.checking}</p>
-      ) : (
-        <>
-          {message && (
-            <p
-              role={
-                message === "saved" || message === "prepared"
-                  ? "status"
-                  : "alert"
-              }
-            >
-              {c[message]}
+  const shell = shared[language];
+  const networkNotice =
+    online === null || online === undefined ? null : (
+      <p
+        className={online ? "agri-notice agri-notice--success" : "agri-notice"}
+        role="status"
+      >
+        {online ? shell.networkOnline : shell.networkOffline}
+      </p>
+    );
+  const languageToggle = onLanguageChange ? (
+    <LocaleToggle
+      value={language}
+      onChange={onLanguageChange}
+      label={c.language}
+    />
+  ) : null;
+
+  // Signed out, or still checking for the first time: one stable layout, so the page
+  // does not flash between frames and the language switch is never replaced mid-click.
+  if (!signedIn) {
+    return (
+      <AuthShell
+        brandName={applicationName}
+        brandTagline={shell.title}
+        points={c.points}
+        skipLabel={c.skipToSignIn}
+        title={c.signIn}
+        intro={c.setup}
+        toolbar={languageToggle}
+      >
+        {networkNotice}
+        {checking ? (
+          <>
+            <p className="agri-notice" role="status">
+              {c.checking}
             </p>
-          )}
-          {fingerprint && (
-            <p>
-              {c.fingerprint}:{" "}
-              <code style={{ overflowWrap: "anywhere" }}>{fingerprint}</code>
-            </p>
-          )}
-          {!signedIn && (
-            <form
-              className="registration-form"
-              onSubmit={login}
-              ref={loginForm}
-            >
-              <h2>{c.signIn}</h2>
-              <p>{c.setup}</p>
+            {taskLinks}
+          </>
+        ) : (
+          <>
+            {message && (
+              <p
+                className={
+                  message === "saved" || message === "prepared"
+                    ? "agri-notice agri-notice--success"
+                    : "agri-notice agri-notice--error"
+                }
+                role={
+                  message === "saved" || message === "prepared"
+                    ? "status"
+                    : "alert"
+                }
+              >
+                {c[message]}
+              </p>
+            )}
+            <form className="agri-form" onSubmit={login} ref={loginForm}>
               <label htmlFor="pilot-login">{c.login}</label>
               <input
                 id="pilot-login"
@@ -280,8 +352,12 @@ function SessionView({
                 pattern="[0-9]{6}"
                 maxLength={6}
                 required
+                aria-describedby="pilot-otp-hint"
                 disabled={busy}
               />
+              <p id="pilot-otp-hint" className="agri-hint">
+                {c.otpHint}
+              </p>
               <label htmlFor="pilot-device">{c.device}</label>
               <input
                 id="pilot-device"
@@ -289,46 +365,114 @@ function SessionView({
                 autoComplete="off"
                 pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
                 required
+                aria-describedby="pilot-device-hint"
                 disabled={busy}
               />
+              <p id="pilot-device-hint" className="agri-hint">
+                {c.deviceHint}
+              </p>
+              <div className="agri-form__actions">
+                <button
+                  className="agri-btn agri-btn--primary"
+                  disabled={busy}
+                  type="submit"
+                >
+                  {busy ? c.working : c.signIn}
+                </button>
+                <p className="agri-hint">{c.prepareHint}</p>
+                <button
+                  className="agri-btn agri-btn--secondary"
+                  disabled={busy}
+                  type="button"
+                  onClick={async () => {
+                    const field = loginForm.current?.elements.namedItem(
+                      "deviceId",
+                    ) as HTMLInputElement | null;
+                    if (!field || !field.reportValidity()) return;
+                    setBusy(true);
+                    try {
+                      const request = await client.prepareDevice(field.value);
+                      setFingerprint(request.fingerprint);
+                      const url = URL.createObjectURL(
+                        new Blob([JSON.stringify(request, null, 2)], {
+                          type: "application/json",
+                        }),
+                      );
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = "agri-device-enrollment.json";
+                      link.click();
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      setMessage("prepared");
+                    } catch {
+                      setMessage("failure");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {c.prepare}
+                </button>
+              </div>
+              {fingerprint && (
+                <p className="agri-notice">
+                  {c.fingerprint}:{" "}
+                  <code style={{ overflowWrap: "anywhere" }}>
+                    {fingerprint}
+                  </code>
+                </p>
+              )}
+            </form>
+            {taskLinks}
+            <div className="agri-form__actions">
               <button
+                className="agri-btn agri-btn--secondary"
                 disabled={busy}
-                type="button"
                 onClick={async () => {
-                  const field = loginForm.current?.elements.namedItem(
-                    "deviceId",
-                  ) as HTMLInputElement | null;
-                  if (!field || !field.reportValidity()) return;
                   setBusy(true);
                   try {
-                    const request = await client.prepareDevice(field.value);
-                    setFingerprint(request.fingerprint);
-                    const url = URL.createObjectURL(
-                      new Blob([JSON.stringify(request, null, 2)], {
-                        type: "application/json",
-                      }),
-                    );
-                    const link = document.createElement("a");
-                    link.href = url;
-                    link.download = "agri-device-enrollment.json";
-                    link.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    setMessage("prepared");
-                  } catch {
-                    setMessage("failure");
+                    await check();
+                  } catch (error) {
+                    report(error);
                   } finally {
                     setBusy(false);
                   }
                 }}
               >
-                {c.prepare}
+                {c.retry}
               </button>
-              <button disabled={busy} type="submit">
-                {busy ? c.working : c.signIn}
-              </button>
-            </form>
+            </div>
+            <p className="agri-hint">{c.limitation}</p>
+          </>
+        )}
+      </AuthShell>
+    );
+  }
+
+  const workspace = (
+    <section className="pilot-workspace" aria-label={c.online}>
+      {taskLinks}
+      {checking ? (
+        <p role="status">{c.checking}</p>
+      ) : (
+        <>
+          {message && (
+            <p
+              role={
+                message === "saved" || message === "prepared"
+                  ? "status"
+                  : "alert"
+              }
+            >
+              {c[message]}
+            </p>
           )}
-          {showTasksAfterSignIn ? taskLinks : null}
+          {fingerprint && (
+            <p>
+              {c.fingerprint}:{" "}
+              <code style={{ overflowWrap: "anywhere" }}>{fingerprint}</code>
+            </p>
+          )}
           <div className="workspace-actions">
             <button
               disabled={busy}
@@ -370,5 +514,19 @@ function SessionView({
       )}
       <p className="status">{c.limitation}</p>
     </section>
+  );
+  if (!onLanguageChange) return workspace;
+  return (
+    <main className="field-frame">
+      <p className="kicker">
+        {applicationName} • {shell.role}
+      </p>
+      <div className="field-frame__bar">{languageToggle}</div>
+      {networkNotice}
+      <div className="card">
+        <h1>{shell.title}</h1>
+        {workspace}
+      </div>
+    </main>
   );
 }

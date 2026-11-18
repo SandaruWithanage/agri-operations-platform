@@ -19,20 +19,20 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 
 ## Screens in the base design and what we build
 
-| #      | Frame in the base design                                                                     | Built today?                                     | Plan                                                                                      |
-| ------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| –      | **Sign-in** (not in the base)                                                                | Yes, admin web: **done in this stage**           | Designed in the same language. Field sign-in follows in the next stage.                   |
-| 01     | Admin / Overview                                                                             | No overview; counts have no endpoint             | Build with live data where an endpoint exists, honest "not available" elsewhere.          |
-| 02     | Admin / Farmer Registry                                                                      | Yes (list, filters, review queue)                | Restyle inside the new shell.                                                             |
-| 03     | Admin / Land Map                                                                             | Land list and detail only; **no map**            | Restyle the land list. The map waits for ADR 0023 acceptance and the DEC-09 tile licence. |
-| 07     | Admin / Farmer 360 Profile                                                                   | Farmer detail, history, correction, verification | Restyle inside the shell.                                                                 |
-| 08     | Admin / Project Enrollment                                                                   | Yes (policy, enroll, withdraw, directory)        | Restyle; enrollment sits under Projects in the base, kept as its own item until then.     |
-| 04, 09 | Officer / Home (offline, Sinhala)                                                            | Field home and encrypted offline workspace       | Task-first home with real online, offline and sync states.                                |
-| 05, 10 | Officer / Farmer Registration                                                                | Yes (offline-capable registration)               | Restyle, behaviour unchanged.                                                             |
-| 11     | Officer / Land Capture (Sinhala)                                                             | Walk-the-perimeter survey (online)               | Restyle the existing survey screens.                                                      |
-| 12, 13 | Officer / Review, Saved Offline                                                              | Review of the saved record; offline states       | Restyle with the real saved, pending, synced, conflict and rejected states.               |
-| 06     | Officer / Sync Center                                                                        | Sync state exists inside the offline workspace   | A small status area first; a full sync centre only if the data supports it.               |
-| –      | Navigation items Field Operations, Resources, Agreements, Planning, People & Access, Reports | **Not built** (some deferred by the owner)       | Shown as disabled "Planned" items, never as pages.                                        |
+| #      | Frame in the base design                                                                     | Built today?                                             | Plan                                                                                                |
+| ------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| –      | **Sign-in** (not in the base)                                                                | Yes, admin web and field PWA: **done in stages 1 and 2** | Designed in the same language for both apps. The field page shows the real online or offline state. |
+| 01     | Admin / Overview                                                                             | No overview; counts have no endpoint                     | Build with live data where an endpoint exists, honest "not available" elsewhere.                    |
+| 02     | Admin / Farmer Registry                                                                      | Yes (list, filters, review queue)                        | Restyle inside the new shell.                                                                       |
+| 03     | Admin / Land Map                                                                             | Land list and detail only; **no map**                    | Restyle the land list. The map waits for ADR 0023 acceptance and the DEC-09 tile licence.           |
+| 07     | Admin / Farmer 360 Profile                                                                   | Farmer detail, history, correction, verification         | Restyle inside the shell.                                                                           |
+| 08     | Admin / Project Enrollment                                                                   | Yes (policy, enroll, withdraw, directory)                | Restyle; enrollment sits under Projects in the base, kept as its own item until then.               |
+| 04, 09 | Officer / Home (offline, Sinhala)                                                            | Field home and encrypted offline workspace               | Task-first home with real online, offline and sync states.                                          |
+| 05, 10 | Officer / Farmer Registration                                                                | Yes (offline-capable registration)                       | Restyle, behaviour unchanged.                                                                       |
+| 11     | Officer / Land Capture (Sinhala)                                                             | Walk-the-perimeter survey (online)                       | Restyle the existing survey screens.                                                                |
+| 12, 13 | Officer / Review, Saved Offline                                                              | Review of the saved record; offline states               | Restyle with the real saved, pending, synced, conflict and rejected states.                         |
+| 06     | Officer / Sync Center                                                                        | Sync state exists inside the offline workspace           | A small status area first; a full sync centre only if the data supports it.                         |
+| –      | Navigation items Field Operations, Resources, Agreements, Planning, People & Access, Reports | **Not built** (some deferred by the owner)               | Shown as disabled "Planned" items, never as pages.                                                  |
 
 ## Deliberate deviations from the base (each reversible)
 
@@ -48,12 +48,13 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 | Inline SVG icons instead of Unicode symbols (next stage)                  | Symbol glyphs vary by device font and read badly to screen readers.                                                                                               |
 | Record navigation is hidden until signed in                               | The base design shows the shell only for a signed-in user; the old screen showed tabs with no access behind them.                                                 |
 
-## Sign-in (this stage)
+## Sign-in (stages 1 and 2)
 
 - The base design has no sign-in, so it is designed here: a dark brand panel beside a white card on desktop, a compact brand bar above one column on phones.
 - **Unchanged:** the four fields (account name, password, authenticator code, approved device ID), their labels and security attributes (`autocomplete`, `inputmode`, `pattern`, length limits), the sign-in button, the device-enrollment-request download and the session re-check.
 - **Kept after a regression check:** the session re-check button, and the "shared filters are invalid" alert with its reset button, both of which also had to work while signed out.
 - **Added:** short hints for the authenticator code and the device ID, a skip link, one heading, and the language switch.
+- **Field PWA (stage 2):** same layout, mobile first. Extra, officer-specific: the device's real connection state ("Device is offline.") is shown at the top, the **encrypted offline workspace link stays directly under the form in every state** (checking, signed out, signed in), the device ID keeps its UUID pattern and the device-request button still validates it first. While the session is being checked the page shows the same layout with a status line instead of a different frame, so signed-out officers see no layout flash and the language switch is never replaced mid-click (a lost-click bug found during testing).
 - Wording that tells staff what the system does ("changes are recorded in an audit trail", "you only see records your account is permitted to see") was written from what the back end actually does.
 
 ## Language
@@ -62,9 +63,11 @@ English and Sinhala. **The new Sinhala strings were written without a native-spe
 
 ## Next stages (one pull request each)
 
-1. Field sign-in and the field home states.
-2. Admin shell and navigation (disabled "Planned" modules), then the overview.
-3. Farmer registry, farmer profile, land list, projects and enrollments.
-4. Officer registration, land capture, review and saved-offline screens.
+1. ~~Admin sign-in~~ (done, merged).
+2. ~~Field sign-in~~ (this stage).
+3. Field home task states and the offline workspace screens.
+4. Admin shell and navigation (disabled "Planned" modules), then the overview.
+5. Farmer registry, farmer profile, land list, projects and enrollments.
+6. Officer registration, land capture, review and saved-offline screens.
 
 Each stage is checked with unit tests, a real-browser run at desktop and phone widths, and the full CI. Passing checks is evidence, not design approval; the owner reviews the visuals.
