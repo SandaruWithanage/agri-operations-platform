@@ -1,0 +1,45 @@
+name: CodeQL Security Review
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan even when no pull request is open (UTC).
+    - cron: "23 2 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL / JavaScript and TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Check out pull request source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL security-extended queries
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+          build-mode: none
+
+      - name: Analyze and upload GitHub code scanning results
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
