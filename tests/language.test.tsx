@@ -11,8 +11,13 @@ test("officer can switch between Sinhala and English with matching document lang
   render(<Home />);
   expect(document.documentElement.lang).toBe("si");
   await user.click(screen.getByRole("button", { name: "English" }));
+  // While the session is being checked the page title is the heading; once signed
+  // out it is the sign-in heading. Either proves the page switched to English.
   expect(
-    screen.getByRole("heading", { name: "Field officer workspace" }),
+    await screen.findByRole("heading", {
+      level: 1,
+      name: /^(Field officer workspace|Sign in)$/,
+    }),
   ).toBeTruthy();
   expect(document.documentElement.lang).toBe("en");
   expect(window.localStorage.getItem("agri-language")).toBe("en");

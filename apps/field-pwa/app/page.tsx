@@ -1,8 +1,6 @@
 "use client";
-import { applicationName } from "@agri/ui";
 import { useEffect, useState } from "react";
 import { PilotWorkspace } from "../components/pilot-workspace";
-import { copy } from "@agri/i18n";
 import { LocaleProvider, useLocale } from "@agri/i18n/react";
 export default function Home() {
   return (
@@ -24,36 +22,13 @@ function FieldHome() {
       window.removeEventListener("offline", update);
     };
   }, []);
-  const c = copy[language];
+  // The workspace renders the whole page: the sign-in layout when signed out and
+  // the task home (language switch, network state, title) when signed in.
   return (
-    <main>
-      <p className="kicker">
-        {applicationName} • {c.role}
-      </p>
-      <div
-        style={{ display: "flex", gap: 8, marginBottom: 24 }}
-        aria-label="Language"
-      >
-        <button
-          aria-pressed={language === "en"}
-          onClick={() => chooseLanguage("en")}
-        >
-          English
-        </button>
-        <button
-          aria-pressed={language === "si"}
-          onClick={() => chooseLanguage("si")}
-        >
-          සිංහල
-        </button>
-      </div>
-      {online !== null && (
-        <p role="status">{online ? c.networkOnline : c.networkOffline}</p>
-      )}
-      <div className="card">
-        <h1>{c.title}</h1>
-        <PilotWorkspace language={language} />
-      </div>
-    </main>
+    <PilotWorkspace
+      language={language}
+      online={online}
+      onLanguageChange={chooseLanguage}
+    />
   );
 }
