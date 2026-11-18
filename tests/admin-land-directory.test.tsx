@@ -50,7 +50,8 @@ function setup() {
 }
 async function open(client: PilotClient) {
   render(<FarmerRegistry client={client} />);
-  const button = screen.getByRole("button", {
+  // The record tabs appear once the session is loaded (not on the sign-in screen).
+  const button = await screen.findByRole("button", {
     name: "Reported land",
     exact: true,
   });

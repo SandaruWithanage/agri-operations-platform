@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@agri/design-tokens/tokens.css";
+@import "@agri/ui/ui.css";
 * {
   box-sizing: border-box;
 }
@@ -72,19 +73,6 @@ input:focus-visible,
 summary:focus-visible {
   outline: 3px solid var(--agri-color-focus);
   outline-offset: 3px;
-}
-.sign-in {
-  max-width: 32rem;
-  display: grid;
-  gap: 10px;
-}
-.sign-in input {
-  min-height: var(--agri-tap-min);
-  border: 2px solid var(--agri-color-input-border);
-  border-radius: var(--agri-radius-control);
-  padding: 10px;
-  font: inherit;
-  background: var(--agri-color-surface);
 }
 .table-scroll {
   overflow-x: auto;

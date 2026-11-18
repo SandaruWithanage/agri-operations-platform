@@ -48,6 +48,9 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { applicationName } from "@agri/ui";
+import { AuthShell } from "@agri/ui/auth-shell";
+import { LocaleToggle } from "@agri/ui/locale-toggle";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import { sameFarmerFilters, type FarmerListFilters } from "@agri/validation";
 import { readReviewFilters, reviewFilterUrl } from "../lib/review-filters";
@@ -55,6 +58,17 @@ import type { FarmerSummary } from "@agri/validation";
 const words = {
   en: {
     language: "Language",
+    skipToSignIn: "Skip to sign-in",
+    brandTagline: "Secure access for agricultural operations staff",
+    points: [
+      "Your account, authenticator code and approved device are all required.",
+      "You only see the records your account is permitted to see.",
+      "Changes you make are recorded in an audit trail.",
+    ],
+    otpHint: "6 digits from your authenticator app.",
+    deviceHint: "Provided by your administrator when your device was approved.",
+    prepareHint:
+      "Device not approved yet? Create an enrollment request for your administrator.",
     title: "Farmer registry",
     login: "Account name",
     password: "Password",
@@ -105,6 +119,17 @@ const words = {
   },
   si: {
     language: "භාෂාව",
+    skipToSignIn: "පුරන්න වෙත යන්න",
+    brandTagline: "කෘෂිකාර්මික මෙහෙයුම් කාර්ය මණ්ඩලය සඳහා ආරක්ෂිත ප්‍රවේශය",
+    points: [
+      "ඔබේ ගිණුම, සත්‍යාපක කේතය සහ අනුමත උපාංගය යන සියල්ල අවශ්‍ය වේ.",
+      "ඔබේ ගිණුමට අවසර ඇති වාර්තා පමණක් ඔබට පෙනේ.",
+      "ඔබ කරන වෙනස්කම් විගණන වාර්තාවක සටහන් වේ.",
+    ],
+    otpHint: "ඔබේ සත්‍යාපක යෙදුමෙන් ඉලක්කම් 6ක්.",
+    deviceHint: "ඔබේ උපාංගය අනුමත කළ විට පරිපාලක විසින් ලබා දෙයි.",
+    prepareHint:
+      "උපාංගය තවමත් අනුමත කර නැද්ද? ඔබේ පරිපාලකයා සඳහා ලියාපදිංචි ඉල්ලීමක් සාදන්න.",
     title: "ගොවි ලේඛනය",
     login: "ගිණුම් නාමය",
     password: "මුරපදය",
@@ -990,6 +1015,162 @@ function RegistryView({
         : value === "verified"
           ? copy.verified
           : copy.inactive;
+  if (!context) {
+    return (
+      <AuthShell
+        brandName={applicationName}
+        brandTagline={copy.brandTagline}
+        points={copy.points}
+        skipLabel={copy.skipToSignIn}
+        title={copy.signIn}
+        intro={copy.auth}
+        toolbar={
+          <LocaleToggle
+            value={language}
+            onChange={setLanguage}
+            label={copy.language}
+          />
+        }
+      >
+        {invalidFilters && (
+          <div role="alert" className="agri-notice agri-notice--error">
+            <p>{copy.invalidFilters}</p>
+            <button
+              className="agri-btn agri-btn--secondary"
+              onClick={() => void load(undefined, [undefined], "farmers", {})}
+            >
+              {copy.resetFilters}
+            </button>
+          </div>
+        )}
+        {message && (
+          <p
+            className={
+              message === "prepared"
+                ? "agri-notice agri-notice--success"
+                : "agri-notice agri-notice--error"
+            }
+            role={message === "prepared" ? "status" : "alert"}
+          >
+            {message === "missing" ? domainCopy.missing : copy[message]}
+          </p>
+        )}
+        {busy && (
+          <p className="agri-notice" role="status">
+            {copy.busy}
+          </p>
+        )}
+        <form ref={form} className="agri-form" onSubmit={login}>
+          <label htmlFor="admin-login">{copy.login}</label>
+          <input
+            id="admin-login"
+            name="loginName"
+            autoComplete="username"
+            required
+            maxLength={200}
+            disabled={busy}
+          />
+          <label htmlFor="admin-password">{copy.password}</label>
+          <input
+            id="admin-password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            maxLength={256}
+            disabled={busy}
+          />
+          <label htmlFor="admin-otp">{copy.otp}</label>
+          <input
+            id="admin-otp"
+            name="otp"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            required
+            maxLength={6}
+            aria-describedby="admin-otp-hint"
+            disabled={busy}
+          />
+          <p id="admin-otp-hint" className="agri-hint">
+            {copy.otpHint}
+          </p>
+          <label htmlFor="admin-device">{copy.device}</label>
+          <input
+            id="admin-device"
+            name="deviceId"
+            autoComplete="off"
+            required
+            maxLength={36}
+            aria-describedby="admin-device-hint"
+            disabled={busy}
+          />
+          <p id="admin-device-hint" className="agri-hint">
+            {copy.deviceHint}
+          </p>
+          <div className="agri-form__actions">
+            <button
+              className="agri-btn agri-btn--primary"
+              type="submit"
+              disabled={busy}
+            >
+              {copy.signIn}
+            </button>
+            <p className="agri-hint">{copy.prepareHint}</p>
+            <button
+              className="agri-btn agri-btn--secondary"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const deviceId = (
+                  form.current?.elements.namedItem(
+                    "deviceId",
+                  ) as HTMLInputElement
+                )?.value;
+                setBusy(true);
+                setMessage(null);
+                try {
+                  const request = await client.prepareDevice(deviceId);
+                  setFingerprint(request.fingerprint);
+                  const url = URL.createObjectURL(
+                    new Blob([JSON.stringify(request, null, 2)], {
+                      type: "application/json",
+                    }),
+                  );
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = "agri-device-enrollment.json";
+                  anchor.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  setMessage("prepared");
+                } catch {
+                  setMessage("failure");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {copy.prepare}
+            </button>
+          </div>
+          {fingerprint && (
+            <p className="agri-notice">
+              {copy.fingerprint}: <output>{fingerprint}</output>
+            </p>
+          )}
+        </form>
+        <div className="agri-form__actions">
+          <button
+            className="agri-btn agri-btn--secondary"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            {copy.refresh}
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
   return (
     <main>
       <nav className="actions" aria-label={copy.language}>
@@ -1103,94 +1284,6 @@ function RegistryView({
           </button>
         )}
       </div>
-      {!context && (
-        <form ref={form} className="sign-in" onSubmit={login}>
-          <p>{copy.auth}</p>
-          <label htmlFor="admin-login">{copy.login}</label>
-          <input
-            id="admin-login"
-            name="loginName"
-            autoComplete="username"
-            required
-            maxLength={200}
-            disabled={busy}
-          />
-          <label htmlFor="admin-password">{copy.password}</label>
-          <input
-            id="admin-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            maxLength={256}
-            disabled={busy}
-          />
-          <label htmlFor="admin-otp">{copy.otp}</label>
-          <input
-            id="admin-otp"
-            name="otp"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6}"
-            required
-            maxLength={6}
-            disabled={busy}
-          />
-          <label htmlFor="admin-device">{copy.device}</label>
-          <input
-            id="admin-device"
-            name="deviceId"
-            autoComplete="off"
-            required
-            maxLength={36}
-            disabled={busy}
-          />
-          <div className="actions">
-            <button type="submit" disabled={busy}>
-              {copy.signIn}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={async () => {
-                const deviceId = (
-                  form.current?.elements.namedItem(
-                    "deviceId",
-                  ) as HTMLInputElement
-                )?.value;
-                setBusy(true);
-                setMessage(null);
-                try {
-                  const request = await client.prepareDevice(deviceId);
-                  setFingerprint(request.fingerprint);
-                  const url = URL.createObjectURL(
-                    new Blob([JSON.stringify(request, null, 2)], {
-                      type: "application/json",
-                    }),
-                  );
-                  const anchor = document.createElement("a");
-                  anchor.href = url;
-                  anchor.download = "agri-device-enrollment.json";
-                  anchor.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 1000);
-                  setMessage("prepared");
-                } catch {
-                  setMessage("failure");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {copy.prepare}
-            </button>
-          </div>
-          {fingerprint && (
-            <p>
-              {copy.fingerprint}: <output>{fingerprint}</output>
-            </p>
-          )}
-        </form>
-      )}
       {domain === "farmers" &&
         context &&
         !selected &&

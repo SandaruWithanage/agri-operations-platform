@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./farmer-registration": "./src/farmer-registration-form.tsx"
+    "./farmer-registration": "./src/farmer-registration-form.tsx",
+    "./auth-shell": "./src/auth-shell.tsx",
+    "./locale-toggle": "./src/locale-toggle.tsx",
+    "./ui.css": "./src/ui.css"
   },
   "scripts": {
     "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
