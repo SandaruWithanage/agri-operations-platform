@@ -204,17 +204,25 @@ function SessionView({
     }
   }
 
+  // Task links stay reachable in every state, including while the session is
+  // being checked and when signed out, because the encrypted offline workspace
+  // must open without a server round trip. Only their position changes: first
+  // when signed in or checking, after the sign-in form when signed out.
+  const taskLinks = (
+    <nav className="workspace-nav" aria-label={c.navigation}>
+      <a className="nav-link" href="/offline-workspace">
+        {c.offlineLink}
+      </a>
+      <a className="nav-link" href="/land-survey">
+        {c.surveyLink}
+      </a>
+    </nav>
+  );
+  const showTasksAfterSignIn = !checking && !signedIn;
+
   return (
     <section className="pilot-workspace" aria-label={c.online}>
-      <p className="status">{c.limitation}</p>
-      <nav className="workspace-nav" aria-label={c.navigation}>
-        <a className="nav-link" href="/offline-workspace">
-          {c.offlineLink}
-        </a>
-        <a className="nav-link" href="/land-survey">
-          {c.surveyLink}
-        </a>
-      </nav>
+      {showTasksAfterSignIn ? null : taskLinks}
       {checking ? (
         <p role="status">{c.checking}</p>
       ) : (
@@ -320,6 +328,7 @@ function SessionView({
               </button>
             </form>
           )}
+          {showTasksAfterSignIn ? taskLinks : null}
           <div className="workspace-actions">
             <button
               disabled={busy}
@@ -359,6 +368,7 @@ function SessionView({
           </div>
         </>
       )}
+      <p className="status">{c.limitation}</p>
     </section>
   );
 }

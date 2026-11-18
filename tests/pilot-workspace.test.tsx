@@ -203,3 +203,57 @@ it("replaces the cache when the client changes and supports strict lifecycle rep
     ),
   ).toBe(true);
 });
+
+// Issue #71 (owner direction OWNER-D1): the field home leads with the officer's
+// tasks when signed in and with sign-in when signed out. The task links must stay
+// reachable in every state so the encrypted offline workspace never depends on a
+// session round trip.
+const before = (first: Element, second: Element) =>
+  Boolean(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+
+it("leads with the task links when signed in and keeps the notice last", async () => {
+  render(<PilotWorkspace language="en" client={client()} />);
+  const signOut = await screen.findByRole("button", { name: "Sign out" });
+  const offline = screen.getByRole("link", {
+    name: "Open encrypted offline workspace",
+  });
+  const survey = screen.getByRole("link", {
+    name: "Survey a land perimeter (online)",
+  });
+  const notice = screen.getByText(/Sign in on your approved device/);
+  expect(before(offline, signOut)).toBe(true);
+  expect(before(survey, signOut)).toBe(true);
+  expect(before(signOut, notice)).toBe(true);
+});
+
+it("leads with sign-in when signed out and still offers the task links after it", async () => {
+  const api = client();
+  render(<PilotWorkspace language="en" client={api} />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Sign out" }));
+  const password = await screen.findByLabelText("Password");
+  const offline = screen.getByRole("link", {
+    name: "Open encrypted offline workspace",
+  });
+  expect(offline.getAttribute("href")).toBe("/offline-workspace");
+  expect(
+    screen
+      .getByRole("link", { name: "Survey a land perimeter (online)" })
+      .getAttribute("href"),
+  ).toBe("/land-survey");
+  expect(before(password, offline)).toBe(true);
+});
+
+it("keeps the offline workspace link reachable while the session is still being checked", () => {
+  const api = new PilotClient();
+  vi.spyOn(api, "context").mockReturnValue(new Promise(() => {}));
+  render(<PilotWorkspace language="en" client={api} />);
+  expect(screen.getByText("Checking session…")).toBeTruthy();
+  expect(
+    screen
+      .getByRole("link", { name: "Open encrypted offline workspace" })
+      .getAttribute("href"),
+  ).toBe("/offline-workspace");
+});
