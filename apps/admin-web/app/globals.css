@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@agri/design-tokens/tokens.css";
 * {
   box-sizing: border-box;
 }
@@ -12,11 +13,11 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f5f7f5;
-  color: #172b28;
+  background: var(--agri-color-bg);
+  color: var(--agri-color-text);
 }
 a {
-  color: #16724e;
+  color: var(--agri-color-link);
 }
 main {
   max-width: 900px;
@@ -24,9 +25,9 @@ main {
   padding: 36px 24px;
 }
 .card {
-  background: white;
-  border: 1px solid #e0e7e2;
-  border-radius: 14px;
+  background: var(--agri-color-surface);
+  border: 1px solid var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
   padding: 24px;
 }
 .kicker {
@@ -34,13 +35,13 @@ main {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #16724e;
+  color: var(--agri-color-brand);
 }
 .status {
   padding: 12px 16px;
-  border-radius: 9px;
-  background: #e4f3ea;
-  color: #103c32;
+  border-radius: var(--agri-radius-status);
+  background: var(--agri-color-status-bg);
+  color: var(--agri-color-status-text);
 }
 button {
   font: inherit;
@@ -53,12 +54,12 @@ button {
   margin: 1rem 0;
 }
 button {
-  min-height: 44px;
+  min-height: var(--agri-tap-min);
   padding: 10px 16px;
-  border: 2px solid #255a40;
-  border-radius: 6px;
-  color: #143c2c;
-  background: white;
+  border: 2px solid var(--agri-color-control-border);
+  border-radius: var(--agri-radius-control);
+  color: var(--agri-color-control-text);
+  background: var(--agri-color-surface);
   font: inherit;
   cursor: pointer;
 }
@@ -69,7 +70,7 @@ button:disabled {
 button:focus-visible,
 input:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--agri-color-focus);
   outline-offset: 3px;
 }
 .sign-in {
@@ -78,12 +79,12 @@ summary:focus-visible {
   gap: 10px;
 }
 .sign-in input {
-  min-height: 44px;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
+  min-height: var(--agri-tap-min);
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
   padding: 10px;
   font: inherit;
-  background: white;
+  background: var(--agri-color-surface);
 }
 .table-scroll {
   overflow-x: auto;
@@ -92,23 +93,23 @@ summary:focus-visible {
 table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--agri-color-surface);
 }
 th,
 td {
   text-align: start;
-  border-bottom: 1px solid #b6c8bd;
+  border-bottom: 1px solid var(--agri-color-divider);
   padding: 12px;
 }
 th {
-  background: #e2eee6;
+  background: var(--agri-color-table-head-bg);
 }
 section {
   margin-top: 24px;
   padding: 24px;
-  background: white;
-  border: 1px solid #b6c8bd;
-  border-radius: 8px;
+  background: var(--agri-color-surface);
+  border: 1px solid var(--agri-color-divider);
+  border-radius: var(--agri-radius-control-large);
 }
 dt {
   font-weight: 700;
@@ -122,7 +123,7 @@ dd {
   padding-inline-start: 24px;
 }
 .audit-events > li {
-  border-bottom: 1px solid #b6c8bd;
+  border-bottom: 1px solid var(--agri-color-divider);
   padding: 16px 0;
 }
 .audit-events h4 {
@@ -136,11 +137,11 @@ dd {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 44px;
+  min-height: var(--agri-tap-min);
   padding: 12px;
   margin: 16px 0;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
 }
 .review-confirmation input {
   flex-shrink: 0;
@@ -157,15 +158,15 @@ dd {
   margin-bottom: 8px;
 }
 .review-filters select {
-  min-height: 44px;
+  min-height: var(--agri-tap-min);
   padding: 10px;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
-  background: white;
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
+  background: var(--agri-color-surface);
   font: inherit;
 }
 select:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--agri-color-focus);
   outline-offset: 3px;
 }
 
@@ -181,17 +182,17 @@ select:focus-visible {
 }
 .correction-editor input:not([type="checkbox"]),
 .correction-editor select {
-  min-height: 44px;
+  min-height: var(--agri-tap-min);
   max-width: 100%;
-  border: 2px solid #355b4f;
-  border-radius: 6px;
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control);
   padding: 10px;
-  background: white;
-  color: #172b28;
+  background: var(--agri-color-surface);
+  color: var(--agri-color-text);
   font: inherit;
 }
 .correction-editor select:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--agri-color-focus);
   outline-offset: 3px;
 }
 .correction-editor .review-confirmation {

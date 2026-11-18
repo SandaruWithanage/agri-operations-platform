@@ -1,0 +1,45 @@
+/*
+ * Shared design tokens for the admin web and field PWA (issue #71, step 3).
+ *
+ * The values below are exactly the ones both apps hard-coded before this file
+ * existed, so adopting the tokens changes nothing on screen. New colours must be
+ * added here, not typed into an app stylesheet; tests/design-tokens.test.ts checks
+ * contrast and that the apps use only these tokens. Keep the TypeScript mirror in
+ * index.ts in step (a test fails when they differ).
+ */
+:root {
+  /* Surfaces and text */
+  --agri-color-bg: #f5f7f5;
+  --agri-color-surface: #ffffff;
+  --agri-color-text: #172b28;
+  --agri-color-text-muted: #355b4f;
+  --agri-color-link: #16724e;
+  --agri-color-brand: #16724e;
+
+  /* Borders and dividers */
+  --agri-color-border: #e0e7e2;
+  --agri-color-divider: #b6c8bd;
+  --agri-color-input-border: #355b4f;
+  --agri-color-control-border: #255a40;
+  --agri-color-control-text: #143c2c;
+
+  /* Status and feedback */
+  --agri-color-status-bg: #e4f3ea;
+  --agri-color-status-text: #103c32;
+  --agri-color-danger-text: #7f1d1d;
+  --agri-color-table-head-bg: #e2eee6;
+  --agri-color-pressed-bg: #cfe8da;
+
+  /* Keyboard focus */
+  --agri-color-focus: #1d4ed8;
+
+  /* Shape */
+  --agri-radius-card: 14px;
+  --agri-radius-status: 9px;
+  --agri-radius-control: 6px;
+  --agri-radius-control-large: 8px;
+
+  /* Touch targets (field work: gloves, sun, one hand) */
+  --agri-tap-min: 44px;
+  --agri-tap-comfortable: 48px;
+}
