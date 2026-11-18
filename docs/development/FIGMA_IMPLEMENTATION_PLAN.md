@@ -57,6 +57,14 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 - **Field PWA (stage 2):** same layout, mobile first. Extra, officer-specific: the device's real connection state ("Device is offline.") is shown at the top, the **encrypted offline workspace link stays directly under the form in every state** (checking, signed out, signed in), the device ID keeps its UUID pattern and the device-request button still validates it first. While the session is being checked the page shows the same layout with a status line instead of a different frame, so signed-out officers see no layout flash and the language switch is never replaced mid-click (a lost-click bug found during testing).
 - Wording that tells staff what the system does ("changes are recorded in an audit trail", "you only see records your account is permitted to see") was written from what the back end actually does.
 
+## Admin shell (stage 3)
+
+- A dark sidebar (Farmers, Land, Projects, Enrollments with inline SVG icons and a current-page marker), a top bar with the language switch, and one `main`. On phones the sidebar becomes a scrolling bar above the page.
+- Navigation uses `aria-current="page"` instead of `aria-pressed`, which is what screen readers announce as "current page".
+- Modules that are not built (Field Operations, Resources, Agreements, Planning, People & Access, Reports) are listed as plain text with a "Planned" tag. They are not buttons or links, so nothing implies a working page. The modules listed are the base design's, not a promise of scope: several are deferred by the owner.
+- Navigation items are not yet filtered by role. That waits on the DEC-02 role matrix; the database still decides access.
+- Everything inside the page (filters, lists, forms, correction, withdrawal) is unchanged in this stage and is restyled in stage 5.
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).
@@ -64,9 +72,9 @@ English and Sinhala. **The new Sinhala strings were written without a native-spe
 ## Next stages (one pull request each)
 
 1. ~~Admin sign-in~~ (done, merged).
-2. ~~Field sign-in~~ (this stage).
-3. Field home task states and the offline workspace screens.
-4. Admin shell and navigation (disabled "Planned" modules), then the overview.
+2. ~~Field sign-in~~ (done, merged).
+3. ~~Admin shell and navigation~~ with disabled "Planned" modules (this stage). The overview follows.
+4. Field home task states and the offline workspace screens.
 5. Farmer registry, farmer profile, land list, projects and enrollments.
 6. Officer registration, land capture, review and saved-offline screens.
 
