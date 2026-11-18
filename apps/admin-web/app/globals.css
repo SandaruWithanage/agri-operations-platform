@@ -187,3 +187,47 @@ select:focus-visible {
   display: flex;
   align-items: center;
 }
+
+/* Signed-in page content inside the admin shell (issue #71, stage 5).
+   Presentation only: sizes stay at or above the touch minimum. */
+.agri-shell__main h1 {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  color: var(--agri-color-forest);
+}
+.agri-shell__main > p {
+  color: var(--agri-color-text-subtle);
+  line-height: 1.5;
+}
+.agri-shell__main button {
+  border-radius: var(--agri-radius-control-large);
+  border-color: var(--agri-color-border);
+  background: var(--agri-color-surface-pale);
+  color: var(--agri-color-forest);
+  font-weight: 600;
+}
+.agri-shell__main button[aria-pressed="true"] {
+  border-color: var(--agri-color-brand);
+  background: var(--agri-color-brand);
+  color: var(--agri-color-surface);
+}
+.agri-shell__main .table-scroll {
+  border: 1px solid var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
+  background: var(--agri-color-surface);
+}
+.agri-shell__main table th {
+  color: var(--agri-color-text-subtle);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.agri-shell__main tbody tr:last-child td {
+  border-bottom: 0;
+}
+.agri-shell__main section {
+  border-color: var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
+}
