@@ -79,6 +79,10 @@ This ADR covers a durable, encrypted, resumable **draft** of an in-progress walk
 6. **Q6 (reviewer and owner):** accept that whole-snapshot rollback is not prevented across sessions (with the stated bounded impact), or add a server-held monotonic revision anchor recorded at online verification? The anchor would send draft metadata, never coordinates, and needs its own contract and review.
 7. **Q7 (reviewer):** may a visible walk that is still receiving fresh GPS fixes count as activity for the five-minute idle lock, or must the lock apply regardless and the walk resume from the last commit?
 
+### Owner direction (18 Nov 2026, provisional, not client-approved)
+
+Recorded as OWNER-D3 in the [decision register](../requirements/OPEN_DECISIONS.md): preserve data first and warn explicitly; keep drafts until recovery is confirmed or the user authorizes deletion. This answers **Q2** (capture may continue in memory with a clear "not saved on device" warning) and **Q3** (unsynchronized drafts are never auto-deleted; whether and when to warn about age, for example the proposed seven days, is a design detail the owner has not set). **Q1, Q4, Q5, Q6 and Q7 remain open for the independent reviewer.** This ADR is still Proposed.
+
 ## Required tests before code is accepted
 
 - Round-trip and resume: kill the page mid-walk, reopen, unlock, continue; points, order and segments intact; resume starts a new segment.
