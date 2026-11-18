@@ -1,0 +1,302 @@
+/*
+ * Shared UI styles for the admin web and the field PWA (issue #71).
+ * Colours, radii and touch-target sizes come only from @agri/design-tokens.
+ * Every interactive control is at least --agri-tap-min tall; primary form
+ * controls use --agri-tap-comfortable.
+ */
+
+/* Skip link: first focusable element, visible only when focused. */
+.agri-skip {
+  position: absolute;
+  left: 12px;
+  top: -64px;
+  z-index: 10;
+  padding: 12px 16px;
+  border-radius: var(--agri-radius-control-large);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-text);
+  font-weight: 600;
+  text-decoration: none;
+  border: 2px solid var(--agri-color-focus);
+}
+.agri-skip:focus-visible {
+  top: 12px;
+}
+
+/* Brand mark */
+.agri-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.agri-brand__mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--agri-color-brand);
+  box-shadow: 0 0 0 3px var(--agri-color-surface-pale);
+}
+
+/* Language switch */
+.agri-locale {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--agri-color-border);
+  border-radius: 10px;
+  background: var(--agri-color-surface);
+}
+.agri-locale button {
+  min-width: var(--agri-tap-min);
+  min-height: var(--agri-tap-min);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--agri-color-forest);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agri-locale button[aria-pressed="true"] {
+  background: var(--agri-color-brand);
+  color: var(--agri-color-surface);
+}
+.agri-locale button:focus-visible {
+  outline: 3px solid var(--agri-color-focus);
+  outline-offset: 2px;
+}
+
+/* Sign-in layout */
+.agri-auth {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--agri-color-bg);
+  color: var(--agri-color-text);
+}
+.agri-auth__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 56px 48px;
+  background: var(--agri-color-forest);
+  color: var(--agri-color-surface);
+}
+.agri-auth__brand .agri-brand__mark {
+  background: var(--agri-color-surface);
+  box-shadow: 0 0 0 3px var(--agri-color-brand);
+}
+.agri-auth__tagline {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.25;
+  font-weight: 700;
+  max-width: 22ch;
+}
+.agri-auth__points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 14px;
+  color: var(--agri-color-nav-muted);
+  font-size: 1rem;
+  line-height: 1.45;
+}
+.agri-auth__points li {
+  padding-left: 22px;
+  position: relative;
+}
+.agri-auth__points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--agri-color-brand);
+  box-shadow: 0 0 0 2px var(--agri-color-nav-muted);
+}
+/* The class selector beats the legacy global `main` rule in both apps. */
+.agri-auth__main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 20px;
+  max-width: none;
+  margin: 0;
+  padding: 32px clamp(20px, 6vw, 72px);
+}
+.agri-auth__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+}
+.agri-auth__card {
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 32px;
+  border: 1px solid var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
+  background: var(--agri-color-surface);
+}
+.agri-auth__card h1 {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+.agri-auth__intro {
+  margin: 0 0 20px;
+  color: var(--agri-color-text-subtle);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.agri-auth__footer {
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  color: var(--agri-color-text-subtle);
+  font-size: 0.85rem;
+}
+
+/* Narrow screens: a compact brand bar above one column. */
+@media (max-width: 860px) {
+  .agri-auth {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .agri-auth__brand {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+  }
+  .agri-auth__tagline,
+  .agri-auth__points {
+    display: none;
+  }
+  .agri-auth__main {
+    justify-content: flex-start;
+    padding: 20px 16px 32px;
+  }
+  .agri-auth__card {
+    padding: 24px 20px;
+  }
+}
+
+/* Forms */
+.agri-form {
+  display: grid;
+  gap: 6px;
+}
+.agri-form label {
+  margin-top: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.agri-form input,
+.agri-form select {
+  width: 100%;
+  min-height: var(--agri-tap-comfortable);
+  padding: 10px 14px;
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control-large);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-text);
+  font: inherit;
+}
+.agri-form input:focus-visible,
+.agri-form select:focus-visible {
+  outline: 3px solid var(--agri-color-focus);
+  outline-offset: 2px;
+}
+.agri-form input:disabled,
+.agri-form select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.agri-hint {
+  margin: 0;
+  color: var(--agri-color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.agri-form__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* Buttons: one primary action, quieter secondary actions. */
+.agri-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--agri-tap-comfortable);
+  padding: 10px 18px;
+  border: 2px solid var(--agri-color-control-border);
+  border-radius: var(--agri-radius-control-large);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-control-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agri-btn--primary {
+  border-color: var(--agri-color-brand);
+  background: var(--agri-color-brand);
+  color: var(--agri-color-surface);
+}
+.agri-btn--secondary {
+  border-color: var(--agri-color-border);
+  background: var(--agri-color-surface-pale);
+  color: var(--agri-color-forest);
+}
+.agri-btn:focus-visible {
+  outline: 3px solid var(--agri-color-focus);
+  outline-offset: 3px;
+}
+.agri-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Notices: always text, never colour alone. */
+.agri-notice {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--agri-color-border);
+  border-left-width: 6px;
+  border-radius: var(--agri-radius-status);
+  background: var(--agri-color-surface-pale);
+  color: var(--agri-color-forest);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.agri-notice--error {
+  border-color: var(--agri-color-danger-text);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-danger-text);
+  font-weight: 600;
+}
+.agri-notice--success {
+  background: var(--agri-color-status-bg);
+  color: var(--agri-color-status-text);
+}
+.agri-notice code,
+.agri-notice output {
+  overflow-wrap: anywhere;
+}

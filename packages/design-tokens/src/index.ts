@@ -21,6 +21,13 @@ export const colors = {
   tableHeadBg: "#e2eee6",
   pressedBg: "#cfe8da",
   focus: "#1d4ed8",
+  forest: "#103c32",
+  surfacePale: "#edf4f0",
+  navMuted: "#b7c6c1",
+  textSubtle: "#5f706b",
+  warningText: "#a05f17",
+  warningBg: "#fff2dc",
+  focusOnDark: "#9dc4ff",
 } as const;
 
 export const radii = {

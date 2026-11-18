@@ -1250,7 +1250,8 @@ try {
     .getByRole("button", { name: "සිංහල", exact: true })
     .click();
   await page.waitForFunction(() => document.documentElement.lang === "si");
-  await page.getByRole("heading", { name: "ගොවි ලේඛනය", exact: true }).waitFor();
+  // The page is signed out here, so its heading is the sign-in heading, not the registry title.
+  await page.getByRole("heading", { name: "පුරන්න", exact: true }).waitFor();
   await preferenceTab
     .getByRole("button", { name: "English", exact: true })
     .click();

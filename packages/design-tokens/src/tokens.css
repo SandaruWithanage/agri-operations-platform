@@ -30,8 +30,24 @@
   --agri-color-table-head-bg: #e2eee6;
   --agri-color-pressed-bg: #cfe8da;
 
-  /* Keyboard focus */
+  /* Navigation and brand surfaces (from the Figma base design) */
+  --agri-color-forest: #103c32;
+  --agri-color-surface-pale: #edf4f0;
+  --agri-color-nav-muted: #b7c6c1;
+
+  /* Secondary text. The Figma value #677a74 failed WCAG AA on the page background
+     (4.23:1); #5f706b passes on every surface it is used on (lowest 4.56:1). */
+  --agri-color-text-subtle: #5f706b;
+
+  /* Warning tags. The Figma orange #a56218 failed on its soft background (4.35:1);
+     #a05f17 passes (4.58:1). */
+  --agri-color-warning-text: #a05f17;
+  --agri-color-warning-bg: #fff2dc;
+
+  /* Keyboard focus. The blue is invisible on the dark sidebar (1.83:1), so dark
+     surfaces use a light ring (6.87:1). */
   --agri-color-focus: #1d4ed8;
+  --agri-color-focus-on-dark: #9dc4ff;
 
   /* Shape */
   --agri-radius-card: 14px;

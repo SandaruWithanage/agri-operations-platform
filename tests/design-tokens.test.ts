@@ -63,6 +63,15 @@ describe("design tokens", () => {
     ["control text on card", "control-text", "surface"],
     ["text on table header", "text", "table-head-bg"],
     ["text on pressed background", "text", "pressed-bg"],
+    ["subtle text on page", "text-subtle", "bg"],
+    ["subtle text on card", "text-subtle", "surface"],
+    ["subtle text on pale surface", "text-subtle", "surface-pale"],
+    ["subtle text on soft green", "text-subtle", "status-bg"],
+    ["warning text on warning background", "warning-text", "warning-bg"],
+    ["warning text on card", "warning-text", "surface"],
+    ["white on forest (sidebar and brand panel)", "surface", "forest"],
+    ["muted navigation text on forest", "nav-muted", "forest"],
+    ["forest text on pale surface", "forest", "surface-pale"],
   ];
   it.each(textPairs)("meets 4.5:1 for %s", (_label, fg, bg) => {
     expect(contrast(color(fg), color(bg))).toBeGreaterThanOrEqual(4.5);
@@ -73,6 +82,7 @@ describe("design tokens", () => {
     ["keyboard focus ring on card", "focus", "surface"],
     ["input border on card", "input-border", "surface"],
     ["control border on card", "control-border", "surface"],
+    ["light focus ring on forest", "focus-on-dark", "forest"],
   ];
   it.each(uiPairs)("meets 3:1 for %s", (_label, fg, bg) => {
     expect(contrast(color(fg), color(bg))).toBeGreaterThanOrEqual(3);
