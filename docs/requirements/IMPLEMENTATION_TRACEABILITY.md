@@ -18,9 +18,9 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 
 - Implemented (bounded): 8
 - Partial: 47
-- Design only: 11
+- Design only: 17
 - Blocked: 5
-- Not started: 93
+- Not started: 87
 
 ## Organization, access and devices (FR-ORG)
 
@@ -149,23 +149,23 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 
 ## Resources and inventory (FR-INV)
 
-| ID         | Requirement (shortened)                                                                           | Status      | Evidence or gap                 |
-| ---------- | ------------------------------------------------------------------------------------------------- | ----------- | ------------------------------- |
-| FR-INV-001 | Resource catalog shall support configurable types, units, categories and organization/program ap… | Not started | No implementation or design yet |
-| FR-INV-002 | Every stock-affecting receipt, issue, transfer, return, loss, damage, correction or adjustment s… | Not started | No implementation or design yet |
-| FR-INV-003 | Officers may distribute only authorized, already allocated stock while offline, and each issuanc… | Not started | No implementation or design yet |
-| FR-INV-004 | Officer confirmation shall be mandatory at pilot; farmer acknowledgment method shall be configur… | Not started | No implementation or design yet |
-| FR-INV-005 | Loss and correction transactions shall require approved pilot authorization; returns shall requi… | Not started | No implementation or design yet |
-| FR-INV-006 | Each resource shall define authoritative base unit and allowed conversion factors with version/e… | Not started | No implementation or design yet |
-| FR-INV-007 | Every quantity-affecting event shall preserve entered quantity/unit and validated normalized bas… | Not started | No implementation or design yet |
-| FR-INV-008 | Inter-location transfers shall require sender dispatch and receiver receipt confirmation, includ… | Not started | No implementation or design yet |
-| FR-INV-009 | Resource-specific lot tracking shall capture source, batch ID, relevant dates/expiry and traceab… | Not started | No implementation or design yet |
-| FR-INV-010 | Quotas shall be configurable by project, resource, cycle, farmer category and approved area, wit… | Not started | No implementation or design yet |
-| FR-INV-011 | Validated authoritative parcel area shall be used for area-based quotas; disputed/unverified are… | Not started | No implementation or design yet |
-| FR-INV-012 | Offline distribution sync shall use stable mutation IDs, stock allocation version and expected b… | Not started | No implementation or design yet |
-| FR-INV-013 | Corrections and reversals shall be compensating transactions linked to original events with reas… | Not started | No implementation or design yet |
-| FR-INV-014 | Transfers and allocation receipts shall expose statuses proposed, dispatched, partially received… | Not started | No implementation or design yet |
-| FR-INV-015 | Inventory queries, transfers and distribution exports shall honor current RBAC+ABAC, restricting… | Not started | No implementation or design yet |
+| ID         | Requirement (shortened)                                                                           | Status      | Evidence or gap                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| FR-INV-001 | Resource catalog shall support configurable types, units, categories and organization/program ap… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented |
+| FR-INV-002 | Every stock-affecting receipt, issue, transfer, return, loss, damage, correction or adjustment s… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented |
+| FR-INV-003 | Officers may distribute only authorized, already allocated stock while offline, and each issuanc… | Not started | No implementation or design yet                                             |
+| FR-INV-004 | Officer confirmation shall be mandatory at pilot; farmer acknowledgment method shall be configur… | Not started | No implementation or design yet                                             |
+| FR-INV-005 | Loss and correction transactions shall require approved pilot authorization; returns shall requi… | Not started | No implementation or design yet                                             |
+| FR-INV-006 | Each resource shall define authoritative base unit and allowed conversion factors with version/e… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented |
+| FR-INV-007 | Every quantity-affecting event shall preserve entered quantity/unit and validated normalized bas… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented |
+| FR-INV-008 | Inter-location transfers shall require sender dispatch and receiver receipt confirmation, includ… | Not started | No implementation or design yet                                             |
+| FR-INV-009 | Resource-specific lot tracking shall capture source, batch ID, relevant dates/expiry and traceab… | Not started | No implementation or design yet                                             |
+| FR-INV-010 | Quotas shall be configurable by project, resource, cycle, farmer category and approved area, wit… | Not started | No implementation or design yet                                             |
+| FR-INV-011 | Validated authoritative parcel area shall be used for area-based quotas; disputed/unverified are… | Not started | No implementation or design yet                                             |
+| FR-INV-012 | Offline distribution sync shall use stable mutation IDs, stock allocation version and expected b… | Not started | No implementation or design yet                                             |
+| FR-INV-013 | Corrections and reversals shall be compensating transactions linked to original events with reas… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented |
+| FR-INV-014 | Transfers and allocation receipts shall expose statuses proposed, dispatched, partially received… | Not started | No implementation or design yet                                             |
+| FR-INV-015 | Inventory queries, transfers and distribution exports shall honor current RBAC+ABAC, restricting… | Not started | No implementation or design yet                                             |
 
 ## Reporting (FR-RPT)
 
@@ -231,7 +231,7 @@ Per [AGENTS.md](../../AGENTS.md) no completion percentage is derived from this t
 | NFR-PERF-01 | Proposed benchmark profile uses 3,000 farmer records and 20–40 concurrent staff solely for plann… | Not started | No implementation or design yet                                                  |
 | NFR-PERF-02 | Scoped spatial queries shall use appropriate indexes and bounded geometry/viewport limits with o… | Partial     | GiST indexes and bounded viewport limits (PR #50); no load or query-plan testing |
 | NFR-PERF-03 | Custom reports and scheduled jobs shall impose query cost/row/time caps and capacity safeguards.  | Not started | No implementation or design yet                                                  |
-| NFR-PERF-04 | Concurrent resource issues shall preserve stock invariants using database-level locking, constra… | Not started | No implementation or design yet                                                  |
+| NFR-PERF-04 | Concurrent resource issues shall preserve stock invariants using database-level locking, constra… | Design only | ADR 0026 (proposed): exact numerics and append-only ledger; not implemented      |
 | NFR-PERF-05 | Proposed production backup RPO 1 hour and RTO 8 hours are contractual candidates, not guaranteed… | Not started | No implementation or design yet                                                  |
 | NFR-PERF-06 | Monitoring shall detect failed backup, API outage, DB saturation and sync backlog with assigned … | Not started | No implementation or design yet                                                  |
 

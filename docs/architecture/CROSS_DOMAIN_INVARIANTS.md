@@ -52,18 +52,18 @@ No schema exists yet for people/roles, documents, parcel–person relations, res
 
 ## 5. Planned additive order (each item waits on the decision or review shown)
 
-| Order | Migration (additive)                                                                                      | Depends on                                                         |
-| ----- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 1     | `iam` permission catalog, `person`, nullable `account.person_id` (read-only first, P1-03a)                | DEC-02 role matrix; independent review of ADR 0022                 |
-| 2     | Roles, role versions, bindings materialized into the existing grant tables; access requests and approvals | Step 1; ADR 0022 acceptance                                        |
-| 3     | Project cycles, closure and eligibility policy versions (P1-15 remainder)                                 | DEC-04 enrollment lifecycle                                        |
-| 4     | Parcel–person relations and land evidence metadata                                                        | DEC-09 and Q17–Q20 decisions; step 1                               |
-| 5     | `land.geometry_overlap`, resolutions and `allocatable_m2` function (ADR 0024)                             | Owner disclosure decision; DEC-09 tolerance; step 2 reviewer roles |
-| 6     | Document metadata and encrypted object references                                                         | DEC-06 retention and consent; storage choice                       |
-| 7     | Resource catalog, units, append-only ledger, quota policy versions                                        | DEC-05 resource and quota rules; steps 3–5                         |
-| 8     | Reporting views and scheduled report definitions                                                          | Steps 5 and 7; export permissions                                  |
-| 9     | Import staging, mapping and approved commit with provenance                                               | DEC-10; DEC-06                                                     |
-| 10    | Offline enrollment support tables (only if ADR 0021 is Accepted)                                          | ADR 0021 A1–A4 and Gate E                                          |
+| Order | Migration (additive)                                                                                      | Depends on                                                                               |
+| ----- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1     | `iam` permission catalog, `person`, nullable `account.person_id` (read-only first, P1-03a)                | DEC-02 role matrix; independent review of ADR 0022                                       |
+| 2     | Roles, role versions, bindings materialized into the existing grant tables; access requests and approvals | Step 1; ADR 0022 acceptance                                                              |
+| 3     | Project cycles, closure and eligibility policy versions (P1-15 remainder)                                 | DEC-04 enrollment lifecycle                                                              |
+| 4     | Parcel–person relations and land evidence metadata                                                        | DEC-09 and Q17–Q20 decisions; step 1                                                     |
+| 5     | `land.geometry_overlap`, resolutions and `allocatable_m2` function (ADR 0024)                             | Owner disclosure decision; DEC-09 tolerance; step 2 reviewer roles                       |
+| 6     | Document metadata and encrypted object references                                                         | DEC-06 retention and consent; storage choice                                             |
+| 7     | Resource catalog, units, locations, append-only ledger core (ADR 0026), then quota policy versions        | Ledger core: DEC-05 and independent review. Quotas and allocations: DEC-05 and steps 3–5 |
+| 8     | Reporting views and scheduled report definitions                                                          | Steps 5 and 7; export permissions                                                        |
+| 9     | Import staging, mapping and approved commit with provenance                                               | DEC-10; DEC-06                                                                           |
+| 10    | Offline enrollment support tables (only if ADR 0021 is Accepted)                                          | ADR 0021 A1–A4 and Gate E                                                                |
 
 ## 6. State diagrams for the lifecycles that exist
 
