@@ -819,6 +819,39 @@ try {
     );
   await page.getByRole("button", { name: "Farmers", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+  // Admin shell layout (issue #71): one main, sidebar navigation with a current
+  // page, unbuilt modules as plain text, no overflow and 44 px targets at
+  // desktop and phone widths.
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    assert.equal(await page.getByRole("main").count(), 1, `main at ${width}`);
+    assert.equal(
+      await page
+        .getByRole("navigation", { name: "Records" })
+        .getByRole("button", { name: "Farmers", exact: true })
+        .getAttribute("aria-current"),
+      "page",
+    );
+    const layout = await page.evaluate(() => ({
+      overflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+      small: [...document.querySelectorAll("button, select, input")]
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          return box.width > 0 && box.height > 0 && box.height < 43.5;
+        })
+        .filter((el) => el.type !== "checkbox")
+        .map((el) => el.textContent?.trim() || el.id),
+    }));
+    assert.equal(layout.overflow, false, `horizontal overflow at ${width}`);
+    assert.deepEqual(layout.small, [], `controls under 44px at ${width}`);
+  }
+  assert.equal(
+    await page.getByRole("button", { name: /Reports|Resources/ }).count(),
+    0,
+  );
+  await page.setViewportSize({ width: 1280, height: 800 });
   readable = false;
   await page
     .getByRole("button", { name: "Check session and refresh", exact: true })

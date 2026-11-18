@@ -50,6 +50,7 @@ import {
 } from "react";
 import { applicationName } from "@agri/ui";
 import { AuthShell } from "@agri/ui/auth-shell";
+import { AdminShell } from "@agri/ui/admin-shell";
 import { LocaleToggle } from "@agri/ui/locale-toggle";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import { sameFarmerFilters, type FarmerListFilters } from "@agri/validation";
@@ -59,6 +60,17 @@ const words = {
   en: {
     language: "Language",
     skipToSignIn: "Skip to sign-in",
+    skipToContent: "Skip to content",
+    plannedHeading: "Planned modules",
+    plannedTag: "Planned",
+    planned: [
+      "Field Operations",
+      "Resources",
+      "Agreements",
+      "Planning",
+      "People & Access",
+      "Reports",
+    ],
     brandTagline: "Secure access for agricultural operations staff",
     points: [
       "Your account, authenticator code and approved device are all required.",
@@ -120,6 +132,17 @@ const words = {
   si: {
     language: "භාෂාව",
     skipToSignIn: "පුරන්න වෙත යන්න",
+    skipToContent: "අන්තර්ගතය වෙත යන්න",
+    plannedHeading: "සැලසුම් කළ මොඩියුල",
+    plannedTag: "සැලසුම්",
+    planned: [
+      "ක්ෂේත්‍ර මෙහෙයුම්",
+      "සම්පත්",
+      "ගිවිසුම්",
+      "සැලසුම්කරණය",
+      "පුද්ගලයින් සහ ප්‍රවේශය",
+      "වාර්තා",
+    ],
     brandTagline: "කෘෂිකාර්මික මෙහෙයුම් කාර්ය මණ්ඩලය සඳහා ආරක්ෂිත ප්‍රවේශය",
     points: [
       "ඔබේ ගිණුම, සත්‍යාපක කේතය සහ අනුමත උපාංගය යන සියල්ල අවශ්‍ය වේ.",
@@ -1172,51 +1195,36 @@ function RegistryView({
     );
   }
   return (
-    <main>
-      <nav className="actions" aria-label={copy.language}>
-        {(["en", "si"] as const).map((value) => (
-          <button
-            key={value}
-            aria-pressed={language === value}
-            onClick={() => setLanguage(value)}
-          >
-            {value === "en" ? "English" : "සිංහල"}
-          </button>
-        ))}
-      </nav>
-      <nav
-        className="actions"
-        aria-label={language === "en" ? "Records" : "වාර්තා"}
-      >
-        <button
-          disabled={authBusy}
-          aria-pressed={domain === "farmers"}
-          onClick={() => void load(undefined, [undefined], "farmers")}
-        >
-          {language === "en" ? "Farmers" : "ගොවීන්"}
-        </button>
-        <button
-          disabled={authBusy}
-          aria-pressed={domain === "land"}
-          onClick={() => void load(undefined, [undefined], "land")}
-        >
-          {landCopy.tab}
-        </button>
-        <button
-          disabled={authBusy}
-          aria-pressed={domain === "projects"}
-          onClick={() => void load(undefined, [undefined], "projects")}
-        >
-          {projectWords[language].tab}
-        </button>
-        <button
-          disabled={authBusy}
-          aria-pressed={domain === "enrollments"}
-          onClick={() => void load(undefined, [undefined], "enrollments")}
-        >
-          {enrollmentWords[language].tab}
-        </button>
-      </nav>
+    <AdminShell
+      brandName={applicationName}
+      navLabel={language === "en" ? "Records" : "වාර්තා"}
+      skipLabel={copy.skipToContent}
+      plannedHeading={copy.plannedHeading}
+      plannedTag={copy.plannedTag}
+      planned={copy.planned}
+      toolbar={
+        <LocaleToggle
+          value={language}
+          onChange={setLanguage}
+          label={copy.language}
+        />
+      }
+      items={(
+        [
+          ["farmers", "farmers", language === "en" ? "Farmers" : "ගොවීන්"],
+          ["land", "land", landCopy.tab],
+          ["projects", "projects", projectWords[language].tab],
+          ["enrollments", "enrollments", enrollmentWords[language].tab],
+        ] as const
+      ).map(([id, icon, label]) => ({
+        id,
+        icon,
+        label,
+        current: domain === id,
+        disabled: authBusy,
+        onSelect: () => void load(undefined, [undefined], id),
+      }))}
+    >
       <h1>{domainCopy.title}</h1>
       {invalidFilters && (
         <div role="alert">
@@ -1554,6 +1562,6 @@ function RegistryView({
           <button onClick={() => void load()}>{copy.close}</button>
         </section>
       )}
-    </main>
+    </AdminShell>
   );
 }
