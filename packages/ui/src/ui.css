@@ -506,6 +506,31 @@
     box-shadow: 0 8px 24px rgb(16 60 50 / 8%);
   }
 }
+/* One blur layer per surface hierarchy (issue 101). A glass surface inside another glass surface keeps its
+   translucent background but is never filtered again: nested backdrop filters compound compositing cost on
+   low-end phones and make translucency inconsistent. */
+.agri-glass
+  :is(
+    .agri-glass,
+    .agri-shell__main section,
+    .agri-shell__main .table-scroll,
+    .agri-shell__main fieldset,
+    .field-frame .card
+  ),
+.agri-shell__main
+  section
+  :is(section, .table-scroll, fieldset, .agri-glass, .card),
+.agri-shell__main fieldset :is(section, .table-scroll, fieldset, .agri-glass),
+.agri-shell__main
+  .table-scroll
+  :is(section, .table-scroll, fieldset, .agri-glass),
+.agri-shell__side :is(.agri-glass, section, .table-scroll, fieldset),
+.agri-shell__top :is(.agri-glass, section, .table-scroll, fieldset),
+.agri-auth__card :is(.agri-glass, section, .table-scroll, fieldset),
+.field-frame .card :is(.card, .agri-glass) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .agri-glass,
   .agri-auth__card,
