@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSecurityEvents,
+  getSecurityEvents,
+  setSecurityEventsForTests,
   securityEventNames,
   securityReasons,
   securityRouteClasses,
@@ -220,6 +222,247 @@ describe("security events: robustness and bounded volume", () => {
     events.emit({ ...base, client: "c1" });
     expect(parsed()).toHaveLength(2);
     expect(parsed()[1].count).toBe(500);
+  });
+
+  it("flushes a burst that stops: the suppressed count reaches the log after the window, with no further traffic (issue 113)", () => {
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      const events = createSecurityEvents({
+        sink: (line) => lines.push(line),
+        hashKey: key,
+        now: () => Date.now(),
+        coalesceMs: 10_000,
+      });
+      for (let i = 0; i < 500; i += 1) events.emit({ ...base, client: "c1" });
+      expect(lines).toHaveLength(1);
+      expect(events.snapshot().pending).toBe(499);
+      vi.advanceTimersByTime(10_001);
+      const parsed = lines.map((l) => JSON.parse(l));
+      expect(parsed).toHaveLength(2);
+      expect(parsed[1].count).toBe(499);
+      expect(parsed.reduce((n, e) => n + (e.count ?? 1), 0)).toBe(500);
+      expect(events.snapshot().pending).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses one bounded timer that does not keep the process alive, and none when nothing is pending", () => {
+    vi.useFakeTimers();
+    try {
+      const events = createSecurityEvents({
+        sink: () => undefined,
+        hashKey: key,
+        now: () => Date.now(),
+        coalesceMs: 10_000,
+      });
+      for (let i = 0; i < 300; i += 1)
+        events.emit({ ...base, client: `c${i % 30}` });
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(10_001);
+      expect(vi.getTimerCount()).toBe(0);
+      const source = readFileSync(
+        join(__dirname, "../packages/security-events/src/index.ts"),
+        "utf8",
+      );
+      expect(source).toContain("unref");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flush() writes every pending count at once, one line per key, and loses nothing", () => {
+    const { events, parsed } = collector({ coalesceMs: 60_000 });
+    for (let i = 0; i < 40; i += 1) events.emit({ ...base, client: "c1" });
+    for (let i = 0; i < 25; i += 1)
+      events.emit({ ...base, client: "c2", reason: "session-budget" });
+    for (let i = 0; i < 10; i += 1)
+      events.emit({ ...base, client: "c3", routeClass: "session-read" });
+    expect(events.snapshot().pending).toBe(39 + 24 + 9);
+    events.flush();
+    expect(events.snapshot().pending).toBe(0);
+    const total = parsed().reduce((n, e) => n + (e.count ?? 1), 0);
+    expect(total).toBe(75);
+    expect(parsed()).toHaveLength(6);
+    events.flush();
+    expect(parsed()).toHaveLength(6);
+  });
+
+  it("keeps a key's pending count when that key is evicted", () => {
+    const { events, parsed } = collector({ maxKeys: 3, coalesceMs: 60_000 });
+    for (let i = 0; i < 5; i += 1) events.emit({ ...base, client: "c1" });
+    for (const c of ["c2", "c3", "c4"]) events.emit({ ...base, client: c });
+    expect(events.snapshot().pending).toBe(0);
+    events.flush();
+    const total = parsed().reduce((n, e) => n + (e.count ?? 1), 0);
+    expect(total).toBe(8);
+    expect(parsed().some((e) => e.count === 4)).toBe(true);
+  });
+
+  it("flushes without raw identifiers, never throws, and counts a failing sink as dropped", () => {
+    const lines: string[] = [];
+    let fail = false;
+    const events = createSecurityEvents({
+      sink: (line) => {
+        if (fail) throw new Error("disk full");
+        lines.push(line);
+      },
+      hashKey: key,
+      coalesceMs: 60_000,
+    });
+    for (let i = 0; i < 3; i += 1)
+      events.emit({ ...base, client: "203.0.113.77", account: "Nimal Perado" });
+    events.flush();
+    expect(lines.join("\n")).not.toContain("203.0.113.77");
+    expect(lines.join("\n")).not.toContain("Nimal Perado");
+    for (let i = 0; i < 3; i += 1) events.emit({ ...base, client: "other" });
+    fail = true;
+    expect(() => events.flush()).not.toThrow();
+    expect(events.snapshot().dropped).toBeGreaterThan(0);
+  });
+
+  it("isolates one failing write among several pending keys: the others are written and the failed count is kept for retry", () => {
+    const lines: string[] = [];
+    let failing = true;
+    const events = createSecurityEvents({
+      sink: (line) => {
+        if (failing && line.includes('"reason":"session-budget"'))
+          throw new Error("disk full");
+        lines.push(line);
+      },
+      hashKey: key,
+      coalesceMs: 60_000,
+    });
+    const burst = (reason: SecurityEventInput["reason"], n: number) => {
+      for (let i = 0; i < n; i += 1)
+        events.emit({ ...base, client: `c-${reason}`, reason });
+    };
+    burst("client-budget", 4);
+    burst("session-budget", 5); // the first line of this key already failed once and stays pending
+    burst("unattributed-budget", 6);
+    expect(() => events.flush()).not.toThrow();
+    const written = lines.map((l) => JSON.parse(l));
+    // The first and third keys are fully written even though the second key's write failed between them.
+    expect(
+      written
+        .filter((e) => e.reason === "unattributed-budget")
+        .reduce((n, e) => n + (e.count ?? 1), 0),
+    ).toBe(6);
+    expect(
+      written
+        .filter((e) => e.reason === "client-budget")
+        .reduce((n, e) => n + (e.count ?? 1), 0),
+    ).toBe(4);
+    expect(events.snapshot().pending).toBe(5); // nothing from the failed key was discarded
+    expect(events.snapshot().lost).toBe(0);
+    expect(events.snapshot().dropped).toBeGreaterThan(0);
+    failing = false;
+    events.flush();
+    expect(events.snapshot().pending).toBe(0);
+    const total = lines
+      .map((l) => JSON.parse(l))
+      .reduce((n, e) => n + (e.count ?? 1), 0);
+    expect(total).toBe(15);
+  });
+
+  it("retries a failed write on the next timer tick and never throws from the timer", () => {
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      let failing = true;
+      const events = createSecurityEvents({
+        sink: (line) => {
+          if (failing) throw new Error("disk full");
+          lines.push(line);
+        },
+        hashKey: key,
+        now: () => Date.now(),
+        coalesceMs: 10_000,
+      });
+      for (let i = 0; i < 30; i += 1) events.emit({ ...base, client: "c1" });
+      expect(events.snapshot().pending).toBe(30);
+      expect(() => vi.advanceTimersByTime(25_000)).not.toThrow();
+      expect(events.snapshot().pending).toBe(30);
+      expect(vi.getTimerCount()).toBe(1); // still one bounded timer while retrying
+      failing = false;
+      vi.advanceTimersByTime(10_001);
+      expect(events.snapshot().pending).toBe(0);
+      expect(JSON.parse(lines[0]).count).toBe(30);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accounts for every occurrence under a flaky sink and a small key bound: written + pending + lost = emitted", () => {
+    let calls = 0;
+    let broken = true;
+    const lines: string[] = [];
+    const events = createSecurityEvents({
+      sink: (line) => {
+        calls += 1;
+        if (broken && calls % 3 !== 0) throw new Error("flaky");
+        lines.push(line);
+      },
+      hashKey: key,
+      coalesceMs: 60_000,
+      maxKeys: 5,
+    });
+    let emitted = 0;
+    for (let round = 0; round < 10; round += 1)
+      for (let client = 0; client < 20; client += 1) {
+        expect(() =>
+          events.emit({ ...base, client: `c${client}` }),
+        ).not.toThrow();
+        emitted += 1;
+      }
+    expect(events.snapshot().events["bff.ratelimit.exceeded|refused"]).toBe(
+      emitted,
+    );
+    expect(events.snapshot().lost).toBeGreaterThan(0); // discarded to keep memory bounded
+    broken = false;
+    events.flush();
+    const written = lines
+      .map((l) => JSON.parse(l))
+      .reduce((n, e) => n + (e.count ?? 1), 0);
+    const { pending, lost } = events.snapshot();
+    expect(written + pending + lost).toBe(emitted);
+    expect(pending).toBe(0);
+  });
+
+  it("writes nothing that could identify a source when writes fail and are retried", () => {
+    const lines: string[] = [];
+    let failing = true;
+    const events = createSecurityEvents({
+      sink: (line) => {
+        if (failing) throw new Error(`disk full while writing ${line}`);
+        lines.push(line);
+      },
+      hashKey: key,
+      coalesceMs: 60_000,
+    });
+    for (let i = 0; i < 5; i += 1)
+      events.emit({ ...base, client: "203.0.113.77", account: "Nimal Perado" });
+    failing = false;
+    events.flush();
+    const text = JSON.stringify(events.snapshot()) + lines.join("\n");
+    expect(text).not.toContain("203.0.113.77");
+    expect(text).not.toContain("Nimal Perado");
+  });
+
+  it("registers the shutdown flush once for the process-wide emitter", () => {
+    setSecurityEventsForTests(undefined);
+    const before = {
+      exit: process.listenerCount("exit"),
+      beforeExit: process.listenerCount("beforeExit"),
+    };
+    const first = getSecurityEvents();
+    expect(process.listenerCount("exit")).toBe(before.exit + 1);
+    expect(process.listenerCount("beforeExit")).toBe(before.beforeExit + 1);
+    expect(getSecurityEvents()).toBe(first);
+    expect(process.listenerCount("exit")).toBe(before.exit + 1);
+    setSecurityEventsForTests(undefined);
   });
 
   it("keeps different clients, reasons and route classes as separate coalescing keys", () => {

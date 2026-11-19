@@ -65,12 +65,24 @@ export type SecurityEventSink = (line: string) => void;
 export type SecurityEventSnapshot = {
   /** Every occurrence by `event|outcome`, including coalesced ones. */
   events: Record<string, number>;
+  /** Occurrences counted but not yet written to the log (waiting for the window to close, or for a failed write to be retried). */
+  pending: number;
+  /**
+   * Occurrences that could never be written: a pending count had to be discarded to keep memory bounded while
+   * the sink was failing, or a line that could not be coalesced failed to write. Always zero while the sink works.
+   */
+  lost: number;
   /** Events dropped because they were invalid or the sink failed. */
   dropped: number;
 };
 
 export interface SecurityEvents {
   emit(input: SecurityEventInput): void;
+  /**
+   * Writes every pending coalesced count now, one bounded line per coalescing key. Called on a timer and when the
+   * process ends, so a burst that stops (or a process that is recycled) is still fully represented in the log.
+   */
+  flush(): void;
   snapshot(): SecurityEventSnapshot;
 }
 
@@ -108,8 +120,16 @@ export function createSecurityEvents(
       ? options.hashKey
       : undefined;
   const counters = new Map<string, number>();
-  const windows = new Map<string, { startedAt: number; suppressed: number }>();
+  type Window = {
+    startedAt: number;
+    suppressed: number;
+    /** The fixed, already-hashed fields of the first event in the window (never raw identifiers). */
+    fields: Record<string, unknown>;
+  };
+  const windows = new Map<string, Window>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let dropped = 0;
+  let lost = 0;
 
   function keyed(field: string, value: unknown): string | undefined {
     if (!key || typeof value !== "string" || value === "" || value.length > 200)
@@ -118,6 +138,77 @@ export function createSecurityEvents(
       .update(`${field}\u0000${value}`)
       .digest("base64url")
       .slice(0, 22);
+  }
+
+  function write(fields: Record<string, unknown>, at: number, count: number) {
+    const { v, event, outcome, ...rest } = fields;
+    const line: Record<string, unknown> = {
+      v,
+      event,
+      time: new Date(at).toISOString(),
+      outcome,
+      ...rest,
+    };
+    if (count > 1) line.count = count;
+    sink(JSON.stringify(line));
+  }
+
+  /** One write attempt; a failing sink is counted and reported to the caller, never thrown. */
+  function tryWrite(
+    fields: Record<string, unknown>,
+    at: number,
+    count: number,
+  ): boolean {
+    try {
+      write(fields, at, count);
+      return true;
+    } catch {
+      dropped += 1;
+      return false;
+    }
+  }
+
+  /**
+   * Writes what a window counted but never logged. The count is cleared only after the line was written, so a
+   * failed write keeps it for the next attempt (the timer retries; the work per attempt is bounded by maxKeys).
+   */
+  function writePending(window: Window, at: number): boolean {
+    if (window.suppressed === 0) return true;
+    if (!tryWrite(window.fields, at, window.suppressed)) return false;
+    window.suppressed = 0;
+    return true;
+  }
+
+  function hasPending(): boolean {
+    for (const window of windows.values())
+      if (window.suppressed > 0) return true;
+    return false;
+  }
+
+  /** One timer for all keys, never keeping the process alive; it re-arms only while counts are pending. */
+  function arm() {
+    if (timer !== undefined || coalesceMs <= 0) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      flushWindows(false); // re-arms itself while anything is still pending
+    }, coalesceMs);
+    (timer as { unref?: () => void }).unref?.();
+  }
+
+  function flushWindows(all: boolean) {
+    try {
+      const at = now();
+      for (const [key, window] of windows) {
+        const expired = at - window.startedAt >= coalesceMs;
+        if (!all && !expired) continue;
+        // Each key is isolated: a failed write keeps that key's count and never stops the others.
+        const written = writePending(window, at);
+        if (expired && written) windows.delete(key);
+      }
+      if (hasPending()) arm();
+    } catch {
+      dropped += 1;
+    }
   }
 
   function emit(input: SecurityEventInput): void {
@@ -155,6 +246,19 @@ export function createSecurityEvents(
       counters.set(counterKey, (counters.get(counterKey) ?? 0) + 1);
 
       const at = now();
+      // Fixed key order and fixed keys only: nothing from `input` is copied through.
+      const fields: Record<string, unknown> = {
+        v: 1,
+        event: input.event,
+        outcome: input.outcome,
+      };
+      if (input.routeClass) fields.routeClass = input.routeClass;
+      if (input.reason) fields.reason = input.reason;
+      if (account) fields.account = account;
+      if (client) fields.client = client;
+      if (device) fields.device = device;
+      if (detail) fields.detail = detail;
+
       let count = 1;
       if (coalesceMs > 0 && input.event !== "config.unsafe.detected") {
         const windowKey = [
@@ -169,32 +273,31 @@ export function createSecurityEvents(
         const existing = windows.get(windowKey);
         if (existing && at - existing.startedAt < coalesceMs) {
           existing.suppressed += 1;
+          arm();
           return;
         }
         count = 1 + (existing?.suppressed ?? 0);
         if (windows.size >= maxKeys && !existing) {
-          const oldest = windows.keys().next().value;
-          if (oldest !== undefined) windows.delete(oldest);
+          // Evicting a key must not lose what it had counted: write its pending count first.
+          const oldest = windows.entries().next().value;
+          if (oldest !== undefined) {
+            // Memory stays bounded even when the sink is failing: a count that cannot be written is discarded
+            // and reported in `lost`, never kept without limit.
+            if (!writePending(oldest[1], at)) lost += oldest[1].suppressed;
+            windows.delete(oldest[0]);
+          }
         }
         windows.delete(windowKey);
-        windows.set(windowKey, { startedAt: at, suppressed: 0 });
+        const window: Window = { startedAt: at, suppressed: 0, fields };
+        windows.set(windowKey, window);
+        if (!tryWrite(fields, at, count)) {
+          // The occurrences this line stood for stay pending and are retried, so they are not silently lost.
+          window.suppressed = count;
+          arm();
+        }
+        return;
       }
-
-      // Fixed key order and fixed keys only: nothing from `input` is copied through.
-      const line: Record<string, unknown> = {
-        v: 1,
-        event: input.event,
-        time: new Date(at).toISOString(),
-        outcome: input.outcome,
-      };
-      if (input.routeClass) line.routeClass = input.routeClass;
-      if (input.reason) line.reason = input.reason;
-      if (account) line.account = account;
-      if (client) line.client = client;
-      if (device) line.device = device;
-      if (detail) line.detail = detail;
-      if (count > 1) line.count = count;
-      sink(JSON.stringify(line));
+      if (!tryWrite(fields, at, count)) lost += count;
     } catch {
       dropped += 1;
     }
@@ -202,10 +305,12 @@ export function createSecurityEvents(
 
   return {
     emit,
-    snapshot: () => ({
-      events: Object.fromEntries(counters),
-      dropped,
-    }),
+    flush: () => flushWindows(true),
+    snapshot: () => {
+      let pending = 0;
+      for (const window of windows.values()) pending += window.suppressed;
+      return { events: Object.fromEntries(counters), pending, lost, dropped };
+    },
   };
 }
 
@@ -217,12 +322,19 @@ let shared: SecurityEvents | undefined;
  * but carry no account, client or device identifier, which also means client-level detection is not possible.
  */
 export function getSecurityEvents(): SecurityEvents {
-  shared ??= createSecurityEvents({
-    sink: (line) => {
-      process.stdout.write(line + "\n");
-    },
-    hashKey: process.env.SECURITY_EVENT_HASH_KEY,
-  });
+  if (!shared) {
+    const created = createSecurityEvents({
+      sink: (line) => {
+        process.stdout.write(line + "\n");
+      },
+      hashKey: process.env.SECURITY_EVENT_HASH_KEY,
+    });
+    // Orderly shutdown and exit write the counts still waiting for their window to close. A hard kill (SIGKILL,
+    // or SIGTERM with no handler) bypasses both, which is why the timer also bounds the loss to one window.
+    process.once("beforeExit", () => created.flush());
+    process.once("exit", () => created.flush());
+    shared = created;
+  }
   return shared;
 }
 
