@@ -1,4 +1,5 @@
 "use client";
+import { PermissionAction } from "@agri/ui/permission-action";
 import { ProjectEditor, type ProjectEditDraft } from "./project-edit";
 import {
   EnrollmentPolicyEditor,
@@ -1269,28 +1270,31 @@ function RegistryView({
           {copy.refresh}
         </button>
         {context && domain === "projects" && (
-          <button
+          <PermissionAction
+            code="project.create"
             disabled={busy || correctionOpen}
             onClick={() => onRegisterProject(context)}
           >
             {projectCreationWords[language].start}
-          </button>
+          </PermissionAction>
         )}
         {context && domain === "land" && (
-          <button
+          <PermissionAction
+            code="land.create"
             disabled={busy || correctionOpen}
             onClick={() => onRegisterLand(context)}
           >
             {landRegistrationWords[language].start}
-          </button>
+          </PermissionAction>
         )}
         {context && (
-          <button
+          <PermissionAction
+            code="farmer.create"
             disabled={busy || correctionOpen}
             onClick={() => onRegister(context)}
           >
             {registrationWords[language].start}
-          </button>
+          </PermissionAction>
         )}
         {context && (
           <button
@@ -1527,12 +1531,13 @@ function RegistryView({
           </dl>
           <p>{copy.review}</p>
           {context && (
-            <button
+            <PermissionAction
+              code="enrollment.create"
               disabled={correctionOpen}
               onClick={() => onEnrollFarmer(selected, context)}
             >
               {enrollmentCreateWords[language].start}
-            </button>
+            </PermissionAction>
           )}
           {data?.kind === "farmer-detail" &&
             data.value.access?.verify === true &&
@@ -1553,12 +1558,14 @@ function RegistryView({
             data.value.access?.correct === true &&
             context && (
               <>
-                <button
+                <PermissionAction
+                  code="farmer.correct"
+                  recordAllowed={data.value.access?.correct}
                   disabled={correctionOpen}
                   onClick={() => onCorrect(selected, context)}
                 >
                   {correctionWords[language].start}
-                </button>
+                </PermissionAction>
                 {correctionOpen && (
                   <p>{registrationWords[language].occupied}</p>
                 )}

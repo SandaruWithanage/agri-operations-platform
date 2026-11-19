@@ -1,4 +1,5 @@
 "use client";
+import { PermissionAction } from "@agri/ui/permission-action";
 import type { ProjectPage, ProjectDetail } from "@agri/validation";
 import { projectEditWords } from "./project-edit-words";
 import { projectWords } from "./project-words";
@@ -100,20 +101,23 @@ export function ProjectDirectory({
             </dd>
           </dl>
           {detail.access?.edit === true && onEdit && (
-            <button
+            <PermissionAction
+              code="project.update"
+              recordAllowed={detail.access?.edit}
               disabled={editDisabled || detail.project.version >= 2147483647}
               onClick={() => onEdit(detail.project)}
             >
               {projectEditWords[language].start}
-            </button>
+            </PermissionAction>
           )}
           {onPolicy && (
-            <button
+            <PermissionAction
+              code="enrollment.policy.set"
               disabled={editDisabled}
               onClick={() => onPolicy(detail.project)}
             >
               {enrollmentPolicyWords[language].start}
-            </button>
+            </PermissionAction>
           )}
           <button onClick={onClose}>{copy.close}</button>
         </section>
