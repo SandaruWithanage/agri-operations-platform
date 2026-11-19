@@ -8,6 +8,10 @@ Read the [Accepted data/state/cache ADR](docs/architecture/decisions/ADR-data-st
 
 Read [PROJECT_HANDOVER.md](docs/development/PROJECT_HANDOVER.md) before continuing implementation. It is the central delivered/pending task register and continuation plan. Whenever a pending task is completed or materially changes, update its stable task ID/status, what/how implemented, evidence, remaining limitations/dependencies and completion-log entry in the same PR. Split partially completed tasks rather than marking a whole domain done. Synchronize delivery status, roadmap, open decisions and setup/domain guides when their claims change. Preserve historical results as dated evidence. Keep engineering completion, CI results, provisional business rules and external client/device/production acceptance distinct; do not calculate completion percentages from tests, files or PR counts.
 
+## UI development rules
+
+Follow [UI_DEVELOPMENT_RULES.md](docs/development/UI_DEVELOPMENT_RULES.md): shared `@agri/ui` components first, one frosted-glass surface language with readable contrast and fallbacks, and every consequential action driven by a registered permission code. The interface is a convenience: PostgreSQL still decides, and a hidden button is never a security check.
+
 ## Working principles
 
 - Work in a feature branch. Never push directly to `main`, force-push, or merge without approval.
