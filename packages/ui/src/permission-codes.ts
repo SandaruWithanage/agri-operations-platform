@@ -17,7 +17,7 @@ export const permissionCodes = [
   "project.update",
   "enrollment.read",
   "enrollment.create",
-  "enrollment.policy.set",
+  "enrollment.policy",
   "enrollment.withdraw",
 ] as const;
 

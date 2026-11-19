@@ -112,7 +112,7 @@ export function ProjectDirectory({
           )}
           {onPolicy && (
             <PermissionAction
-              code="enrollment.policy.set"
+              code="enrollment.policy"
               disabled={editDisabled}
               onClick={() => onPolicy(detail.project)}
             >
