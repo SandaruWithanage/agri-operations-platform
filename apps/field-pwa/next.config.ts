@@ -45,6 +45,7 @@ export default {
   poweredByHeader: false,
   transpilePackages: [
     "@agri/auth-bff",
+    "@agri/security-events",
     "@agri/design-tokens",
     "@agri/ui",
     "@agri/i18n",
