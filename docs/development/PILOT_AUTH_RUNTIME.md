@@ -91,6 +91,8 @@ Behaviour that is deliberately unchanged:
 
 What an operator sees: the process exits with status 1 at start and the supervisor shows a crash, not a healthy server answering errors. Next.js on its own would keep the process alive and answer every request with HTTP 500 when its start-up hook fails; the explicit exit avoids that.
 
+**Production acceptance conditions (owner, 19 Nov 2026).** A zero hop count with the acknowledgement variable is **not proof of a secure public production deployment**. Before production security acceptance the following are required and **not yet met**: validation that the hop count matches the real proxy chain; forwarded-header spoofing tests through that topology; verification that the origin is not reachable except through the edge; and verification of the start-up refusal under the actual production process supervisor. See the [audit](../security/SECURITY_BASELINE_AUDIT.md).
+
 What this does **not** prove: that the configured hop count matches the real proxy chain. That needs a deployment test with a forged `X-Forwarded-For` through the approved topology (SEC-A3, hosting decision OPS-04).
 
 ## HTTP hardening of the API and the web apps
