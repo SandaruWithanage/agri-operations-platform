@@ -27,7 +27,7 @@ it("gives each language button its full name and reports the pressed one", async
 it("lays out one heading, one main landmark, a skip link and the supplied form", () => {
   render(
     <AuthShell
-      brandName="Agricultural Operations"
+      brandName="GoviAxis"
       brandTagline="Secure access"
       points={["First point", "Second point"]}
       skipLabel="Skip to sign-in"

@@ -1,4 +1,4 @@
-# Codex instructions — Agricultural Operations Platform
+# Codex instructions — GoviAxis (Integrated Agricultural Operations Management System)
 
 Read `docs/PROJECT_CONTEXT.md` before proposing changes. Treat it as the current architectural and requirements baseline, **not** an approved final SRS. Resolve disagreements by recording an ADR; never invent client decisions.
 

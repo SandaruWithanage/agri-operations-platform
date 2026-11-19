@@ -1,4 +1,4 @@
-# Project context — Agricultural Operations Platform
+# Project context — GoviAxis (Integrated Agricultural Operations Management System)
 
 Last confirmed from planning discussion: 14 November 2026. This is a working handoff for Codex, not a contract or approved production SRS.
 

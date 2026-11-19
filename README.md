@@ -1,4 +1,6 @@
-# Agricultural Operations Platform
+# GoviAxis | Integrated Agricultural Operations Management System
+
+**GoviAxis** is the short product name and is the name shown to users (login page, sidebar, browser titles, installed app). The repository, package scopes (`@agri/*`) and file names keep their technical identifiers (`agri-operations-platform`); they are not user-facing and are not renamed.
 
 Development foundation and provisional pilot registration. The repository contains tested hybrid authentication, PostgreSQL ABAC/RLS, server BFFs and an English/Sinhala encrypted offline registration workspace. Authentication is disabled by default. Complete device recovery/erasure, administration, remaining Phase 1 domains and production validation are unfinished. See [delivery status](docs/development/PHASE_1_STATUS.md) for the current inventory. Use synthetic data during development.
 

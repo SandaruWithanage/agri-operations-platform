@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-export const metadata: Metadata = { title: "Agri Operations | Admin" };
+export const metadata: Metadata = { title: "GoviAxis | Admin" };
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

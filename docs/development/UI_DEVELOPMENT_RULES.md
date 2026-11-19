@@ -32,6 +32,10 @@ Status: **standing rules from the owner (19 Nov 2026).** They apply to every scr
 - **Capabilities endpoint:** the proposed API, BFF and database contract (candidate scopes, `held` and `unknown` states, isolation, cache invalidation, tests) is in [CAPABILITIES_ENDPOINT_CONTRACT.md](../security/CAPABILITIES_ENDPOINT_CONTRACT.md). It is for review (revision 2, 19 Nov 2026, still PROPOSED); nothing in the interface changes until C2 is reviewed and tested and C3 is built. C3 retires the interim "permissions unknown shows everything" mode: after it, a failed or expired check means a restricted, recoverable view, never every action.
 - **Built now:** the shared `PermissionAction`, a registry of permission codes (every code is checked against the database migrations), the "permissions unknown" mode, support for the server's record-level flags (a "no" from either source wins), and guards that fail if a consequential action is rendered as a raw button or uses an unregistered code. When the capabilities function exists, giving the provider the list turns gating on everywhere; the key then becomes the permission id.
 
+## Rule 3a. Product name
+
+The system is **GoviAxis | Integrated Agricultural Operations Management System**; **GoviAxis** is the short name on the login page, the sidebar and in titles. Components take the name from `applicationName` (short) or `applicationFullName` in `@agri/ui`, never as a hard-coded string. `tests/product-name.test.ts` fails if the old working name reappears in application source. The brand is Latin script in both languages; any Sinhala tagline or wording around it needs native-speaker review. Figma frames carry the same name (see [Figma implementation plan](FIGMA_IMPLEMENTATION_PLAN.md)).
+
 ## Rule 4. Evidence
 
 Each UI change adds or updates component tests, runs the real-browser layout checks, records the result in the handover and review log, and lists what was not done. Passing checks is evidence, not design approval.
