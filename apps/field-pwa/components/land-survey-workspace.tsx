@@ -242,7 +242,7 @@ export function LandSurveyWorkspace({
       <p role="alert">
         {w.failure}{" "}
         <button
-          style={{ minHeight: 48 }}
+          className="agri-tap-comfortable"
           onClick={() => {
             setState("loading");
             void load();
@@ -269,7 +269,7 @@ export function LandSurveyWorkspace({
             id="survey-land"
             disabled={busy}
             value={chosen ?? ""}
-            style={{ minHeight: 48 }}
+            className="agri-tap-comfortable"
             onChange={(event) => void choose(event.target.value)}
           >
             <option value="" />
@@ -281,7 +281,7 @@ export function LandSurveyWorkspace({
           </select>
           {cursor && (
             <button
-              style={{ minHeight: 48 }}
+              className="agri-tap-comfortable"
               disabled={busy}
               onClick={() => void load(cursor)}
             >
@@ -297,7 +297,7 @@ export function LandSurveyWorkspace({
         <p role="alert">
           {w.failure}{" "}
           <button
-            style={{ minHeight: 48 }}
+            className="agri-tap-comfortable"
             onClick={() => chosen && void choose(chosen)}
           >
             {w.retry}
@@ -329,7 +329,7 @@ export function LandSurveyWorkspace({
           />
           {!sessionLost && (
             <button
-              style={{ minHeight: 48 }}
+              className="agri-tap-comfortable"
               disabled={busy}
               onClick={() => void choose("")}
             >

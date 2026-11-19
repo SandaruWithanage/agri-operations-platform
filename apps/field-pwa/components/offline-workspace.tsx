@@ -1,5 +1,6 @@
 "use client";
 import { LocaleProvider, useLocale } from "@agri/i18n/react";
+import { LocaleToggle } from "@agri/ui/locale-toggle";
 import {
   useCallback,
   useEffect,
@@ -610,319 +611,323 @@ function OfflineWorkspaceView() {
     rejected: c.rejected,
   };
   return (
-    <main>
+    <main className="field-frame">
+      <div className="field-frame__bar">
+        <LocaleToggle
+          value={language}
+          onChange={setLanguage}
+          label="Language / භාෂාව"
+        />
+      </div>
       <div className="workspace-actions">
-        <button
-          aria-pressed={language === "en"}
-          onClick={() => setLanguage("en")}
-        >
-          English
-        </button>
-        <button
-          aria-pressed={language === "si"}
-          onClick={() => setLanguage("si")}
-        >
-          සිංහල
-        </button>
         <a className="nav-link" href="/">
           {c.signin}
         </a>
       </div>
-      <h1>{c.title}</h1>
-      <p role="status">{online ? c.online : c.offline}</p>
-      <p>{c.minimal}</p>
-      {message && (
-        <p
-          role={
-            message === "prepared" ||
-            message === "syncDone" ||
-            message === "importDone"
-              ? "status"
-              : "alert"
-          }
-        >
-          {c[message]}
-        </p>
-      )}
-      {loading ? (
-        <p>{c.checking}</p>
-      ) : (
-        <>
-          <label htmlFor="offline-vault">{c.vault}</label>
-          <select
-            id="offline-vault"
-            value={selected}
-            disabled={
-              unlocked ||
-              busy ||
-              Boolean(model.current?.outbox.hasUnsavedRecovery)
+      <div className="card">
+        <h1>{c.title}</h1>
+        <p role="status">{online ? c.online : c.offline}</p>
+        <p>{c.minimal}</p>
+        {message && (
+          <p
+            role={
+              message === "prepared" ||
+              message === "syncDone" ||
+              message === "importDone"
+                ? "status"
+                : "alert"
             }
-            onChange={(event) => {
-              setSelected(event.target.value);
-              setMessage(null);
-            }}
           >
-            <option value="">{c.choose}</option>
-            {vaults.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.accountId.slice(-8)} / {row.deviceId.slice(-8)}
-              </option>
-            ))}
-          </select>
-          {!unlocked ? (
-            <>
-              <p role="status">{c.locked}</p>
-              {selected && (
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    try {
-                      const chosen = vaults.find((row) => row.id === selected);
-                      if (!chosen) return;
-                      const box =
-                        model.current?.accountId === chosen.accountId &&
-                        model.current.deviceId === chosen.deviceId
-                          ? model.current.outbox
-                          : new Workspace(
-                              chosen.accountId,
-                              chosen.deviceId,
-                              keys,
-                              catalog,
-                            ).outbox;
-                      const archive = await box.exportEncryptedArchive();
-                      const url = URL.createObjectURL(
-                        new Blob([archive], { type: "application/json" }),
-                      );
-                      const link = document.createElement("a");
-                      link.href = url;
-                      link.download = "agri-encrypted-recovery.json";
-                      link.click();
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
-                      if (box !== model.current?.outbox) box.close();
-                    } catch {
-                      setMessage("failure");
-                    }
-                  }}
-                >
-                  {c.export}
-                </button>
-              )}
-              {selected && <p>{c.legacyHelp}</p>}
-              {vaults.length === 0 ? (
-                <p>{c.none}</p>
-              ) : (
-                <form className="registration-form" onSubmit={unlock}>
-                  <label htmlFor="offline-passphrase">{c.pass}</label>
-                  <input
-                    id="offline-passphrase"
-                    name="passphrase"
-                    type="password"
-                    autoComplete="off"
-                    minLength={12}
-                    maxLength={256}
-                    required
-                    disabled={busy}
-                  />
-                  <p>{c.passHelp}</p>
-                  <button type="submit" disabled={busy || !selected}>
-                    {busy ? c.busy : c.unlock}
-                  </button>
-                </form>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="workspace-actions">
-                {saveState === "error" && (
+            {c[message]}
+          </p>
+        )}
+        {loading ? (
+          <p>{c.checking}</p>
+        ) : (
+          <>
+            <label htmlFor="offline-vault">{c.vault}</label>
+            <select
+              id="offline-vault"
+              value={selected}
+              disabled={
+                unlocked ||
+                busy ||
+                Boolean(model.current?.outbox.hasUnsavedRecovery)
+              }
+              onChange={(event) => {
+                setSelected(event.target.value);
+                setMessage(null);
+              }}
+            >
+              <option value="">{c.choose}</option>
+              {vaults.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.accountId.slice(-8)} / {row.deviceId.slice(-8)}
+                </option>
+              ))}
+            </select>
+            {!unlocked ? (
+              <>
+                <p role="status">{c.locked}</p>
+                {selected && (
                   <button
                     disabled={busy}
                     onClick={async () => {
                       try {
-                        await model.current!.retryLocalSave();
-                        setSaveState("saved");
-                        setDirty(false);
-                        await reload();
+                        const chosen = vaults.find(
+                          (row) => row.id === selected,
+                        );
+                        if (!chosen) return;
+                        const box =
+                          model.current?.accountId === chosen.accountId &&
+                          model.current.deviceId === chosen.deviceId
+                            ? model.current.outbox
+                            : new Workspace(
+                                chosen.accountId,
+                                chosen.deviceId,
+                                keys,
+                                catalog,
+                              ).outbox;
+                        const archive = await box.exportEncryptedArchive();
+                        const url = URL.createObjectURL(
+                          new Blob([archive], { type: "application/json" }),
+                        );
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = "agri-encrypted-recovery.json";
+                        link.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        if (box !== model.current?.outbox) box.close();
                       } catch {
                         setMessage("failure");
                       }
                     }}
                   >
-                    {c.retrySave}
+                    {c.export}
                   </button>
                 )}
-                <button onClick={() => void lock()} disabled={busy}>
-                  {c.lock}
-                </button>
-                <button onClick={() => void sync()} disabled={busy}>
-                  {busy ? c.busy : c.sync}
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    try {
-                      await model.current!.flush().catch(() => {});
-                      const archive =
-                        await model.current!.outbox.exportAuthenticatedArchive();
-                      const url = URL.createObjectURL(
-                        new Blob([archive], { type: "application/json" }),
-                      );
-                      const link = document.createElement("a");
-                      link.href = url;
-                      link.download = "agri-encrypted-recovery.json";
-                      link.click();
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    } catch {
-                      setMessage("failure");
-                    }
-                  }}
-                >
-                  {c.export}
-                </button>
-              </div>
-              <p>{c.archive}</p>
-              {context && (
-                <p>
-                  {c.expires}:{" "}
-                  {new Date(context.offlineUntil).toLocaleString(
-                    language === "si" ? "si-LK" : "en-GB",
+                {selected && <p>{c.legacyHelp}</p>}
+                {vaults.length === 0 ? (
+                  <p>{c.none}</p>
+                ) : (
+                  <form className="registration-form" onSubmit={unlock}>
+                    <label htmlFor="offline-passphrase">{c.pass}</label>
+                    <input
+                      id="offline-passphrase"
+                      name="passphrase"
+                      type="password"
+                      autoComplete="off"
+                      minLength={12}
+                      maxLength={256}
+                      required
+                      disabled={busy}
+                    />
+                    <p>{c.passHelp}</p>
+                    <button type="submit" disabled={busy || !selected}>
+                      {busy ? c.busy : c.unlock}
+                    </button>
+                  </form>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="workspace-actions">
+                  {saveState === "error" && (
+                    <button
+                      disabled={busy}
+                      onClick={async () => {
+                        try {
+                          await model.current!.retryLocalSave();
+                          setSaveState("saved");
+                          setDirty(false);
+                          await reload();
+                        } catch {
+                          setMessage("failure");
+                        }
+                      }}
+                    >
+                      {c.retrySave}
+                    </button>
                   )}
+                  <button onClick={() => void lock()} disabled={busy}>
+                    {c.lock}
+                  </button>
+                  <button onClick={() => void sync()} disabled={busy}>
+                    {busy ? c.busy : c.sync}
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={async () => {
+                      try {
+                        await model.current!.flush().catch(() => {});
+                        const archive =
+                          await model.current!.outbox.exportAuthenticatedArchive();
+                        const url = URL.createObjectURL(
+                          new Blob([archive], { type: "application/json" }),
+                        );
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = "agri-encrypted-recovery.json";
+                        link.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      } catch {
+                        setMessage("failure");
+                      }
+                    }}
+                  >
+                    {c.export}
+                  </button>
+                </div>
+                <p>{c.archive}</p>
+                {context && (
+                  <p>
+                    {c.expires}:{" "}
+                    {new Date(context.offlineUntil).toLocaleString(
+                      language === "si" ? "si-LK" : "en-GB",
+                    )}
+                  </p>
+                )}
+                {!editable && (
+                  <p role="status">
+                    {!durableStorage.current
+                      ? c.storage
+                      : !shellReady.current
+                        ? c.shell
+                        : c.recovery}
+                  </p>
+                )}
+                {(dirty || saveState === "error") && (
+                  <p role="alert">{c.dirty}</p>
+                )}
+                <p role="status" aria-label={c.savedLabel}>
+                  {saveState === "saving"
+                    ? c.saving
+                    : saveState === "error"
+                      ? c.failure
+                      : c.saved}
                 </p>
-              )}
-              {!editable && (
-                <p role="status">
-                  {!durableStorage.current
-                    ? c.storage
-                    : !shellReady.current
-                      ? c.shell
-                      : c.recovery}
-                </p>
-              )}
-              {(dirty || saveState === "error") && (
-                <p role="alert">{c.dirty}</p>
-              )}
-              <p role="status" aria-label={c.savedLabel}>
-                {saveState === "saving"
-                  ? c.saving
-                  : saveState === "error"
-                    ? c.failure
-                    : c.saved}
-              </p>
-              <FarmerRegistrationForm
-                key={working?.farmerId ?? "new"}
-                language={language}
-                geographies={context?.geographies ?? []}
-                initialDraft={working}
-                onDraftChange={capture}
-                onSave={save}
-                enabled={editable && !busy}
-                freezeAfterAttempt
-              />
-              {working && <p>{c.restore}</p>}
-              {recovered.length > 0 && (
-                <section aria-label={c.recoveredList}>
-                  <h2>{c.recoveredList}</h2>
+                <FarmerRegistrationForm
+                  key={working?.farmerId ?? "new"}
+                  language={language}
+                  geographies={context?.geographies ?? []}
+                  initialDraft={working}
+                  onDraftChange={capture}
+                  onSave={save}
+                  enabled={editable && !busy}
+                  freezeAfterAttempt
+                />
+                {working && <p>{c.restore}</p>}
+                {recovered.length > 0 && (
+                  <section aria-label={c.recoveredList}>
+                    <h2>{c.recoveredList}</h2>
+                    <ul>
+                      {recovered.map((row) => (
+                        <li key={row.slot}>
+                          <p>{row.value.fullName || c.working}</p>
+                          <button
+                            disabled={busy || !editable}
+                            onClick={async () => {
+                              try {
+                                const draft =
+                                  await model.current!.activateRecovered(
+                                    row.slot,
+                                  );
+                                setWorking(draft);
+                                setSaveState("saved");
+                                setDirty(false);
+                                await reload();
+                              } catch {
+                                setMessage("failure");
+                              }
+                            }}
+                          >
+                            {c.activate}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                <details>
+                  <summary>{c.importTitle}</summary>
+                  <p>{c.importHelp}</p>
+                  <form className="registration-form" onSubmit={restoreArchive}>
+                    <label htmlFor="archive-file">{c.importFile}</label>
+                    <input
+                      id="archive-file"
+                      name="archiveFile"
+                      type="file"
+                      accept="application/json,.json"
+                      required
+                      disabled={busy}
+                    />
+                    <label htmlFor="archive-passphrase">{c.sourcePass}</label>
+                    <input
+                      id="archive-passphrase"
+                      name="sourcePassphrase"
+                      type="password"
+                      autoComplete="off"
+                      minLength={12}
+                      maxLength={256}
+                      required
+                      disabled={busy}
+                    />
+                    <label>
+                      <input
+                        name="confirmImport"
+                        type="checkbox"
+                        required
+                        disabled={busy}
+                      />{" "}
+                      {c.importConfirm}
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={busy || !online || !editable}
+                    >
+                      {c.importAction}
+                    </button>
+                  </form>
+                </details>
+                <h2>{c.saved}</h2>
+                {entries.length === 0 ? (
+                  <p>{c.empty}</p>
+                ) : (
                   <ul>
-                    {recovered.map((row) => (
-                      <li key={row.slot}>
-                        <p>{row.value.fullName || c.working}</p>
-                        <button
-                          disabled={busy || !editable}
-                          onClick={async () => {
-                            try {
-                              const draft =
-                                await model.current!.activateRecovered(
-                                  row.slot,
+                    {entries.map((row) => (
+                      <li key={row.id}>
+                        <p>{row.farmer.fullName}</p>
+                        <p role="status">
+                          {syncingId === row.id
+                            ? c.syncing
+                            : statuses[row.status]}
+                        </p>
+                        {row.status === "synced" && (
+                          <button
+                            disabled={busy}
+                            onClick={async () => {
+                              try {
+                                await model.current!.outbox.removeSynced(
+                                  row.id,
                                 );
-                              setWorking(draft);
-                              setSaveState("saved");
-                              setDirty(false);
-                              await reload();
-                            } catch {
-                              setMessage("failure");
-                            }
-                          }}
-                        >
-                          {c.activate}
-                        </button>
+                                await reload();
+                              } catch {
+                                setMessage("failure");
+                              }
+                            }}
+                          >
+                            {c.remove}
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
-                </section>
-              )}
-              <details>
-                <summary>{c.importTitle}</summary>
-                <p>{c.importHelp}</p>
-                <form className="registration-form" onSubmit={restoreArchive}>
-                  <label htmlFor="archive-file">{c.importFile}</label>
-                  <input
-                    id="archive-file"
-                    name="archiveFile"
-                    type="file"
-                    accept="application/json,.json"
-                    required
-                    disabled={busy}
-                  />
-                  <label htmlFor="archive-passphrase">{c.sourcePass}</label>
-                  <input
-                    id="archive-passphrase"
-                    name="sourcePassphrase"
-                    type="password"
-                    autoComplete="off"
-                    minLength={12}
-                    maxLength={256}
-                    required
-                    disabled={busy}
-                  />
-                  <label>
-                    <input
-                      name="confirmImport"
-                      type="checkbox"
-                      required
-                      disabled={busy}
-                    />{" "}
-                    {c.importConfirm}
-                  </label>
-                  <button type="submit" disabled={busy || !online || !editable}>
-                    {c.importAction}
-                  </button>
-                </form>
-              </details>
-              <h2>{c.saved}</h2>
-              {entries.length === 0 ? (
-                <p>{c.empty}</p>
-              ) : (
-                <ul>
-                  {entries.map((row) => (
-                    <li key={row.id}>
-                      <p>{row.farmer.fullName}</p>
-                      <p role="status">
-                        {syncingId === row.id
-                          ? c.syncing
-                          : statuses[row.status]}
-                      </p>
-                      {row.status === "synced" && (
-                        <button
-                          disabled={busy}
-                          onClick={async () => {
-                            try {
-                              await model.current!.outbox.removeSynced(row.id);
-                              await reload();
-                            } catch {
-                              setMessage("failure");
-                            }
-                          }}
-                        >
-                          {c.remove}
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </>
-      )}
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
     </main>
   );
 }

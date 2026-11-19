@@ -528,3 +528,16 @@
   background: var(--agri-backdrop);
   background-attachment: fixed;
 }
+
+/* Small layout helpers, so screens never style controls inline. */
+.agri-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agri-tap-comfortable {
+  min-height: var(--agri-tap-comfortable);
+}
+.agri-wrap-anywhere {
+  overflow-wrap: anywhere;
+}

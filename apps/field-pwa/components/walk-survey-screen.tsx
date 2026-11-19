@@ -479,7 +479,7 @@ export function WalkSurveyScreen({
         </ul>
       )}
       {survey.status === "recording" && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="agri-row">
           <button
             style={big}
             onClick={() => setSurvey((s) => pauseSurvey(s, clock()))}
@@ -495,7 +495,7 @@ export function WalkSurveyScreen({
         </div>
       )}
       {survey.status === "paused" && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="agri-row">
           <button style={big} onClick={resume}>
             {w.resume}
           </button>

@@ -105,6 +105,10 @@ The package's own master specification agrees with these limits (no fake capabil
 
 The admin screens' create, correct, verify, enrol, withdraw, policy and edit buttons now go through the shared `PermissionAction` (see UI rules, rule 3). Today it shows them, marked as server-checked, because no account-wide capabilities list exists; it already honours the server's per-record flags. The sidebar pages are filtered the same way: each lists the read permission it needs (`farmer.read`, `land.read`, `project.read`, `enrollment.read`) and is left out when the account's permission list lacks it. With the list unknown, every page is listed. The database-side design (permission ids) is an ADR 0022 addendum awaiting approval.
 
+## Field workspace and survey screens (stage 12)
+
+The encrypted offline workspace and the land survey pages now use the same frame as the field home (title bar, shared language switch, glass card) instead of their own copied language buttons. Two small guards keep it that way: no app may write its own language switch, and no app screen may style controls inline (nine inline styles became shared `@agri/ui` classes). Fields, flows, storage and sync are unchanged. The registration form and the survey step screens are restyled by the shared form rules only; a deeper redesign of the walk-the-boundary screen needs device testing first (DEC-07).
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).
