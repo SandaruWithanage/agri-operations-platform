@@ -82,15 +82,34 @@ describe("development rule guards", () => {
   const files = readdirSync(components).filter((name) => name.endsWith(".tsx"));
   const source = (name: string) => readFileSync(join(components, name), "utf8");
 
-  it("only uses permission codes that PostgreSQL defines", () => {
+  it("only uses permission codes that PostgreSQL checks as permissions", () => {
     const migrations = join(root, "database/migrations");
     const sql = readdirSync(migrations, { recursive: true })
       .map(String)
       .filter((name) => name.endsWith(".sql"))
       .map((name) => readFileSync(join(migrations, name), "utf8"))
       .join("\n");
-    for (const code of permissionCodes)
-      expect(sql, `missing in migrations: ${code}`).toContain(`'${code}'`);
+    // A code must appear where the database evaluates a permission (a predicate
+    // call, a p_permission comparison or a grant's permission column). Appearing
+    // only as an audit action name or a comment does not count: that is how
+    // "enrollment.policy.set" (a journal action) was once mistaken for the
+    // permission "enrollment.policy".
+    for (const code of permissionCodes) {
+      const q = code.replaceAll(".", "\\.");
+      const patterns = [
+        new RegExp(`allowed\\w*\\([^;]*?'${q}'`, "s"),
+        new RegExp(`p_permission\\s*(?:=|IN)[^;]*?'${q}'`, "s"),
+        new RegExp(`permission\\s*=\\s*'${q}'`),
+        new RegExp(`permission\\s+IN\\s*\\([^)]*'${q}'`),
+      ];
+      expect(
+        patterns.some((pattern) => pattern.test(sql)),
+        `not checked as a permission in the migrations: ${code}`,
+      ).toBe(true);
+    }
+    expect(permissionCodes as readonly string[]).not.toContain(
+      "enrollment.policy.set",
+    );
   });
 
   it("gives every PermissionAction a registered code", () => {
