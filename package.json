@@ -23,7 +23,7 @@
     "db:migrate": "node scripts/native-migrations.mjs --apply",
     "device:enroll": "node scripts/device-enrollment.mjs enroll",
     "device:revoke": "node scripts/device-enrollment.mjs revoke",
-    "test:browser": "node tests/browser/device-proof.mjs && node tests/browser/admin-registry.mjs && node tests/browser/field-touch-targets.mjs"
+    "test:browser": "node tests/browser/device-proof.mjs && node tests/browser/admin-registry.mjs && node tests/browser/field-touch-targets.mjs && node tests/browser/glass-layers.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
