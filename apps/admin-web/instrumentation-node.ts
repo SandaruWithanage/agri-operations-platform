@@ -1,4 +1,5 @@
 import { productionBffProblems } from "@agri/auth-bff";
+import { getSecurityEvents } from "@agri/security-events";
 
 /**
  * In production, a BFF that is configured but unsafe must not run. Next.js would otherwise keep the process
@@ -8,6 +9,13 @@ import { productionBffProblems } from "@agri/auth-bff";
  */
 const problems = productionBffProblems(process.env);
 if (problems.length > 0) {
+  // Codes only (VARIABLE:reason), never a value. The event goes out before the process exits.
+  getSecurityEvents().emit({
+    event: "config.unsafe.detected",
+    outcome: "detected",
+    reason: "unsafe-configuration",
+    detail: problems.map((p) => `${p.variable}:${p.reason}`),
+  });
   console.error(
     "Unsafe production BFF configuration, refusing to start: " +
       problems.map((p) => `${p.variable} (${p.reason})`).join(", "),
