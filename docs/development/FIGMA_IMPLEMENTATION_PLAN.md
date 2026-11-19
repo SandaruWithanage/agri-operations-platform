@@ -71,7 +71,7 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 
 - Headings, buttons, tables, sections and the current-tab state inside the shell use the same tokens (rounded pale buttons, a bordered table card, quieter muted text). Presentation only: markup, behaviour and the 44 px minimum are unchanged and the real-browser run measures them at 1280, 390 and 320 px.
 - **Overview page deferred, deliberately.** No endpoint returns counts or summaries; the existing lists are paginated and scoped by the database. A real overview needs a new, row-level-security-scoped aggregate endpoint, which is back-end and authorization work, not styling. Showing counts from one page of results, or sample numbers, would be misleading, so the Farmers page stays the landing page until that endpoint is designed and approved.
-- Still to do in stage 5: restyle the forms (registration, correction, project and land creation) and the detail panels.
+- **Stage 7 (forms and detail lists):** labels, inputs, selects, fieldsets, alerts, status messages and detail lists inside the shell share one style (48 px controls, visible borders, clear error and status panels). Scoped to the admin shell, so the field app's registration form, which shares markup, is unchanged. Still to do: the field app's home and work screens (stage 8).
 
 ## Stitch package: what is adopted and what is not
 
@@ -89,6 +89,11 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 | Screens A04 to A05 and A15 to A17, A25 to A42, F03, F08 to F09, F13 to F18                                                    | Not built, or outside Phase 1, or waiting on decisions (map provider, inventory, IAM management, offline enrollment). They stay as "Planned" and are never mocked as working pages. |
 
 The package's own master specification agrees with these limits (no fake capabilities, no unscoped aggregates, GPS points are identification only). Its screens A01 to A03 and A06 to A12, A18 to A24 and F01, F02, F04 to F07, F10 to F12 correspond to features that exist and are restyled in stages 5 and 6.
+
+## Field home (stage 8)
+
+- The signed-in field home shows its two jobs as large task cards (encrypted offline workspace first and primary, land survey second), with quieter Retry and Sign out buttons. Links, order and targets are unchanged and measured in a real browser at 320, 390 and 768 px in both languages.
+- The package's field home (F02) shows an officer name, vault cache age, GPS lock quality, "assigned tasks" and unsynced-draft counts. None of that is available to the home page: the session identity carries only account and device IDs, tasks do not exist in the back end, and counting drafts needs the vault unlocked (an offline-first rule). It is not shown, rather than invented.
 
 ## Language
 
