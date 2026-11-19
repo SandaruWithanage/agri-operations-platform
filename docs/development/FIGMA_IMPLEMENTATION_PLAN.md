@@ -9,6 +9,8 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 | Agricultural Operations Platform, UX Architecture and Core Screens | `GJZ8HcRYzqy8EIpvQuP6Iu` | The base for the admin and field screens (15 frames).                                                                                               |
 | Agriculture, Farm Landing (Free Figma Template, Community)         | `W6bSBTR238ebO4WmpoCcDB` | **Kept for later.** Use it if a public landing page is ever needed. Not built: a public page is outside the Phase 1 staff scope (no farmer portal). |
 
+| Google Stitch design package, "Field & Ledger Operations" (uploaded 19 Nov 2026: 42 staff screens A01 to A42, 18 field screens F01 to F18, a design-system file and a master specification) | n/a (zip supplied by the owner) | **Newer visual direction.** Adopted for look and structure (see "Stitch package" below). The package is not stored in the repository: its screens contain invented sample data. |
+
 ## Principles
 
 1. **Simple, clean, modern.** Few colours, generous spacing, one primary action per screen, no decoration that does not help someone work.
@@ -70,6 +72,23 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 - Headings, buttons, tables, sections and the current-tab state inside the shell use the same tokens (rounded pale buttons, a bordered table card, quieter muted text). Presentation only: markup, behaviour and the 44 px minimum are unchanged and the real-browser run measures them at 1280, 390 and 320 px.
 - **Overview page deferred, deliberately.** No endpoint returns counts or summaries; the existing lists are paginated and scoped by the database. A real overview needs a new, row-level-security-scoped aggregate endpoint, which is back-end and authorization work, not styling. Showing counts from one page of results, or sample numbers, would be misleading, so the Farmers page stays the landing page until that endpoint is designed and approved.
 - Still to do in stage 5: restyle the forms (registration, correction, project and land creation) and the detail panels.
+
+## Stitch package: what is adopted and what is not
+
+**Adopted (presentation only):** a light sidebar with grouped section headings and a current-page marker (replaces the dark sidebar from the first Figma base), pale-green active state, status pills for draft, pending review, verified and inactive (the package's colours, each contrast-tested, text always written out), and the package's token vocabulary where it matches ours (primary `#16724e` is already the brand colour).
+
+**Deliberately not adopted**, because it conflicts with the project's rules or is not built:
+
+| In the package screens                                                                                                        | Why it is left out                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Totals such as "1,428 parcels", "82.6% verified", "14 queued", sync latency                                                   | No endpoint returns counts, and the master spec itself forbids global or hidden totals. Numbers would be invented.                                                                  |
+| Search and display by national identity card (NIC) number                                                                     | The project stores and searches no NIC data.                                                                                                                                        |
+| "Cryptographic sign-off", "Tier-2", "WebCrypto ED25519 browser key validated", "FORCE RLS active" banners, ledger event names | Security status claims cannot be a decoration; some describe controls that are not designed.                                                                                        |
+| "Staging / Demo" tag, brand "AGRI-OPS CADASTRAL"                                                                              | Naming is an open client decision (DEC-01).                                                                                                                                         |
+| CSV export and print buttons                                                                                                  | Exports are disabled initially (owner answer Q5, provisional).                                                                                                                      |
+| Screens A04 to A05 and A15 to A17, A25 to A42, F03, F08 to F09, F13 to F18                                                    | Not built, or outside Phase 1, or waiting on decisions (map provider, inventory, IAM management, offline enrollment). They stay as "Planned" and are never mocked as working pages. |
+
+The package's own master specification agrees with these limits (no fake capabilities, no unscoped aggregates, GPS points are identification only). Its screens A01 to A03 and A06 to A12, A18 to A24 and F01, F02, F04 to F07, F10 to F12 correspond to features that exist and are restyled in stages 5 and 6.
 
 ## Language
 

@@ -55,3 +55,22 @@ it("lays out one heading, one main landmark, a skip link and the supplied form",
   expect(screen.getByText("Use your organization account.")).toBeTruthy();
   expect(screen.getByText("footer note")).toBeTruthy();
 });
+
+it("writes the status as text in every tone", async () => {
+  const { StatusPill } = await import("../packages/ui/src/status-pill");
+  render(
+    <>
+      <StatusPill tone="draft">Draft</StatusPill>
+      <StatusPill tone="pending">Pending review</StatusPill>
+      <StatusPill tone="verified">Verified</StatusPill>
+      <StatusPill tone="inactive">Inactive</StatusPill>
+    </>,
+  );
+  for (const [label, tone] of [
+    ["Draft", "draft"],
+    ["Pending review", "pending"],
+    ["Verified", "verified"],
+    ["Inactive", "inactive"],
+  ])
+    expect(screen.getByText(label).className).toContain(`agri-pill--${tone}`);
+});

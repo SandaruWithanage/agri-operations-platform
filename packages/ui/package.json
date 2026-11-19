@@ -8,6 +8,7 @@
     "./farmer-registration": "./src/farmer-registration-form.tsx",
     "./auth-shell": "./src/auth-shell.tsx",
     "./admin-shell": "./src/admin-shell.tsx",
+    "./status-pill": "./src/status-pill.tsx",
     "./locale-toggle": "./src/locale-toggle.tsx",
     "./ui.css": "./src/ui.css"
   },
