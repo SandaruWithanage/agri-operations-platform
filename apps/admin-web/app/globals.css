@@ -231,3 +231,73 @@ select:focus-visible {
   border-color: var(--agri-color-border);
   border-radius: var(--agri-radius-card);
 }
+
+/* Forms and detail lists inside the admin shell (issue #71, stage 7).
+   Presentation only: labels stay above their controls, controls stay at the
+   comfortable touch size, and nothing here changes markup or behaviour. */
+.agri-shell__main form {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+.agri-shell__main label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.agri-shell__main input:not([type="checkbox"]):not([type="radio"]),
+.agri-shell__main select,
+.agri-shell__main textarea {
+  width: 100%;
+  min-height: var(--agri-tap-comfortable);
+  padding: 10px 14px;
+  border: 2px solid var(--agri-color-input-border);
+  border-radius: var(--agri-radius-control-large);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-text);
+  font: inherit;
+}
+.agri-shell__main input:disabled,
+.agri-shell__main select:disabled,
+.agri-shell__main textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.agri-shell__main fieldset {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--agri-color-border);
+  border-radius: var(--agri-radius-card);
+  background: var(--agri-color-surface);
+}
+.agri-shell__main legend {
+  padding: 0 8px;
+  font-weight: 700;
+  color: var(--agri-color-forest);
+}
+.agri-shell__main [role="alert"] {
+  padding: 12px 14px;
+  border: 1px solid var(--agri-color-danger-text);
+  border-left-width: 6px;
+  border-radius: var(--agri-radius-status);
+  background: var(--agri-color-surface);
+  color: var(--agri-color-danger-text);
+  font-weight: 600;
+}
+.agri-shell__main [role="status"] {
+  padding: 12px 14px;
+  border: 1px solid var(--agri-color-border);
+  border-left-width: 6px;
+  border-radius: var(--agri-radius-status);
+  background: var(--agri-color-status-bg);
+  color: var(--agri-color-status-text);
+}
+.agri-shell__main dt {
+  color: var(--agri-color-text-subtle);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.agri-shell__main dd {
+  font-size: 1.05rem;
+}
