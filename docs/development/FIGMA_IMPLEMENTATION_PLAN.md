@@ -65,6 +65,12 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 - Navigation items are not yet filtered by role. That waits on the DEC-02 role matrix; the database still decides access.
 - Everything inside the page (filters, lists, forms, correction, withdrawal) is unchanged in this stage and is restyled in stage 5.
 
+## Admin page content (stage 5, first part)
+
+- Headings, buttons, tables, sections and the current-tab state inside the shell use the same tokens (rounded pale buttons, a bordered table card, quieter muted text). Presentation only: markup, behaviour and the 44 px minimum are unchanged and the real-browser run measures them at 1280, 390 and 320 px.
+- **Overview page deferred, deliberately.** No endpoint returns counts or summaries; the existing lists are paginated and scoped by the database. A real overview needs a new, row-level-security-scoped aggregate endpoint, which is back-end and authorization work, not styling. Showing counts from one page of results, or sample numbers, would be misleading, so the Farmers page stays the landing page until that endpoint is designed and approved.
+- Still to do in stage 5: restyle the forms (registration, correction, project and land creation) and the detail panels.
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).
@@ -73,7 +79,7 @@ English and Sinhala. **The new Sinhala strings were written without a native-spe
 
 1. ~~Admin sign-in~~ (done, merged).
 2. ~~Field sign-in~~ (done, merged).
-3. ~~Admin shell and navigation~~ with disabled "Planned" modules (this stage). The overview follows.
+3. ~~Admin shell and navigation~~ with disabled "Planned" modules
 4. Field home task states and the offline workspace screens.
 5. Farmer registry, farmer profile, land list, projects and enrollments.
 6. Officer registration, land capture, review and saved-offline screens.
