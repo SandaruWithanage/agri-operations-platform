@@ -123,3 +123,7 @@ English and Sinhala. **The new Sinhala strings were written without a native-spe
 6. Officer registration, land capture, review and saved-offline screens.
 
 Each stage is checked with unit tests, a real-browser run at desktop and phone widths, and the full CI. Passing checks is evidence, not design approval; the owner reviews the visuals.
+
+## Reading the Stitch designs from a session (19 Nov 2026)
+
+The repository's `.mcp.json` declares the Stitch MCP server (`https://stitch.googleapis.com/mcp`). **It contains no key**: the header takes its value from the `STITCH_API_KEY` environment variable, which the person running the session sets in the cloud environment's settings (never in the repository, a prompt or a chat). The environment's network allow-list must include `stitch.googleapis.com`. Connectors and project servers are read when a session starts, and a project server asks for approval the first time. Rotate any key that has been pasted into a chat. Reading Stitch is read-only use; nothing here changes a design.
