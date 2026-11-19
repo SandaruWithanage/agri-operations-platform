@@ -389,7 +389,7 @@ describe("security events: BFF emission points", () => {
     const handler = createBffHandler({ ...bffConfig, events }, vi.fn());
     const response = await handler(
       request("auth/logout", "POST", {
-        "x-csrf-token": "malformed-token-SECRETCSRF",
+        "x-csrf-token": "synthetic-malformed-token-SECRETCSRF",
       }),
     );
     expect(response.status).toBe(403);
