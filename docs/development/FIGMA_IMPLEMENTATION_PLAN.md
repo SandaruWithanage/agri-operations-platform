@@ -71,7 +71,7 @@ Status: **living plan.** The owner supplied a Figma file as a **base, not a fini
 
 - Headings, buttons, tables, sections and the current-tab state inside the shell use the same tokens (rounded pale buttons, a bordered table card, quieter muted text). Presentation only: markup, behaviour and the 44 px minimum are unchanged and the real-browser run measures them at 1280, 390 and 320 px.
 - **Overview page deferred, deliberately.** No endpoint returns counts or summaries; the existing lists are paginated and scoped by the database. A real overview needs a new, row-level-security-scoped aggregate endpoint, which is back-end and authorization work, not styling. Showing counts from one page of results, or sample numbers, would be misleading, so the Farmers page stays the landing page until that endpoint is designed and approved.
-- Still to do in stage 5: restyle the forms (registration, correction, project and land creation) and the detail panels.
+- **Stage 7 (forms and detail lists):** labels, inputs, selects, fieldsets, alerts, status messages and detail lists inside the shell share one style (48 px controls, visible borders, clear error and status panels). Scoped to the admin shell, so the field app's registration form, which shares markup, is unchanged. Still to do: the field app's home and work screens (stage 8).
 
 ## Stitch package: what is adopted and what is not
 
