@@ -1,4 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
+import { permissionState, useCapabilities } from "./permission-action";
+import type { PermissionCode } from "./permission-codes";
 
 export type ShellIcon = "farmers" | "land" | "projects" | "enrollments";
 
@@ -33,6 +35,12 @@ export type ShellItem = {
   id: string;
   /** Section heading this item is listed under. */
   group: string;
+  /**
+   * The read permission this page needs. An item whose permission the account
+   * lacks is not listed. This only shapes the interface: the database still
+   * decides every request.
+   */
+  permission: PermissionCode;
   label: string;
   icon: ShellIcon;
   current: boolean;
@@ -58,6 +66,10 @@ export function AdminShell(props: {
   toolbar: ReactNode;
   children: ReactNode;
 }): ReactElement {
+  const capabilities = useCapabilities();
+  const visible = props.items.filter(
+    (item) => permissionState(capabilities, item.permission) !== "denied",
+  );
   return (
     <div className="agri-shell">
       <a className="agri-skip" href="#agri-shell-main">
@@ -69,11 +81,11 @@ export function AdminShell(props: {
           {props.brandName}
         </p>
         <nav aria-label={props.navLabel}>
-          {[...new Set(props.items.map((item) => item.group))].map((group) => (
+          {[...new Set(visible.map((item) => item.group))].map((group) => (
             <div key={group} className="agri-shell__group">
               <p className="agri-shell__group-title">{group}</p>
               <ul className="agri-shell__nav">
-                {props.items
+                {visible
                   .filter((item) => item.group === group)
                   .map((item) => (
                     <li key={item.id}>

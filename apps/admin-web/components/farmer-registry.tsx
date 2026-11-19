@@ -1222,26 +1222,30 @@ function RegistryView({
             "farmers",
             language === "en" ? "Farmers" : "ගොවීන්",
             copy.groupRecords,
+            "farmer.read",
           ],
-          ["land", "land", landCopy.tab, copy.groupRecords],
+          ["land", "land", landCopy.tab, copy.groupRecords, "land.read"],
           [
             "projects",
             "projects",
             projectWords[language].tab,
             copy.groupPrograms,
+            "project.read",
           ],
           [
             "enrollments",
             "enrollments",
             enrollmentWords[language].tab,
             copy.groupPrograms,
+            "enrollment.read",
           ],
         ] as const
-      ).map(([id, icon, label, group]) => ({
+      ).map(([id, icon, label, group, permission]) => ({
         id,
         icon,
         label,
         group,
+        permission,
         current: domain === id,
         disabled: authBusy,
         onSelect: () => void load(undefined, [undefined], id),

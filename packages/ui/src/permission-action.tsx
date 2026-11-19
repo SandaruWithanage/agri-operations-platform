@@ -47,6 +47,10 @@ export function permissionState(
   return "server-checked";
 }
 
+export function useCapabilities(): Capabilities {
+  return useContext(CapabilitiesContext);
+}
+
 export function usePermissionState(
   code: PermissionCode,
   recordAllowed?: boolean,
