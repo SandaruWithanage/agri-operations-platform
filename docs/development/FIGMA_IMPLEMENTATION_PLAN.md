@@ -95,6 +95,10 @@ The package's own master specification agrees with these limits (no fake capabil
 - The signed-in field home shows its two jobs as large task cards (encrypted offline workspace first and primary, land survey second), with quieter Retry and Sign out buttons. Links, order and targets are unchanged and measured in a real browser at 320, 390 and 768 px in both languages.
 - The package's field home (F02) shows an officer name, vault cache age, GPS lock quality, "assigned tasks" and unsynced-draft counts. None of that is available to the home page: the session identity carries only account and device IDs, tasks do not exist in the back end, and counting drafts needs the vault unlocked (an offline-first rule). It is not shown, rather than invented.
 
+## Permission-driven actions (stage 10)
+
+The admin screens' create, correct, verify, enrol, withdraw, policy and edit buttons now go through the shared `PermissionAction` (see UI rules, rule 3). Today it shows them, marked as server-checked, because no account-wide capabilities list exists; it already honours the server's per-record flags. Navigation items are not yet permission-filtered. The database-side design (permission ids) is an ADR 0022 addendum awaiting approval.
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).

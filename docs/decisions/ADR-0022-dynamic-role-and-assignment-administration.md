@@ -102,3 +102,23 @@ This section records an engineer's threat pass over sections 1–10. It found de
 | 14  | **Offline and cached authority:** a revoked staff member's device still shows cached screens                                          | Disclosed, not specified                                                         | Server reauthorization on every sync and command is the only authority; the UI states the limit. Revocation also revokes server sessions and device approvals in the same transaction.                                                                                                                                                                                           |
 
 **Net effect on slicing and gates:** P1-03a (read-only catalog, person and role tables) is safe to start once the owner accepts the requirements above and a reviewer is arranged; P1-03b and P1-03c must include the tests for rows 1, 2, 3, 6, 7, 8 and 10 as acceptance criteria. All severity assessments are the engineer's and carry no approval.
+
+## Addendum (19 Nov 2026, owner direction): permissions are database rows referenced by permission id
+
+Status: **proposed, not implemented, not approved.** No migration, grant, role or authorization code accompanies it. It extends the permission catalog above and needs the same review (Gate G1) and the DEC-02 answers before any migration is written.
+
+**Owner direction:** permission is handled in the database layer, as a permission id.
+
+**What exists today (verified in the migrations):** grants store the permission as free text (`authz.permission_grant.permission`, `authz.project_permission_grant.permission`), and the predicates compare strings. There is no permission table and no permission id.
+
+**Proposal:**
+
+1. `iam.permission_catalog` rows get a stable `permission_id` (uuid, never reused) beside a unique `code`. The id is the identity; the code, labels and risk class are data that can be corrected without touching grants.
+2. Grants and materialized role bindings reference the catalog by `permission_id` (foreign key). The text column stays during a transition, a constraint requires the two to agree, and the predicates move to the id in a reviewed migration. Unknown or retired ids are denied (fail closed).
+3. An `iam.ui_action` catalog maps each screen action key (for example the withdraw button) to one `permission_id`, with EN/SI labels. Which button needs which permission is therefore data in the database, not a list in the front end.
+4. A read-only capabilities function returns, for the signed transaction actor only, the permission ids (and scope kind) the account currently holds, computed by the same predicates. The BFF passes it through; the front end gates actions with it. Removing a grant or a catalog mapping removes the control with no deployment.
+5. Unchanged: PostgreSQL decides every request. The list is a convenience for the interface; a missing or stale list never grants anything, and every mutation still re-checks inside its transaction.
+
+**Front end today:** `PermissionAction` is keyed by the permission code and accepts the server's per-record flags. When the catalog and the capabilities function exist, the key becomes the permission id (or the UI action key) and nothing else in the screens changes.
+
+**Open for the owner / reviewer:** whether both the id and the code stay in grant rows after the transition; who may edit `ui_action` rows (proposed: the IAM owner function only, audited, like the catalog); whether retired permissions keep their ids for history (proposed: yes).
