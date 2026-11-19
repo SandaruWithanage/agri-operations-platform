@@ -259,6 +259,9 @@ importers:
       '@agri/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@agri/security-events':
+        specifier: workspace:*
+        version: link:../../packages/security-events
       '@agri/sync-client':
         specifier: workspace:*
         version: link:../../packages/sync-client
@@ -354,6 +357,9 @@ importers:
       '@agri/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@agri/security-events':
+        specifier: workspace:*
+        version: link:../../packages/security-events
       '@agri/sync-client':
         specifier: workspace:*
         version: link:../../packages/sync-client
@@ -403,9 +409,16 @@ importers:
 
   packages/auth-bff:
     dependencies:
+      '@agri/security-events':
+        specifier: workspace:*
+        version: link:../security-events
       '@agri/validation':
         specifier: workspace:*
         version: link:../validation
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
 
   packages/design-tokens: {}
 
@@ -423,6 +436,12 @@ importers:
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
+
+  packages/security-events:
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
 
   packages/sync-client:
     dependencies:
@@ -1809,9 +1828,6 @@ packages:
 
   '@types/methods@1.1.4':
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
-
-  '@types/node@22.20.5':
-    resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
 
   '@types/node@26.6.6':
     resolution: {integrity: sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==}
@@ -3891,9 +3907,6 @@ packages:
     resolution: {integrity: sha512-8iAasVS4wUx0gPLjH8Xtz2PeDzTSiy8QiLGu2DT3X5GU+egFEQhpnbtkehbAwjvDcxIERmCYcysiODFmE3Ud0Q==}
     engines: {node: '>=18'}
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
-
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
@@ -5219,17 +5232,13 @@ snapshots:
 
   '@types/methods@1.1.4': {}
 
-  '@types/node@22.20.5':
-    dependencies:
-      undici-types: 6.21.0
-
   '@types/node@26.6.6':
     dependencies:
       undici-types: 8.9.0
 
   '@types/pg@8.23.1':
     dependencies:
-      '@types/node': 22.20.5
+      '@types/node': 26.6.6
       pg-protocol: 1.16.1
       pg-types: 2.2.0
 
@@ -5258,7 +5267,7 @@ snapshots:
     dependencies:
       '@types/cookiejar': 2.1.5
       '@types/methods': 1.1.4
-      '@types/node': 22.20.5
+      '@types/node': 26.6.6
       form-data: 4.0.6
 
   '@types/supertest@7.2.1':
@@ -7411,8 +7420,6 @@ snapshots:
       '@lukeed/csprng': 1.1.0
 
   uint8array-extras@1.6.0: {}
-
-  undici-types@6.21.0: {}
 
   undici-types@8.9.0: {}
 

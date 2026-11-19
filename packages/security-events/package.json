@@ -1,0 +1,15 @@
+{
+  "name": "@agri/security-events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}
