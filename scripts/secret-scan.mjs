@@ -15,7 +15,13 @@
  */
 import { createHash } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { URL, fileURLToPath } from "node:url";
@@ -188,15 +194,30 @@ function trackedFiles(root) {
     .filter(Boolean);
 }
 
+/**
+ * Opens once and checks the same descriptor it reads, so the file cannot change between check and read.
+ * Returns undefined for anything missing, unreadable, not a regular file or over the size limit.
+ */
+function readTrackedFile(full) {
+  let fd;
+  try {
+    fd = openSync(full, "r");
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > maxFileBytes) return undefined;
+    return readFileSync(fd);
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export function scanTree(root) {
   const findings = [];
   for (const path of trackedFiles(root)) {
     if (skippedPaths.some((pattern) => pattern.test(path))) continue;
-    const full = resolve(root, path);
-    if (!existsSync(full)) continue;
-    const stat = statSync(full);
-    if (!stat.isFile() || stat.size > maxFileBytes) continue;
-    const buffer = readFileSync(full);
+    const buffer = readTrackedFile(resolve(root, path));
+    if (!buffer) continue;
     if (isBinary(buffer)) continue;
     findings.push(...scanText(path, buffer.toString("utf8")));
   }
