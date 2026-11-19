@@ -176,3 +176,46 @@ p {
   justify-content: flex-end;
   margin-bottom: 12px;
 }
+
+/* Signed-in field home (issue #71, stage 8): the two jobs are large task cards,
+   the first one primary. Presentation only; links, order and targets are unchanged. */
+.field-frame .workspace-nav {
+  gap: 14px;
+  max-width: none;
+}
+.field-frame .nav-link {
+  position: relative;
+  min-height: 76px;
+  padding: 12px 48px 12px 18px;
+  border-radius: var(--agri-radius-card);
+  border-color: var(--agri-color-border);
+  background: var(--agri-color-surface-pale);
+  color: var(--agri-color-forest);
+  font-size: 1.1rem;
+}
+.field-frame .nav-link::after {
+  content: "›" / "";
+  position: absolute;
+  inset-inline-end: 18px;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.field-frame .nav-link:first-child {
+  border-color: var(--agri-color-brand);
+  background: var(--agri-color-brand);
+  color: var(--agri-color-surface);
+}
+.field-frame .nav-link:hover {
+  background: var(--agri-color-pressed-bg);
+}
+.field-frame .nav-link:first-child:hover {
+  background: var(--agri-color-forest);
+}
+.field-frame .workspace-actions button {
+  min-height: var(--agri-tap-comfortable);
+  border-radius: var(--agri-radius-control-large);
+  border-color: var(--agri-color-border);
+  background: var(--agri-color-surface-pale);
+  color: var(--agri-color-forest);
+  font-weight: 600;
+}
