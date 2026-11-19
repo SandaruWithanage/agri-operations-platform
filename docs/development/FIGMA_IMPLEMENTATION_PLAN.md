@@ -103,7 +103,7 @@ The package's own master specification agrees with these limits (no fake capabil
 
 ## Permission-driven actions (stage 10)
 
-The admin screens' create, correct, verify, enrol, withdraw, policy and edit buttons now go through the shared `PermissionAction` (see UI rules, rule 3). Today it shows them, marked as server-checked, because no account-wide capabilities list exists; it already honours the server's per-record flags. Navigation items are not yet permission-filtered. The database-side design (permission ids) is an ADR 0022 addendum awaiting approval.
+The admin screens' create, correct, verify, enrol, withdraw, policy and edit buttons now go through the shared `PermissionAction` (see UI rules, rule 3). Today it shows them, marked as server-checked, because no account-wide capabilities list exists; it already honours the server's per-record flags. The sidebar pages are filtered the same way: each lists the read permission it needs (`farmer.read`, `land.read`, `project.read`, `enrollment.read`) and is left out when the account's permission list lacks it. With the list unknown, every page is listed. The database-side design (permission ids) is an ADR 0022 addendum awaiting approval.
 
 ## Language
 

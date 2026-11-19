@@ -115,4 +115,21 @@ describe("development rule guards", () => {
       /<PermissionAction\s+code="farmer\.verify"/,
     );
   });
+
+  it("gives every sidebar page a read permission from the registry", () => {
+    const text = source("farmer-registry.tsx");
+    const block = text.slice(
+      text.indexOf("items={("),
+      text.indexOf(".map(([id, icon"),
+    );
+    const codes = [
+      ...block.matchAll(/"((?:farmer|land|project|enrollment)\.read)"/g),
+    ];
+    expect(codes.map((match) => match[1]).sort()).toEqual([
+      "enrollment.read",
+      "farmer.read",
+      "land.read",
+      "project.read",
+    ]);
+  });
 });

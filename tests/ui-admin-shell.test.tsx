@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AdminShell } from "../packages/ui/src/admin-shell";
+import { PermissionProvider } from "../packages/ui/src/permission-action";
 
 afterEach(() => cleanup());
 
@@ -19,6 +20,7 @@ function shell(select = vi.fn()) {
         {
           id: "farmers",
           group: "Records",
+          permission: "farmer.read",
           icon: "farmers",
           label: "Farmers",
           current: true,
@@ -27,6 +29,7 @@ function shell(select = vi.fn()) {
         {
           id: "land",
           group: "Records",
+          permission: "land.read",
           icon: "land",
           label: "Land",
           current: false,
@@ -72,4 +75,50 @@ it("lists items under their section headings", () => {
   const nav = screen.getByRole("navigation", { name: "Records" });
   expect(within(nav).getByText("Records")).toBeTruthy();
   expect(within(nav).getAllByRole("list")).toHaveLength(1);
+});
+
+it("lists every page while the account's permissions are unknown", () => {
+  shell();
+  expect(screen.getByRole("button", { name: "Farmers" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Land" })).toBeTruthy();
+});
+
+it("leaves out pages whose read permission the account lacks", () => {
+  render(
+    <PermissionProvider capabilities={new Set(["farmer.read"])}>
+      <AdminShell
+        brandName="Agricultural Operations"
+        navLabel="Records"
+        skipLabel="Skip to content"
+        plannedHeading="Planned modules"
+        plannedTag="Planned"
+        planned={[]}
+        toolbar={<span>toolbar</span>}
+        items={[
+          {
+            id: "farmers",
+            group: "Records",
+            permission: "farmer.read",
+            icon: "farmers",
+            label: "Farmers",
+            current: true,
+            onSelect: () => {},
+          },
+          {
+            id: "land",
+            group: "Records",
+            permission: "land.read",
+            icon: "land",
+            label: "Land",
+            current: false,
+            onSelect: () => {},
+          },
+        ]}
+      >
+        <h1>Page title</h1>
+      </AdminShell>
+    </PermissionProvider>,
+  );
+  expect(screen.getByRole("button", { name: "Farmers" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Land" })).toBeNull();
 });
