@@ -12,6 +12,7 @@
     "@agri/auth-bff": "workspace:*",
     "@agri/design-tokens": "workspace:*",
     "@agri/i18n": "workspace:*",
+    "@agri/security-events": "workspace:*",
     "@agri/sync-client": "workspace:*",
     "@agri/ui": "workspace:*",
     "@agri/validation": "workspace:*",

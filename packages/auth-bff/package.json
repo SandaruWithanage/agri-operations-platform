@@ -10,6 +10,10 @@
     "typecheck": "node ../../scripts/typecheck.mjs --noEmit"
   },
   "dependencies": {
+    "@agri/security-events": "workspace:*",
     "@agri/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
   }
 }

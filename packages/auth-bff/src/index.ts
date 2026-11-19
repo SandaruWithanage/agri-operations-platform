@@ -1,3 +1,4 @@
+import { getSecurityEvents, type SecurityEvents } from "@agri/security-events";
 import { FixedWindowLimiter } from "./rate-limit";
 import {
   projectChangeSchema,
@@ -86,6 +87,8 @@ export type BffConfig = {
   };
   /** Clock for tests. */
   now?: () => number;
+  /** Security event emitter; the process-wide one is used when omitted (SEC-A2). */
+  events?: SecurityEvents;
 };
 /**
  * The client address as seen by the outermost trusted proxy: the `hops`-th entry from the right of
@@ -224,6 +227,7 @@ export function createBffHandler(
     throw new Error("Invalid BFF configuration");
   const hops = config.trustedProxyHops ?? 0;
   const clock = config.now ?? (() => Date.now());
+  const events = config.events ?? getSecurityEvents();
   const budgets = {
     anonymousPerClient: config.rateLimits?.anonymousPerClient ?? 30,
     anonymousUnattributed: config.rateLimits?.anonymousUnattributed ?? 300,
@@ -356,17 +360,42 @@ export function createBffHandler(
       if (!allowed || (administratorOnly && config.source !== "administrator"))
         return reply({ error: "Not found" }, 404);
       const origin = request.headers.get("origin");
+      const crossSite = request.headers.get("sec-fetch-site") === "cross-site";
       if (
         (request.method !== "GET" && origin !== config.publicOrigin) ||
         (origin !== null && origin !== config.publicOrigin) ||
-        request.headers.get("sec-fetch-site") === "cross-site"
-      )
+        crossSite
+      ) {
+        events.emit({
+          event: "bff.origin.rejected",
+          outcome: "refused",
+          reason: crossSite ? "cross-site-fetch" : "origin-mismatch",
+          client: trustedClientAddress(request, hops),
+        });
         throw new Failure(403);
+      }
       const anonymousRoute =
         path === "auth/login" || path === "auth/device-challenge";
       const budget = await rateKey(request, anonymousRoute);
       const decision = limiter.consume(budget.key, budget.limit, clock());
-      if (!decision.allowed) throw new Failure(429, decision.retryAfterSeconds);
+      if (!decision.allowed) {
+        events.emit({
+          event: "bff.ratelimit.exceeded",
+          outcome: "refused",
+          routeClass: budget.key.startsWith("s:")
+            ? request.method !== "GET"
+              ? "session-write"
+              : "session-read"
+            : "anonymous",
+          reason: budget.key.startsWith("s:")
+            ? "session-budget"
+            : budget.key === "a:unattributed"
+              ? "unattributed-budget"
+              : "client-budget",
+          client: trustedClientAddress(request, hops),
+        });
+        throw new Failure(429, decision.retryAfterSeconds);
+      }
       // Read and cap the body now (logout carries none): a bot cannot make the BFF call the API for bad input.
       if (request.method === "POST" && path !== "auth/logout")
         await body(
@@ -441,8 +470,15 @@ export function createBffHandler(
       if (
         request.method === "POST" &&
         !/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(csrf)
-      )
+      ) {
+        events.emit({
+          event: "bff.csrf.rejected",
+          outcome: "refused",
+          reason: "csrf-format",
+          client: trustedClientAddress(request, hops),
+        });
         throw new Failure(403);
+      }
       if (path === "auth/logout") {
         try {
           await call("auth/logout", "POST", secret, undefined, undefined, csrf);

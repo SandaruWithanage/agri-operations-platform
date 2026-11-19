@@ -8,6 +8,7 @@ const required = [
     "validation",
     "i18n",
     "sync-client",
+    "security-events",
   ].map((name) => `packages/${name}/package.json`),
   "apps/admin-web/app/page.tsx",
   "apps/field-pwa/app/page.tsx",
