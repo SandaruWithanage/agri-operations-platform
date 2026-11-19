@@ -166,7 +166,7 @@ This covers the cases the owner named:
 - **Organization-wide grants.** A grant with no geography and no unit applies to every geography of its organization, so all of them are candidates.
 - **Assignment-based (`assigned`) coverage.** The grant row puts the organization in the candidate set; the predicate then requires the matching assignment.
 
-**Narrowing is an optimization, not part of the contract.** Starting from the sound form, an implementation may narrow candidates (for example to geographies under a grant's unit subtree, or skip grants outside their time window) **only if** an equivalence test proves the narrowed set yields the same `held` and `not_held` results as the sound form on a generated fixture set (section 14, test 3). Any narrowing that cannot be proven equal is not allowed.
+**Narrowing is an optimization, not part of the contract.** Starting from the sound form, an implementation may narrow candidates (for example to geographies under a grant's unit subtree, or skip grants outside their time window) **only if** an equivalence test proves the narrowed set yields the same `held` and `not_held` results as the sound form on a generated fixture set (section 14, test 3). Any narrowing that cannot be proven equal is not allowed. Owner direction O11 (19 Nov 2026): exhaustive enumeration is retained as the **correctness reference**, and narrowing is accepted only when independent tests prove equivalence across organization, geography, project, unit ancestry, validity intervals, assignments and registration-source conditions.
 
 **Independent oracle.** The completeness claim is also tested without trusting the enumeration: on fixtures, `held` is compared with calling the predicate on **every active geography (or project and geography pair, or organization) in the whole database**, with no use of grant rows to choose candidates (section 14, test 1). A scope the enumeration missed would be exposed there.
 
@@ -196,7 +196,7 @@ Revision 1 said a predicate error "counts as not held". That is withdrawn.
 - the total deadline and evaluation budget in section 5.5;
 - a benchmark with a concurrent hierarchy writer (section 10).
 
-Changing the predicates to avoid the table lock would be an authorization-code change and is **out of scope** here; it is flagged for the Gate G1 reviewer.
+Changing the predicates to avoid the table lock would be an authorization-code change and is **out of scope** here; it is flagged for the Gate G1 reviewer. Owner direction O9 (19 Nov 2026): the predicates and the hierarchy locking are **not modified**; contention is investigated and alternatives are documented in [PREDICATE_LOCK_CONTENTION_INVESTIGATION.md](PREDICATE_LOCK_CONTENTION_INVESTIGATION.md), which includes a measured synthetic demonstration of the queueing behaviour. Any change to authorization behaviour needs independent security review first.
 
 ### 5.5 Provisional limits and the total evaluation budget (O4)
 
@@ -213,7 +213,7 @@ All numbers are **provisional placeholders, not measurements**. They exist so th
 
 **Deterministic order.** Permissions are evaluated in a fixed priority order: the read permissions that gate the sidebar pages first, then create and mutation permissions, then the rest. When the budget runs out, the least critical permissions are the ones left `unknown`, and the outcome is repeatable for the same data.
 
-**Benchmark acceptance (section 10)** decides the real values. Until it is done and reviewed, the provisional values must not be described as measured or safe.
+**Benchmark acceptance (section 10)** decides the real values. Until it is done and reviewed, the provisional values must not be described as measured or safe. Owner direction O8 (19 Nov 2026): the evaluation budgets, the 60-second maximum lifetime and related thresholds stay provisional and are benchmarked against realistic synthetic volumes, **including concurrent hierarchy updates**.
 
 ## 6. Authorization boundaries and isolation
 
@@ -254,6 +254,15 @@ State model after C3 (replaces the current `Capabilities = Set | "unknown"`):
 | `denied` (confirmed `not_held`)            | **Not listed**                                                                                                                  | **Not offered**                                                                  | None                                                                                                                                                                                                                                        |
 | `unconfirmed` (unknown)                    | Listed, marked "permission check incomplete"; opening it still works because every list read is itself filtered by the database | **Disabled** with a short reason and a **Retry** control; never silently enabled | Background re-check with backoff                                                                                                                                                                                                            |
 | `unavailable` (service failure or expired) | **Restricted recovery view:** no record navigation                                                                              | **None offered**                                                                 | A clear, plain-language panel: "Permissions could not be checked", a **Retry now** button, automatic retry with jittered backoff, **Sign out**, and (field app) the encrypted offline workspace link, which does not depend on this service |
+
+**Messages and accessibility (owner direction O10, 19 Nov 2026).** English wording for C3, kept short:
+
+| State                              | Message                                                        | Controls                                                  |
+| ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| Checking (no valid answer yet)     | "Your permissions are being checked."                          | None blocking; a polite status announcement, not an alert |
+| `unavailable` (failure or expired) | "Access permissions could not be verified. Retry to continue." | **Retry** and **Sign out**                                |
+
+Requirements for C3: the loading message is a `role="status"` live region and the error is announced once on entry (not on every automatic retry); keyboard focus moves to the recovery panel only when a user action caused the failure; Retry and Sign out are real buttons with visible focus and at least 44 px targets; meaning is never carried by colour alone; the view reflows at 320 px and at 200 percent zoom and respects reduced motion; a successful recovery is announced politely and the normal view returns without a reload. **Sinhala translations remain pending native-speaker validation:** until validated, the English text is shown in Sinhala mode with `lang="en"` so screen readers pronounce it correctly, and no machine-translated Sinhala is shipped.
 
 The restricted state is a conservative convenience: the database still protects every action, so it limits what the interface offers during an outage, it does not secure anything. It must never trap a person: Retry and Sign out are always present, and recovery restores the normal view without a reload. Copy needs UX review and Sinhala review.
 
@@ -315,6 +324,8 @@ Operational telemetry, not business audit. It uses the structured event emitter 
 | `capabilities.budget.exhausted`                                                                           | reason (`budget`, `deadline`, `candidate-cap`)                                                                                                                                             | As above                                                                                    |
 | `capabilities.ratelimit.exceeded`                                                                         | route class, limiter that refused                                                                                                                                                          | As above                                                                                    |
 | Security events from the endpoint (spoofed header, origin rejection, tampered response caught by the BFF) | Event name, reason code, keyed hashes                                                                                                                                                      | As above                                                                                    |
+
+**Privacy-safe metrics (owner direction O8).** Low-cardinality counters and histograms only; **no account, device, client or scope identifier is ever a metric label** (those exist only as keyed hashes inside events). Provisional names: `agri_capabilities_reads_total{outcome}` (complete, incomplete, failed); `agri_capabilities_unknown_total{reason}`; `agri_capabilities_evaluations_used` and `agri_capabilities_duration_ms` histograms with fixed buckets; `agri_db_lock_timeouts_total{route_class}`; `agri_db_statement_timeouts_total{route_class}`; `agri_ratelimit_refusals_total{route_class,limiter}`; `agri_api_overload_shed_total`. The wider security metrics are listed in the [threat model](THREAT_MODEL_AUTOMATED_THREATS.md). Alert recipients are **pending operational assignment**.
 
 Provisional alert ideas (thresholds unmeasured and labelled provisional): sustained `incomplete` or failure rate; many reads per session; the same client across many sessions; budget exhaustion for a particular organization (a sign the budget is too small or an enumeration problem). No per-read audit-table write.
 
@@ -384,7 +395,7 @@ Numbers are placeholders until the benchmark and the owner's budget decisions (o
 
 ## 16. Open questions
 
-O1 to O7 are answered by the owner's directions of 19 Nov 2026 (provisional, applied above). Remaining:
+O1 to O7 are answered by the owner's directions of 19 Nov 2026 (provisional, applied above). O8 to O12 were answered on the same date (provisional); the table keeps the original question and the answers follow it.
 
 | #   | Question                                                              | Note                                                                     |
 | --- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -393,6 +404,16 @@ O1 to O7 are answered by the owner's directions of 19 Nov 2026 (provisional, app
 | O10 | Copy, layout and Sinhala wording of the restricted recovery view      | Needs UX and native-speaker review                                       |
 | O11 | Whether any narrowing of the candidate enumeration is worth its risk  | Decide from benchmark and the equivalence tests                          |
 | O12 | Who performs the independent review and when                          | Owner                                                                    |
+
+### Owner answers to O8 to O12 (19 Nov 2026, provisional)
+
+| #   | Answer                                                                                                                                                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O8  | Budgets, the 60 s maximum lifetime and related thresholds stay provisional; benchmark with realistic synthetic volumes including concurrent hierarchy updates; define privacy-safe security metrics (section 11); alert recipients pending operational assignment. |
+| O9  | Do not modify the existing predicates or hierarchy locking; investigate and document alternatives (done: the investigation document); independent security review before any change to authorization behaviour.                                                    |
+| O10 | English messages and Retry and Sign out as in section 8; Sinhala pending native-speaker validation; accessible loading, error and recovery states.                                                                                                                 |
+| O11 | Exhaustive enumeration is the correctness reference; narrow only with independent equivalence tests (section 5.2).                                                                                                                                                 |
+| O12 | Gate G1 needs a qualified independent AppSec and PostgreSQL reviewer; none assigned; Gate G1 is **not** complete.                                                                                                                                                  |
 
 ## 17. What this document does not do
 

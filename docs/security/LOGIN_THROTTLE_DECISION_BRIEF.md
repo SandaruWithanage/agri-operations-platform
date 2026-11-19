@@ -24,11 +24,15 @@ The client address is only as trustworthy as the chain that produced it. Choose 
 
 ### D2. Account and client limits
 
+**Owner direction, 19 Nov 2026 (provisional, OWNER-S1):** keep these limits provisional until synthetic load tests establish suitable thresholds, taking into account shared NAT, slow mobile networks, distributed attacks and intentional lockout abuse.
+
 - **Account limit (placeholder 5 per 15 minutes):** low on purpose against password guessing, but it also lets anyone who knows an officer's login name lock that officer out for 15 minutes with five bad tries. The trade-off is inherent; MFA and device proof still stand behind the password.
 - **Client limit (placeholder 100 per 15 minutes):** many officers behind one office NAT share it. Illustration only (not data): 30 officers each failing twice is 60, under 100, but a morning log-in rush with weak connectivity and retries could approach it.
 - **How to measure (after approval):** a repeatable test against a disposable stack using synthetic accounts: concurrent logins from one address, from several addresses, floods of random account names, recovery after the block, and the lock-out of a legitimate officer. Record observed behaviour and set the numbers from it. Until then, leave the placeholders and say so.
 
 ### D3. Should a successful login consume the account budget?
+
+**Owner direction, 19 Nov 2026 (provisional, OWNER-S2): option B, for design.** Only failed authentication attempts consume the account failure budget. Account failures are cleared only after the **entire** authentication sequence, including MFA and approved-device proof, succeeds (a correct password alone clears nothing). Separate client-level abuse controls are preserved. The migration is reviewed before any implementation; no code or migration is changed by this decision.
 
 Today **every** attempt counts, successful or not. Consequence: an officer who legitimately signs in and out five times in 15 minutes (shared phone, repeated device checks) locks their own account.
 
