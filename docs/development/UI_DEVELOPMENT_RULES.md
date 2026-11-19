@@ -14,6 +14,7 @@ Status: **standing rules from the owner (19 Nov 2026).** They apply to every scr
 - Glass is for chrome and cards (sidebar, top bar, sign-in card, summary cards, dialogs). Dense reading areas, such as tables and long forms, use a high-opacity glass so text stays readable.
 - **Readability beats effect.** Text on glass must keep WCAG AA contrast (4.5:1) measured against the **worst-case** background behind it. The token test computes this and fails if a glass colour is too transparent.
 - Fallbacks are required: a solid surface where `backdrop-filter` is unsupported, and a solid surface when the user prefers reduced transparency. Sinhala text and outdoor sunlight on cheap phones are the reference conditions.
+- **Status: implemented** (19 Nov 2026): `--agri-glass-*` and `--agri-backdrop` tokens, the shared glass selector list in `@agri/ui/ui.css`, solid and reduced-transparency fallbacks, and the worst-case contrast tests in `tests/design-tokens.test.ts`.
 - Keep blur small and never nest blurred layers (it costs battery and frame rate on low-end phones, which the field app must support).
 
 ## Rule 3. Every action is permission-driven

@@ -95,6 +95,12 @@ The package's own master specification agrees with these limits (no fake capabil
 - The signed-in field home shows its two jobs as large task cards (encrypted offline workspace first and primary, land survey second), with quieter Retry and Sign out buttons. Links, order and targets are unchanged and measured in a real browser at 320, 390 and 768 px in both languages.
 - The package's field home (F02) shows an officer name, vault cache age, GPS lock quality, "assigned tasks" and unsynced-draft counts. None of that is available to the home page: the session identity carries only account and device IDs, tasks do not exist in the back end, and counting drafts needs the vault unlocked (an offline-first rule). It is not shown, rather than invented.
 
+## Frosted glass (stage 9)
+
+- One shared glass surface (translucent white, 12 px blur) now covers the sign-in card, the admin sidebar and top bar, admin cards, tables and fieldsets, and the field cards, over a soft green backdrop. Tokens are in `@agri/design-tokens`; the selector list is in `@agri/ui/ui.css`, and apps add no blur of their own.
+- Readability first: a test blends the glass over the darkest backdrop colour and requires 4.5:1 for body, muted, subtle, link and error text, and fails if the backdrop is ever darker than that colour. A solid surface is used where blur is unsupported and when the person prefers reduced transparency or more contrast. Blur is capped at 16 px by test and is never nested, to protect low-end field phones.
+- The dark brand panel on the sign-in page stays solid, since glass over dark colours cannot meet the contrast rule.
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).
