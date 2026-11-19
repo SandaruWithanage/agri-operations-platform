@@ -472,3 +472,59 @@
   background: var(--agri-color-pill-inactive-bg);
   color: var(--agri-color-pill-inactive-text);
 }
+
+/* Frosted glass (rule 2 in docs/development/UI_DEVELOPMENT_RULES.md).
+   Apps never write their own blur: they add a selector here or the class.
+   A solid surface is used where backdrop-filter is unsupported and when the
+   person asks for more contrast or less transparency. */
+.agri-glass,
+.agri-auth__card,
+.agri-shell__side,
+.agri-shell__top,
+.agri-shell__main section,
+.agri-shell__main .table-scroll,
+.agri-shell__main fieldset,
+.field-frame .card {
+  background: var(--agri-color-surface);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .agri-glass,
+  .agri-auth__card,
+  .agri-shell__side,
+  .agri-shell__top,
+  .agri-shell__main section,
+  .agri-shell__main .table-scroll,
+  .agri-shell__main fieldset,
+  .field-frame .card {
+    background: color-mix(
+      in srgb,
+      var(--agri-color-surface) calc(var(--agri-glass-alpha) * 100%),
+      transparent
+    );
+    -webkit-backdrop-filter: blur(var(--agri-glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--agri-glass-blur)) saturate(140%);
+    box-shadow: 0 8px 24px rgb(16 60 50 / 8%);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .agri-glass,
+  .agri-auth__card,
+  .agri-shell__side,
+  .agri-shell__top,
+  .agri-shell__main section,
+  .agri-shell__main .table-scroll,
+  .agri-shell__main fieldset,
+  .field-frame .card {
+    background: var(--agri-color-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+}
+
+/* The page behind the glass. */
+.agri-auth,
+.agri-shell {
+  background: var(--agri-backdrop);
+  background-attachment: fixed;
+}

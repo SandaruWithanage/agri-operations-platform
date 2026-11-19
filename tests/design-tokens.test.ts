@@ -35,6 +35,19 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// Colour of a white glass surface after it is blended over the backdrop.
+function glassOver(backdrop: string): string {
+  const alpha = Number(cssVars.get("--agri-glass-alpha"));
+  const channel = (i: number) =>
+    Math.round(
+      255 * alpha +
+        parseInt(backdrop.slice(1 + i * 2, 3 + i * 2), 16) * (1 - alpha),
+    )
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
+
 describe("design tokens", () => {
   it("keeps the TypeScript mirror identical to tokens.css", () => {
     const kebab = (s: string) =>
@@ -112,6 +125,38 @@ describe("design tokens", () => {
       );
       expect(used.size).toBeGreaterThan(0);
       for (const name of used) expect(cssVars.has(name), name).toBe(true);
+    });
+  });
+
+  describe("frosted glass", () => {
+    const worst = () => cssVars.get("--agri-glass-backdrop-worst") as string;
+    it("keeps the glass settings present and sane", () => {
+      const alpha = Number(cssVars.get("--agri-glass-alpha"));
+      expect(alpha).toBeGreaterThanOrEqual(0.75);
+      expect(alpha).toBeLessThanOrEqual(1);
+      expect(
+        parseInt(cssVars.get("--agri-glass-blur") ?? "99", 10),
+      ).toBeLessThanOrEqual(16);
+    });
+    it("never lets the page backdrop be darker than the tested worst case", () => {
+      const stops = (cssVars.get("--agri-backdrop") ?? "").match(
+        /#[0-9a-f]{6}/gi,
+      );
+      expect(stops?.length).toBeGreaterThan(1);
+      for (const stop of stops ?? [])
+        expect(luminance(stop)).toBeGreaterThanOrEqual(luminance(worst()));
+    });
+    it.each([
+      ["text", "text"],
+      ["muted text", "text-muted"],
+      ["subtle text", "text-subtle"],
+      ["forest text", "forest"],
+      ["link", "link"],
+      ["danger text", "danger-text"],
+    ])("%s keeps 4.5:1 on glass over the darkest backdrop", (_label, token) => {
+      expect(contrast(color(token), glassOver(worst()))).toBeGreaterThanOrEqual(
+        4.5,
+      );
     });
   });
 });

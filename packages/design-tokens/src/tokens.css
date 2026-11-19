@@ -43,6 +43,16 @@
      #a05f17 passes (4.58:1). */
   --agri-color-warning-text: #a05f17;
   --agri-color-warning-bg: #fff2dc;
+
+  /* Frosted glass (docs/development/UI_DEVELOPMENT_RULES.md, rule 2). The alpha is
+     tested for contrast against the darkest colour behind a glass surface. */
+  --agri-glass-alpha: 0.82;
+  --agri-glass-blur: 12px;
+  --agri-glass-backdrop-worst: #cfe8da;
+  --agri-backdrop:
+    radial-gradient(circle at 15% 12%, #cfe8da 0, transparent 38%),
+    radial-gradient(circle at 88% 78%, #d6ece0 0, transparent 42%),
+    linear-gradient(160deg, #e4f3ea 0%, #f5f7f5 50%, #dcebe3 100%);
   --agri-color-pill-draft-bg: #f3f4f1;
   --agri-color-pill-draft-text: #5a625e;
   --agri-color-pill-pending-bg: #fef3c7;

@@ -17,6 +17,10 @@ body {
   background: var(--agri-color-bg);
   color: var(--agri-color-text);
 }
+body {
+  background: var(--agri-backdrop);
+  background-attachment: fixed;
+}
 a {
   color: var(--agri-color-link);
 }

@@ -355,9 +355,18 @@ it("starts with no locations and never treats a role label as create permission"
 });
 it("lets a create-only administrator register without reading or owning the new record", async () => {
   const f = setup();
-  vi.spyOn(f.client, "farmers").mockRejectedValue(new PilotRequestError(403));
+  const list = vi
+    .spyOn(f.client, "farmers")
+    .mockRejectedValue(new PilotRequestError(403));
   const detail = vi.spyOn(f.client, "farmer");
   render(<FarmerRegistry client={f.client} />);
+  // A denied list read deliberately clears protected state and locks any open
+  // draft. Let that denial finish before opening the form; otherwise, on a slow
+  // machine, it can arrive after the form opens and lock it mid-test.
+  await waitFor(() => expect(list).toHaveBeenCalled());
+  await act(async () => {
+    await Promise.allSettled(list.mock.results.map((result) => result.value));
+  });
   await userEvent.click(
     await screen.findByRole("button", { name: "Register a farmer" }),
   );
