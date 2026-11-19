@@ -1,0 +1,90 @@
+# Threat model: automated threats and API abuse (SEC-AUDIT-01)
+
+Status: **proposed for owner and independent security review; first version.** Written 19 Nov 2026 beside the [baseline audit](SECURITY_BASELINE_AUDIT.md), which holds the evidence for every "current control" cited here. It is an engineering analysis, not a measured risk assessment: likelihood and impact are qualitative judgements and carry no approval. OWASP identifiers are cited from the OWASP Automated Threats to Web Applications handbook and the OWASP API Security Top 10 (2023); confirm them against the current editions during review.
+
+## 1. System, assets and trust boundaries
+
+```
+Internet client ──▶ [edge: not yet defined] ──▶ Next.js BFF (admin-web / field-pwa)
+                                                   │ internal key + short-lived token + source header
+                                                   ▼
+                                              NestJS API (internal only)
+                                                   │ restricted database roles, signed actor context
+                                                   ▼
+                                       PostgreSQL / PostGIS (RLS, fixed functions)
+```
+
+| Boundary        | Trusted side | Crossing control today                                                                 |
+| --------------- | ------------ | -------------------------------------------------------------------------------------- |
+| Internet to BFF | None         | Origin and fetch-site checks, in-memory rate limits, body and URL caps, session cookie |
+| BFF to API      | BFF          | Internal key, short-lived access token, source header, response validation             |
+| API to database | API          | Restricted logins, signed actor context, verified TLS in production                    |
+| Browser storage | The device   | Encrypted offline vault; no tokens in the browser                                      |
+
+**Assets** (most sensitive first): farmer and land records and their locations; staff credentials, MFA secrets, sessions and device keys; the authorization grants; audit history; availability of the platform for field staff; the integrity of offline-synchronized work.
+
+**Adversaries considered:** an anonymous bot operator (credential stuffing, spraying, scraping, flooding); an authenticated but abusive or compromised staff account; a malicious or buggy client that retries or floods; an insider with valid scope trying bulk extraction; a network attacker able to forge headers on a direct connection.
+
+**Out of scope for this version:** physical device theft analysis (covered by the encrypted vault and device proof work), the Phase 2 farmer portal, and third-party infrastructure not yet chosen.
+
+## 2. Threats, controls and residual risk
+
+Control state is from the audit: **E** existing, **P** partial, **M** missing. "Test" names the verification still owed (slice numbers refer to the audit plan).
+
+| #   | Threat                                                                                             | OWASP automated / API     | Current controls                                                                                                                        | State          | Residual risk and what is owed                                                                                                                            | Slice and test                                        |
+| --- | -------------------------------------------------------------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| T1  | **Credential stuffing** with leaked passwords across many accounts and addresses                   | OAT-008; API2             | Per-account and per-client PostgreSQL buckets; Argon2id; MFA and approved-device proof after the password; in-memory per-address budget | P              | The password alone never opens a session, which is the strongest control. Distributed sources defeat per-address limits; no edge filtering; no detection. | A2, A3, A7, A8: spraying and distributed-source tests |
+| T2  | **Password spraying** (few passwords against many accounts)                                        | OAT-007; API2             | Per-client bucket (100 per 15 min placeholder) and per-account bucket                                                                   | P              | A slow, widely distributed spray stays under both limits; needs aggregate detection across accounts.                                                      | A2, A7 alert on cross-account failure rate            |
+| T3  | **Account-lockout abuse** (deliberately locking a known officer)                                   | OAT-007 side effect; API2 | Account bucket of 5 per 15 minutes                                                                                                      | **P, harmful** | Attackers can deny sign-in to named staff. Successful logins also consume the budget.                                                                     | A5 (decision D2/D3)                                   |
+| T4  | **Shared-network false positives** (many officers behind one office NAT blocked together)          | n/a (availability)        | Client bucket sized above typical office use                                                                                            | P              | Placeholder size unmeasured; the unattributed bucket is shared by everyone when the hop count is 0.                                                       | A1 (hop count fail-fast), measurement                 |
+| T5  | **Forged forwarding headers** to change identity or evade budgets                                  | OAT-008 evasion; API8     | Trusted hop count; entries left of the trusted position ignored; API never uses the BFF socket address                                  | E/P            | Safe only if the real chain matches the configured count; a direct connection to the origin reintroduces spoofing.                                        | A1, A3, A8: forged-header and direct-origin tests     |
+| T6  | **Direct-origin access** bypassing the edge                                                        | API8                      | None                                                                                                                                    | **M**          | Edge limits and filtering can be skipped entirely.                                                                                                        | A3                                                    |
+| T7  | **Limiter exhaustion** (filling the 10 000-key in-memory table, or per-instance reset)             | OAT-015; API4             | Fixed key cap                                                                                                                           | P              | A flood of distinct keys can evict useful state; restart resets; several instances multiply budgets.                                                      | A3, A4, A8                                            |
+| T8  | **Application-layer denial of service** by many cheap requests                                     | OAT-015; API4             | In-flight cap of 256 in the API with 503 shedding; request and header timeouts; body caps                                               | P              | No BFF concurrency cap; no edge connection limits; database saturation is not guarded by lock or idle timeouts.                                           | A4, A6                                                |
+| T9  | **Expensive-query abuse** (large viewports, repeated geometry reads, predicate loops)              | OAT-015; API4             | Page caps, 200 polygon and 5° viewport limits, 10 s statement timeout                                                                   | P              | No cost budget; per-call hierarchy lock and per-geography predicate scans are a contention surface.                                                       | A6, A8: expensive-GIS test                            |
+| T10 | **Scraping and bulk extraction by a valid session**                                                | OAT-011; API6             | RLS scope; cursor pagination capped at 100; no totals; no phone or NIC search; viewport "not an export"                                 | P              | Volume over time is bounded only by the 240 per minute session read budget. Stolen sessions and insiders are not distinguished from normal use.           | A4 (volume budgets, owner decision), A7 (alert)       |
+| T11 | **Enumeration** of accounts, devices, farmers or parcels through responses, errors or timing       | OAT-018; API1, API3       | Generic error normalization; dummy Argon2 hash; not-found equals not-permitted for records; no existence leaks through totals           | P              | No automated parity test across failure modes.                                                                                                            | A8                                                    |
+| T12 | **Session replay or theft**                                                                        | API2                      | HttpOnly `__Host-` cookie, short-lived tokens held by the BFF, CSRF handling, device binding, database revocation                       | E              | Detection of anomalous reuse is absent.                                                                                                                   | A2, A8: replay test                                   |
+| T13 | **OTP guessing or replay**                                                                         | OAT-007                   | OTP only after password; consumed counter blocks replay; encrypted secret                                                               | E              | A separate OTP attempt limit is not evidenced beyond the shared account bucket.                                                                           | A8                                                    |
+| T14 | **Cross-site request forgery and cross-origin abuse**                                              | API8                      | Exact origin required for writes; cross-site fetch refused; no CORS in production                                                       | E              | None identified; covered by existing tests, to be extended.                                                                                               | A8                                                    |
+| T15 | **Broken authorization** (object, property or function level) from an authenticated account        | API1, API3, API5          | PostgreSQL predicates and RLS; fixed functions; administrator-only routes absent from the field BFF                                     | E              | The database is the authority; UI hiding is a convenience (UI rules). Not reopened here.                                                                  | Existing suites                                       |
+| T16 | **Offline synchronization abuse** (replay, retry storms, oversized archives)                       | API4, API6                | Idempotent mutation ids, size caps, current-authority revalidation                                                                      | P              | No server-side retry or batch budget.                                                                                                                     | A4, A8                                                |
+| T17 | **Security misconfiguration in production** (wrong hop count, weak key, http origins, missing TLS) | API8                      | Partial validation, lazily                                                                                                              | **P**          | A bad deployment starts and answers 503 later; unsafe hop default.                                                                                        | A1                                                    |
+| T18 | **Secrets committed to the repository**                                                            | API8                      | None automated                                                                                                                          | **M**          | Not detected.                                                                                                                                             | A9                                                    |
+| T19 | **CAPTCHA or fingerprint reliance defeated**                                                       | OAT-009                   | Not relied on                                                                                                                           | E (by design)  | Edge challenges and fingerprints are signals only, never a sole defence; never required to reach the origin.                                              | A3                                                    |
+| T20 | **Unobserved attack** (no evidence, no alert)                                                      | all                       | Business audit tables only                                                                                                              | **M**          | Attacks would not be detected or investigated.                                                                                                            | A2, A7                                                |
+| T21 | **Control failure** (limiter, edge, event sink or database throttle unavailable)                   | API4, API8                | Login throttle fails closed through the database; BFF limiter is in process                                                             | P              | Behaviour when each dependency fails is not specified or tested.                                                                                          | A4, A8                                                |
+
+## 3. Failure-mode principles (apply to every slice)
+
+1. **Authentication and authorization fail closed.** If the login throttle store, the session store or the database predicate cannot answer, the request is refused with a generic error.
+2. **Convenience controls fail open only where the database still protects.** An edge challenge outage must not lock staff out of an already-authenticated session; it must raise an alert.
+3. **No single signal decides.** Challenges, user-agent or fingerprint data and IP reputation may raise suspicion and add friction; they are never the sole reason to allow or to block.
+4. **No new shared state technology without evidence.** PostgreSQL remains the shared store for throttling; adding Redis needs a measured need and an architecture review.
+5. **Security events contain no secrets.** Passwords, one-time codes, tokens, cookies, internal keys, device private material, farmer names, locations and national identifiers never appear in events or logs; addresses are recorded only as keyed hashes unless an incident procedure says otherwise.
+
+## 4. Event catalogue (proposed, for slice A2)
+
+Events are structured, versioned and limited to these fields: event name, time, outcome, coarse route class, a keyed hash of the account, device and client where relevant, reason code, and counters. Nothing free-text from a caller.
+
+| Event                                          | When                                       | Feeds alert                              |
+| ---------------------------------------------- | ------------------------------------------ | ---------------------------------------- |
+| `auth.login.failed` and `auth.login.throttled` | A failed or refused sign-in, by reason     | Spraying, stuffing, lockout abuse        |
+| `auth.mfa.failed`, `auth.device.rejected`      | Failed second factor or device proof       | OTP guessing, stolen credential          |
+| `auth.session.revoked`, `auth.device.revoked`  | Revocation                                 | Unusual revocation volume                |
+| `bff.ratelimit.exceeded`                       | A budget refused a request, by route class | Scraping, flooding, misconfigured client |
+| `bff.origin.rejected`, `bff.header.suspicious` | Origin or forwarded-header anomaly         | Spoofing, direct-origin use              |
+| `api.overload.shed`                            | In-flight cap returned 503                 | Saturation                               |
+| `db.statement.timeout`, `db.pool.exhausted`    | Query or pool limit hit                    | Expensive-query abuse                    |
+| `data.read.volume`                             | Per-account volume crosses a threshold     | Bulk extraction                          |
+| `config.unsafe.detected`                       | Startup validation failure                 | Misconfiguration                         |
+
+Alert thresholds are placeholders until measured and are labelled provisional wherever they appear.
+
+## 5. Review requests
+
+1. Confirm the adversary list and the out-of-scope list.
+2. Decide D2 and D3 so slice A5 can be designed (lockout abuse, successful-login budget).
+3. Choose a hosting direction (OPS-04), or confirm that provider-neutral requirements are the right level for slices A3 and A4 until then.
+4. Decide the volume budget for authenticated reads (threat T10) and who receives alerts.
+5. Arrange independent review and, later, authorized load and penetration testing.
