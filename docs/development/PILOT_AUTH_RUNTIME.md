@@ -69,6 +69,30 @@ The API never uses its own socket address (which is the BFF's) as the client. Th
 
 Trade-offs the owner must approve before any real-data pilot: with `PILOT_TRUSTED_PROXY_HOPS=0` every login shares the `unattributed` client bucket, so a flood of bad attempts can still lock all logins for the block period once the broad limit is reached (acceptable for local development only); many officers behind one NAT share one address and one client bucket; the numbers above are placeholders pending measurement. Production must run behind the approved proxy chain with the matching hop count, and the edge (reverse proxy) should add its own request-rate limit. Rate limits do not replace MFA or device proof. The open choices are laid out for the owner in [LOGIN_THROTTLE_DECISION_BRIEF.md](../security/LOGIN_THROTTLE_DECISION_BRIEF.md).
 
+## Production start checks (SEC-A1, 19 Nov 2026)
+
+In production (`NODE_ENV=production`), if **any** of `PILOT_API_ORIGIN`, `PILOT_PUBLIC_ORIGIN`, `PILOT_INTERNAL_KEY` or `PILOT_TRUSTED_PROXY_HOPS` is set, the admin web and the field PWA refuse to start unless the whole set is valid. They exit with status 1 and print one line that names each failing variable and a reason code. They never print a value (the internal key is a secret).
+
+| Variable                            | Required in production when any is set                                           | Reason codes                                                                      |
+| ----------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `PILOT_API_ORIGIN`                  | A bare `https` origin: no path, query, fragment or credentials                   | `missing`, `not-https-origin`                                                     |
+| `PILOT_PUBLIC_ORIGIN`               | The same                                                                         | `missing`, `not-https-origin`                                                     |
+| `PILOT_INTERNAL_KEY`                | At least 43 characters                                                           | `missing`, `too-short`                                                            |
+| `PILOT_TRUSTED_PROXY_HOPS`          | **Stated explicitly** as a plain integer from 0 to 5. There is no silent default | `missing`, `not-an-integer`, `out-of-range`, `unattributed-needs-acknowledgement` |
+| `PILOT_ACCEPT_UNATTRIBUTED_CLIENTS` | Must be exactly `true` if the hop count is `0`                                   | (see above)                                                                       |
+
+Why: an unset hop count used to default to 0, which puts every login into one shared bucket (one flood can block all logins), and a wrong count either ignores real clients or trusts a header the caller controls. A bad deployment also used to start normally and answer 503 only when someone first tried to sign in.
+
+Behaviour that is deliberately unchanged:
+
+- Development, tests and builds are not checked (`next build` does not run the check).
+- A production server with **no** BFF settings at all still starts; the BFF answers 503 "Authentication is not configured" and fixing the environment takes effect without a restart. This is what the browser test harnesses rely on.
+- A zero hop count in production is allowed only with the explicit acknowledgement above, because with no trusted proxy the BFF cannot attribute any client. It is not a recommended setting.
+
+What an operator sees: the process exits with status 1 at start and the supervisor shows a crash, not a healthy server answering errors. Next.js on its own would keep the process alive and answer every request with HTTP 500 when its start-up hook fails; the explicit exit avoids that.
+
+What this does **not** prove: that the configured hop count matches the real proxy chain. That needs a deployment test with a forged `X-Forwarded-For` through the approved topology (SEC-A3, hosting decision OPS-04).
+
 ## HTTP hardening of the API and the web apps
 
 **API (`apps/api/src/security/http-hardening.ts`).** The default body parsers are disabled and only a JSON parser exists (strict mode, 256 KB by default; form, text and raw bodies are never parsed). `X-Powered-By` is removed and every response carries `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy: default-src 'none'`, `Cross-Origin-Resource-Policy` and `Cache-Control: no-store`. CORS is off in production unless `API_CORS_ORIGINS` lists exact `https://` origins (the BFF calls the API server-to-server and needs no CORS); development keeps the two localhost origins. Concurrent requests are capped (`API_MAX_IN_FLIGHT`, default 256): beyond it requests get 503 with `Retry-After` instead of queueing against the database pool, and the slot is released for completed, aborted and timed-out requests. Request, header and keep-alive timeouts (30 s, 15 s, 5 s) and a header-count limit bound slow connections. Invalid configuration fails at start-up rather than being ignored. The API still listens on the interface Node chooses; bind it to the private network and never publish it, since the internal key is the only application-level gate.
