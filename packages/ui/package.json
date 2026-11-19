@@ -9,6 +9,8 @@
     "./auth-shell": "./src/auth-shell.tsx",
     "./admin-shell": "./src/admin-shell.tsx",
     "./status-pill": "./src/status-pill.tsx",
+    "./permission-action": "./src/permission-action.tsx",
+    "./permission-codes": "./src/permission-codes.ts",
     "./locale-toggle": "./src/locale-toggle.tsx",
     "./ui.css": "./src/ui.css"
   },

@@ -101,6 +101,10 @@ The package's own master specification agrees with these limits (no fake capabil
 - Readability first: a test blends the glass over the darkest backdrop colour and requires 4.5:1 for body, muted, subtle, link and error text, and fails if the backdrop is ever darker than that colour. A solid surface is used where blur is unsupported and when the person prefers reduced transparency or more contrast. Blur is capped at 16 px by test and is never nested, to protect low-end field phones.
 - The dark brand panel on the sign-in page stays solid, since glass over dark colours cannot meet the contrast rule.
 
+## Permission-driven actions (stage 10)
+
+The admin screens' create, correct, verify, enrol, withdraw, policy and edit buttons now go through the shared `PermissionAction` (see UI rules, rule 3). Today it shows them, marked as server-checked, because no account-wide capabilities list exists; it already honours the server's per-record flags. Navigation items are not yet permission-filtered. The database-side design (permission ids) is an ADR 0022 addendum awaiting approval.
+
 ## Language
 
 English and Sinhala. **The new Sinhala strings were written without a native-speaker review and must be reviewed before any pilot**, like the other Sinhala copy. Actual font rendering on approved phones needs device testing (DEC-07).

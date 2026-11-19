@@ -1,4 +1,5 @@
 "use client";
+import { PermissionAction } from "@agri/ui/permission-action";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
@@ -175,7 +176,8 @@ function VerificationIntent({
             {copy.confirm}
           </label>
           {!mutation.variables && (
-            <button
+            <PermissionAction
+              code="farmer.verify"
               disabled={!confirmed}
               onClick={() =>
                 mutation.mutate({
@@ -188,7 +190,7 @@ function VerificationIntent({
               }
             >
               {copy.verify}
-            </button>
+            </PermissionAction>
           )}
         </>
       )}

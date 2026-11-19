@@ -1,4 +1,5 @@
 "use client";
+import { PermissionAction } from "@agri/ui/permission-action";
 import type { EnrollmentPage, EnrollmentDetail } from "@agri/validation";
 import { enrollmentWithdrawWords, enrollmentWords } from "./enrollment-words";
 type Summary = EnrollmentDetail["enrollment"];
@@ -112,12 +113,13 @@ export function EnrollmentDirectory({
           {detail.enrollment.status === "enrolled" &&
             detail.enrollment.version < 2147483645 &&
             onWithdraw && (
-              <button
+              <PermissionAction
+                code="enrollment.withdraw"
                 disabled={withdrawDisabled}
                 onClick={() => onWithdraw(detail.enrollment)}
               >
                 {enrollmentWithdrawWords[language].start}
-              </button>
+              </PermissionAction>
             )}
           <button onClick={onClose}>{copy.close}</button>
         </section>
