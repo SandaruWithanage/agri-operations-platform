@@ -56,6 +56,11 @@ import {
   farmerCorrectionReceiptSchema,
 } from "@agri/validation";
 /** Server route code only. Never import configured instances into client components. */
+export {
+  assertProductionBffEnvironment,
+  productionBffProblems,
+  type ProductionConfigProblem,
+} from "./production-config";
 export type BffConfig = {
   apiOrigin: string;
   publicOrigin: string;
