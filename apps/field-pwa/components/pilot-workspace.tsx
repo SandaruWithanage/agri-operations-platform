@@ -417,9 +417,7 @@ function SessionView({
               {fingerprint && (
                 <p className="agri-notice">
                   {c.fingerprint}:{" "}
-                  <code style={{ overflowWrap: "anywhere" }}>
-                    {fingerprint}
-                  </code>
+                  <code className="agri-wrap-anywhere">{fingerprint}</code>
                 </p>
               )}
             </form>
@@ -470,7 +468,7 @@ function SessionView({
           {fingerprint && (
             <p>
               {c.fingerprint}:{" "}
-              <code style={{ overflowWrap: "anywhere" }}>{fingerprint}</code>
+              <code className="agri-wrap-anywhere">{fingerprint}</code>
             </p>
           )}
           <div className="workspace-actions">

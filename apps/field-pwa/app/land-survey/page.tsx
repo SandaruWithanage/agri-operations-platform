@@ -1,5 +1,6 @@
 "use client";
 import { LocaleProvider, useLocale } from "@agri/i18n/react";
+import { LocaleToggle } from "@agri/ui/locale-toggle";
 import { LandSurveyWorkspace } from "../../components/land-survey-workspace";
 export default function LandSurveyPage() {
   return (
@@ -11,23 +12,13 @@ export default function LandSurveyPage() {
 function SurveyHome() {
   const [language, chooseLanguage] = useLocale();
   return (
-    <main>
-      <div
-        style={{ display: "flex", gap: 8, marginBottom: 24 }}
-        aria-label="Language"
-      >
-        <button
-          aria-pressed={language === "en"}
-          onClick={() => chooseLanguage("en")}
-        >
-          English
-        </button>
-        <button
-          aria-pressed={language === "si"}
-          onClick={() => chooseLanguage("si")}
-        >
-          සිංහල
-        </button>
+    <main className="field-frame">
+      <div className="field-frame__bar">
+        <LocaleToggle
+          value={language}
+          onChange={chooseLanguage}
+          label="Language / භාෂාව"
+        />
       </div>
       <div className="card">
         <LandSurveyWorkspace language={language} />
