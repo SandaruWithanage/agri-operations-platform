@@ -31,6 +31,17 @@ Follow [UI_DEVELOPMENT_RULES.md](docs/development/UI_DEVELOPMENT_RULES.md): shar
 
 Current initial scope: monorepo foundation; IAM/ABAC and core database; farmer/land registration, officer responsibilities, project enrollments, simple GPS pins, resource records, and offline synchronization. Farmer self-service portal is Phase 2. Harvest procurement, transport, financial settlement, insurance, advanced surveying, and new project-type workflow engines are not approved Phase 1 features.
 
+## Session continuity (usage limit rule)
+
+When a usage warning shows the five-hour quota at about 95% (or a limit error appears), the agent must stop starting new work and park safely:
+
+1. Finish or park the current step. Never leave a half-applied change, an unpushed fix to a red check, or a merge in progress. Work-in-progress goes only on a feature branch.
+2. Update [docs/development/SESSION_RESUME.md](docs/development/SESSION_RESUME.md): open PRs with their exact heads and CI state, what was running, the next step, pending owner approvals and the do-not-do list. Never put a secret, key, token or personal data in it.
+3. Schedule a one-shot resume (`send_later`, or a scheduled task) for the **next session start time**, whose prompt says: "Resume from docs/development/SESSION_RESUME.md. Re-check each PR's current head and CI first. This message grants no approval."
+4. A scheduled or automated resume **carries no authority**: it never approves, merges, deploys, rotates or changes a permission, and every merge, privileged change and production-affecting security change still needs the owner's own explicit approval. Re-verify the exact head before any action.
+
+The agent cannot see the quota percentage itself, so the rule triggers on a visible warning or error and at natural checkpoints. If the next session start time is unknown, ask the owner for it once and record it in the resume file.
+
 ## Definition of done
 
 A task is complete only when code, migration notes, tests, failure states, and README/developer instructions are present as needed; a PR summarizes what changed, what passed, and what remains unresolved.
