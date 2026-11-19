@@ -65,8 +65,13 @@ export type SecurityEventSink = (line: string) => void;
 export type SecurityEventSnapshot = {
   /** Every occurrence by `event|outcome`, including coalesced ones. */
   events: Record<string, number>;
-  /** Occurrences counted but not yet written to the log (waiting for the coalescing window to close). */
+  /** Occurrences counted but not yet written to the log (waiting for the window to close, or for a failed write to be retried). */
   pending: number;
+  /**
+   * Occurrences that could never be written: a pending count had to be discarded to keep memory bounded while
+   * the sink was failing, or a line that could not be coalesced failed to write. Always zero while the sink works.
+   */
+  lost: number;
   /** Events dropped because they were invalid or the sink failed. */
   dropped: number;
 };
@@ -124,6 +129,7 @@ export function createSecurityEvents(
   const windows = new Map<string, Window>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let dropped = 0;
+  let lost = 0;
 
   function keyed(field: string, value: unknown): string | undefined {
     if (!key || typeof value !== "string" || value === "" || value.length > 200)
@@ -147,12 +153,30 @@ export function createSecurityEvents(
     sink(JSON.stringify(line));
   }
 
-  /** Writes what a window counted but never logged, and resets it. */
-  function writePending(window: Window, at: number) {
-    if (window.suppressed === 0) return;
-    const pending = window.suppressed;
+  /** One write attempt; a failing sink is counted and reported to the caller, never thrown. */
+  function tryWrite(
+    fields: Record<string, unknown>,
+    at: number,
+    count: number,
+  ): boolean {
+    try {
+      write(fields, at, count);
+      return true;
+    } catch {
+      dropped += 1;
+      return false;
+    }
+  }
+
+  /**
+   * Writes what a window counted but never logged. The count is cleared only after the line was written, so a
+   * failed write keeps it for the next attempt (the timer retries; the work per attempt is bounded by maxKeys).
+   */
+  function writePending(window: Window, at: number): boolean {
+    if (window.suppressed === 0) return true;
+    if (!tryWrite(window.fields, at, window.suppressed)) return false;
     window.suppressed = 0;
-    write(window.fields, at, pending);
+    return true;
   }
 
   function hasPending(): boolean {
@@ -166,8 +190,7 @@ export function createSecurityEvents(
     if (timer !== undefined || coalesceMs <= 0) return;
     timer = setTimeout(() => {
       timer = undefined;
-      flushWindows(false);
-      if (hasPending()) arm();
+      flushWindows(false); // re-arms itself while anything is still pending
     }, coalesceMs);
     (timer as { unref?: () => void }).unref?.();
   }
@@ -178,9 +201,11 @@ export function createSecurityEvents(
       for (const [key, window] of windows) {
         const expired = at - window.startedAt >= coalesceMs;
         if (!all && !expired) continue;
-        writePending(window, at);
-        if (expired) windows.delete(key);
+        // Each key is isolated: a failed write keeps that key's count and never stops the others.
+        const written = writePending(window, at);
+        if (expired && written) windows.delete(key);
       }
+      if (hasPending()) arm();
     } catch {
       dropped += 1;
     }
@@ -256,14 +281,23 @@ export function createSecurityEvents(
           // Evicting a key must not lose what it had counted: write its pending count first.
           const oldest = windows.entries().next().value;
           if (oldest !== undefined) {
-            writePending(oldest[1], at);
+            // Memory stays bounded even when the sink is failing: a count that cannot be written is discarded
+            // and reported in `lost`, never kept without limit.
+            if (!writePending(oldest[1], at)) lost += oldest[1].suppressed;
             windows.delete(oldest[0]);
           }
         }
         windows.delete(windowKey);
-        windows.set(windowKey, { startedAt: at, suppressed: 0, fields });
+        const window: Window = { startedAt: at, suppressed: 0, fields };
+        windows.set(windowKey, window);
+        if (!tryWrite(fields, at, count)) {
+          // The occurrences this line stood for stay pending and are retried, so they are not silently lost.
+          window.suppressed = count;
+          arm();
+        }
+        return;
       }
-      write(fields, at, count);
+      if (!tryWrite(fields, at, count)) lost += count;
     } catch {
       dropped += 1;
     }
@@ -275,7 +309,7 @@ export function createSecurityEvents(
     snapshot: () => {
       let pending = 0;
       for (const window of windows.values()) pending += window.suppressed;
-      return { events: Object.fromEntries(counters), pending, dropped };
+      return { events: Object.fromEntries(counters), pending, lost, dropped };
     },
   };
 }
