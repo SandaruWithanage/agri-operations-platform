@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Agri Operations Field",
-    short_name: "Agri Field",
+    name: "GoviAxis | Integrated Agricultural Operations Management System",
+    short_name: "GoviAxis",
     start_url: "/",
     display: "standalone",
     background_color: "#f5f7f5",

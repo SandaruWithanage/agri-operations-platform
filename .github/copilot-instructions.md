@@ -1,4 +1,4 @@
-# GitHub Copilot review guidance: Agricultural Operations Platform
+# GitHub Copilot review guidance: GoviAxis (Integrated Agricultural Operations Management System)
 
 Read `AGENTS.md`, `docs/development/PROJECT_HANDOVER.md`, and `docs/architecture/decisions/ADR-data-state-cache.md` before reviewing a pull request. They describe the current design and the distinction between proposed requirements, implemented behavior, and real-client acceptance.
 

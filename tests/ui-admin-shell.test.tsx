@@ -9,7 +9,7 @@ afterEach(() => cleanup());
 function shell(select = vi.fn()) {
   return render(
     <AdminShell
-      brandName="Agricultural Operations"
+      brandName="GoviAxis"
       navLabel="Records"
       skipLabel="Skip to content"
       plannedHeading="Planned modules"
@@ -87,7 +87,7 @@ it("leaves out pages whose read permission the account lacks", () => {
   render(
     <PermissionProvider capabilities={new Set(["farmer.read"])}>
       <AdminShell
-        brandName="Agricultural Operations"
+        brandName="GoviAxis"
         navLabel="Records"
         skipLabel="Skip to content"
         plannedHeading="Planned modules"
@@ -126,7 +126,7 @@ it("leaves out pages whose read permission the account lacks", () => {
 it("stops listing planned modules once the account's permissions are known", () => {
   const { unmount } = render(
     <AdminShell
-      brandName="Agricultural Operations"
+      brandName="GoviAxis"
       navLabel="Records"
       skipLabel="Skip to content"
       plannedHeading="Planned modules"
@@ -143,7 +143,7 @@ it("stops listing planned modules once the account's permissions are known", () 
   render(
     <PermissionProvider capabilities={new Set(["farmer.read"])}>
       <AdminShell
-        brandName="Agricultural Operations"
+        brandName="GoviAxis"
         navLabel="Records"
         skipLabel="Skip to content"
         plannedHeading="Planned modules"

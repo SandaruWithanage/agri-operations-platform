@@ -123,3 +123,7 @@ English and Sinhala. **The new Sinhala strings were written without a native-spe
 6. Officer registration, land capture, review and saved-offline screens.
 
 Each stage is checked with unit tests, a real-browser run at desktop and phone widths, and the full CI. Passing checks is evidence, not design approval; the owner reviews the visuals.
+
+## Product name in the designs (19 Nov 2026)
+
+The system name is **GoviAxis | Integrated Agricultural Operations Management System**; **GoviAxis** is the short name for the login page, the sidebar and every screen header. The code, installed-app name, page titles and documentation use it now. **Owner direction (19 Nov 2026): the Figma files are no longer the design source; the new UI designs are on Stitch, and the Figma files are not being updated.** Anything in the Figma files that shows the old working name is superseded and not a task. I have not verified which name the Stitch designs show; a screen there that still shows the old name should be corrected in Stitch, not in the code (the code already uses `applicationName`).
