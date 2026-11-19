@@ -122,3 +122,40 @@ it("leaves out pages whose read permission the account lacks", () => {
   expect(screen.getByRole("button", { name: "Farmers" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Land" })).toBeNull();
 });
+
+it("stops listing planned modules once the account's permissions are known", () => {
+  const { unmount } = render(
+    <AdminShell
+      brandName="Agricultural Operations"
+      navLabel="Records"
+      skipLabel="Skip to content"
+      plannedHeading="Planned modules"
+      plannedTag="Planned"
+      planned={["Reports"]}
+      toolbar={<span>toolbar</span>}
+      items={[]}
+    >
+      <h1>Page title</h1>
+    </AdminShell>,
+  );
+  expect(screen.getByText("Reports")).toBeTruthy();
+  unmount();
+  render(
+    <PermissionProvider capabilities={new Set(["farmer.read"])}>
+      <AdminShell
+        brandName="Agricultural Operations"
+        navLabel="Records"
+        skipLabel="Skip to content"
+        plannedHeading="Planned modules"
+        plannedTag="Planned"
+        planned={["Reports"]}
+        toolbar={<span>toolbar</span>}
+        items={[]}
+      >
+        <h1>Page title</h1>
+      </AdminShell>
+    </PermissionProvider>,
+  );
+  expect(screen.queryByText("Reports")).toBeNull();
+  expect(screen.queryByText("Planned modules")).toBeNull();
+});
