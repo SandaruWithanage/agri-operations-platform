@@ -114,6 +114,10 @@ SEC-A1 (merged) refuses an unsafe configuration at start. It is **not** evidence
 
 These conditions are tracked under SEC-A3 and SEC-A8 and are not met yet.
 
+### Capabilities directions O8 to O12 (owner, 19 Nov 2026, provisional)
+
+Recorded as OWNER-S9 to OWNER-S13 in the [decision register](../requirements/OPEN_DECISIONS.md). Effects: the endpoint's budgets, 60 s lifetime and thresholds stay provisional and are benchmarked with a concurrent hierarchy writer (finding F-15); the hierarchy lock and the predicates are **not** modified, and the contention is investigated in [PREDICATE_LOCK_CONTENTION_INVESTIGATION.md](PREDICATE_LOCK_CONTENTION_INVESTIGATION.md) (a measured synthetic demonstration confirmed the queueing behaviour and that a short `lock_timeout` fails fast); restricted-view messages are English with Retry and Sign out and Sinhala pending validation; exhaustive enumeration stays the correctness reference; **Gate G1 needs a qualified independent AppSec and PostgreSQL reviewer, none is assigned, and Gate G1 is not complete.**
+
 ## 5. Traceability
 
 | Item                                       | Link                                                                                                                            |

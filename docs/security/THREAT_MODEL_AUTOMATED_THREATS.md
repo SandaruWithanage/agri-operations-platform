@@ -82,6 +82,8 @@ Events are structured, versioned and limited to these fields: event name, time, 
 
 Alert thresholds are placeholders until measured and are labelled provisional wherever they appear.
 
+**Privacy-safe metrics (proposed, owner directions O8 and S4).** Counters and histograms with low-cardinality labels only; an account, device, client or scope identifier is never a label. `agri_security_events_total{event,outcome}`; `agri_login_attempts_total{outcome}` (success, failed, throttled); `agri_ratelimit_refusals_total{route_class,limiter}`; `agri_api_overload_shed_total`; `agri_db_statement_timeouts_total{route_class}` and `agri_db_lock_timeouts_total{route_class}`; the capabilities metrics in the contract; and, for read-volume protection, a **distribution** of reads per session window plus `agri_abnormal_access_flags_total{kind}` produced by a detection step. Per owner direction S4 the first goal is **measurement and abnormal-access detection with provisional alert recommendations**; no per-day limit is proposed. Alert recipients and on-call routing are **pending operational assignment** (OWNER-S5, OWNER-S9).
+
 ## 5. Review requests
 
 1. Confirm the adversary list and the out-of-scope list.
