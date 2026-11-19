@@ -38,7 +38,9 @@ export type ShellItem = {
   /**
    * The read permission this page needs. An item whose permission the account
    * lacks is not listed. This only shapes the interface: the database still
-   * decides every request.
+   * decides every request. Planned (unbuilt) modules are listed only while the
+   * account's permissions are unknown; once they are known the sidebar shows
+   * nothing the account cannot use.
    */
   permission: PermissionCode;
   label: string;
@@ -105,16 +107,18 @@ export function AdminShell(props: {
             </div>
           ))}
         </nav>
-        <div className="agri-shell__planned">
-          <p className="agri-shell__planned-title">{props.plannedHeading}</p>
-          <ul>
-            {props.planned.map((label) => (
-              <li key={label}>
-                {label} <span>{props.plannedTag}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {capabilities === "unknown" && (
+          <div className="agri-shell__planned">
+            <p className="agri-shell__planned-title">{props.plannedHeading}</p>
+            <ul>
+              {props.planned.map((label) => (
+                <li key={label}>
+                  {label} <span>{props.plannedTag}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </aside>
       <div className="agri-shell__body">
         <div className="agri-shell__top">{props.toolbar}</div>
