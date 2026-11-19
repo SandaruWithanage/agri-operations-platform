@@ -11,7 +11,9 @@
  * over-long entry fails the run, so a waiver cannot quietly become permanent. A real secret is never waived:
  * it is rotated (see the procedure in the document).
  *
- * Exit status: 0 clean, 1 findings, 2 configuration or usage error.
+ * Exit status: 0 clean, 1 findings, 2 the scan could not be completed (configuration or usage error, a failed git
+ * command, a tracked file that could not be read, an incomplete history). **A scan that could not finish is never
+ * reported as clean**, and its message never contains file contents, git output or a matched value.
  */
 import { createHash } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
@@ -32,6 +34,35 @@ const skippedPaths = [
   /(^|\/)pnpm-lock\.yaml$/,
   /\.(png|jpe?g|gif|ico|woff2?|pdf|zip)$/i,
 ];
+
+/** The scan could not be completed. The message is fixed text, paths and codes only: never content or git output. */
+export class ScanError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ScanError";
+  }
+}
+
+function describeFailure(error) {
+  if (error?.code === "ENOENT") return "git was not found";
+  if (typeof error?.status === "number") return `exit status ${error.status}`;
+  if (error?.signal) return `signal ${error.signal}`;
+  if (typeof error?.code === "string") return `error ${error.code}`;
+  return "unknown failure";
+}
+
+function gitOutput(root, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: root,
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    // Deliberately not error.message or stderr: git output can quote paths or content.
+    throw new ScanError(`git ${args[0]} failed (${describeFailure(error)})`);
+  }
+}
 
 /** Words that mark a value as an obvious placeholder in the *generic* rule only. */
 const placeholder =
@@ -184,55 +215,138 @@ export function scanText(path, text, context = {}) {
   return findings;
 }
 
-function trackedFiles(root) {
-  return execFileSync("git", ["ls-files", "-z"], {
-    cwd: root,
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .toString()
+/** Tracked entries as {mode, path}; fails on a git error, an unparseable entry or an empty list. */
+function trackedEntries(root) {
+  const output = gitOutput(root, ["ls-files", "-z", "-s"]).toString();
+  const entries = output
     .split("\0")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((entry) => {
+      const m = /^(\d{6}) [0-9a-f]+ \d\t([\s\S]+)$/.exec(entry);
+      if (!m) throw new ScanError("git ls-files returned an unreadable entry");
+      return { mode: m[1], path: m[2] };
+    });
+  if (entries.length === 0)
+    throw new ScanError("git ls-files returned no tracked files");
+  return entries;
 }
+
+const defaultIo = {
+  open: (path) => openSync(path, "r"),
+  fstat: (fd) => fstatSync(fd),
+  read: (fd) => readFileSync(fd),
+  close: (fd) => closeSync(fd),
+};
 
 /**
  * Opens once and checks the same descriptor it reads, so the file cannot change between check and read.
- * Returns undefined for anything missing, unreadable, not a regular file or over the size limit.
+ * Every outcome is named: a file that cannot be read is `unreadable` (with the error code), never silently skipped.
  */
-function readTrackedFile(full) {
+function readTrackedFile(full, io) {
   let fd;
   try {
-    fd = openSync(full, "r");
-    const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.size > maxFileBytes) return undefined;
-    return readFileSync(fd);
-  } catch {
-    return undefined;
+    fd = io.open(full);
+    const stat = io.fstat(fd);
+    if (!stat.isFile()) return { kind: "not-regular" };
+    if (stat.size > maxFileBytes) return { kind: "oversize" };
+    return { kind: "read", buffer: io.read(fd) };
+  } catch (error) {
+    return {
+      kind: "unreadable",
+      code: typeof error?.code === "string" ? error.code : "UNKNOWN",
+    };
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (fd !== undefined) {
+      try {
+        io.close(fd);
+      } catch {
+        // closing a read-only descriptor cannot change the result
+      }
+    }
   }
 }
 
-export function scanTree(root) {
+/**
+ * Scans tracked files. Deliberate exclusions are counted in `report.skipped` (path pattern, over the size limit,
+ * binary content, symbolic link, submodule); anything else that cannot be read throws a ScanError naming the path
+ * and error code, so an unreadable file can never make a scan look clean.
+ */
+export function scanTree(root, report = {}, io = defaultIo) {
   const findings = [];
-  for (const path of trackedFiles(root)) {
-    if (skippedPaths.some((pattern) => pattern.test(path))) continue;
-    const buffer = readTrackedFile(resolve(root, path));
-    if (!buffer) continue;
-    if (isBinary(buffer)) continue;
-    findings.push(...scanText(path, buffer.toString("utf8")));
+  const unreadable = [];
+  const skipped = {
+    excluded: 0,
+    oversize: [],
+    binary: 0,
+    symlink: 0,
+    submodule: 0,
+    notRegular: 0,
+  };
+  let scanned = 0;
+  for (const { mode, path } of trackedEntries(root)) {
+    if (mode === "120000") {
+      skipped.symlink += 1;
+      continue;
+    }
+    if (mode === "160000") {
+      skipped.submodule += 1;
+      continue;
+    }
+    if (skippedPaths.some((pattern) => pattern.test(path))) {
+      skipped.excluded += 1;
+      continue;
+    }
+    const result = readTrackedFile(resolve(root, path), io);
+    if (result.kind === "unreadable") {
+      unreadable.push(`${path} (${result.code})`);
+    } else if (result.kind === "not-regular") {
+      skipped.notRegular += 1;
+    } else if (result.kind === "oversize") {
+      skipped.oversize.push(path);
+    } else if (isBinary(result.buffer)) {
+      skipped.binary += 1;
+    } else {
+      scanned += 1;
+      findings.push(...scanText(path, result.buffer.toString("utf8")));
+    }
   }
+  if (unreadable.length > 0) {
+    const shown = unreadable.slice(0, 20).join(", ");
+    const more =
+      unreadable.length > 20 ? `, and ${unreadable.length - 20} more` : "";
+    throw new ScanError(
+      `${unreadable.length} tracked file(s) could not be read: ${shown}${more}`,
+    );
+  }
+  report.scanned = scanned;
+  report.skipped = skipped;
   return findings;
 }
 
 /**
  * History reachable from HEAD by default, so another open branch's commits never fail this one. Pass
  * `--all` for a full audit of every ref.
+ *
+ * Fails with a ScanError, never a clean result, when git cannot run, exits non-zero, is killed, prints no commits
+ * at all, or the clone is shallow (a history scan of a truncated history proves nothing).
  */
 export async function scanHistory(root, refs = ["HEAD"]) {
+  const shallow = gitOutput(root, ["rev-parse", "--is-shallow-repository"])
+    .toString()
+    .trim();
+  if (shallow === "true")
+    throw new ScanError(
+      "the history is incomplete (shallow clone); fetch the full history, for example fetch-depth: 0",
+    );
+  if (shallow !== "false")
+    throw new ScanError("could not determine whether the history is complete");
+
   const findings = [];
   const child = spawn(
     "git",
     [
+      "-c",
+      "core.quotepath=off",
       "log",
       ...refs,
       "--no-color",
@@ -241,17 +355,28 @@ export async function scanHistory(root, refs = ["HEAD"]) {
       "--format=commit %H",
       "-U0",
     ],
-    { cwd: root, stdio: ["ignore", "pipe", "ignore"] },
+    { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  child.stderr.resume(); // drained and discarded: git messages are never echoed
+  // A spawn failure also ends in `close` with a non-zero code, which is checked below; this only stops an
+  // unhandled 'error' event from crashing the process before that check runs.
+  child.on("error", () => undefined);
+  const closed = new Promise((done) =>
+    child.on("close", (code, signal) => done({ code, signal })),
   );
   let commit = "";
+  let commits = 0;
   let path = "";
   let line = 0;
   const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
   for await (const text of reader) {
     if (text.startsWith("commit ")) {
       commit = text.slice(7, 19);
+      commits += 1;
     } else if (text.startsWith("+++ ")) {
-      path = text.startsWith("+++ b/") ? text.slice(6) : "";
+      if (text.startsWith("+++ b/")) path = text.slice(6);
+      else if (text.startsWith('+++ "b/')) path = text.slice(7, -1);
+      else path = ""; // /dev/null: a deletion adds no lines
     } else if (text.startsWith("@@")) {
       const m = /\+(\d+)/.exec(text);
       line = m ? Number(m[1]) - 1 : 0;
@@ -262,7 +387,11 @@ export async function scanHistory(root, refs = ["HEAD"]) {
         findings.push({ ...hit, path, line, commit });
     }
   }
-  await new Promise((done) => child.on("close", done));
+  const { code, signal } = await closed;
+  if (signal) throw new ScanError(`git log failed (signal ${signal})`);
+  if (code !== 0) throw new ScanError(`git log failed (exit status ${code})`);
+  if (commits === 0)
+    throw new ScanError("git log returned no commits, so nothing was scanned");
   return findings;
 }
 
@@ -283,9 +412,22 @@ export function formatFinding(f) {
   return `${f.rule}  ${where}${f.path}:${f.line}  fingerprint ${f.fingerprint}`;
 }
 
+const knownArguments = new Set(["--history", "--all"]);
+
 async function main() {
   const args = process.argv.slice(2);
   const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+  const unknown = args.filter((arg) => !knownArguments.has(arg));
+  if (
+    unknown.length > 0 ||
+    (args.includes("--all") && !args.includes("--history"))
+  ) {
+    // A mistyped flag must not silently skip the history scan and report clean.
+    console.error(
+      "Secret scan usage error: accepted arguments are --history and --history --all.",
+    );
+    process.exit(2);
+  }
   const history = args.includes("--history");
   let waivers;
   try {
@@ -299,14 +441,29 @@ async function main() {
     console.error(`Secret scan configuration error: ${error.message}`);
     process.exit(2);
   }
-  const all = scanTree(root);
-  if (history)
-    all.push(
-      ...(await scanHistory(
-        root,
-        args.includes("--all") ? ["--all"] : ["HEAD"],
-      )),
+  const report = {};
+  let all;
+  try {
+    all = scanTree(root, report);
+    if (history)
+      all.push(
+        ...(await scanHistory(
+          root,
+          args.includes("--all") ? ["--all"] : ["HEAD"],
+        )),
+      );
+  } catch (error) {
+    // Only ScanError messages are printed; anything unexpected is reported by name and code, never by message.
+    const reason =
+      error instanceof ScanError
+        ? error.message
+        : `unexpected ${error?.name ?? "error"}${typeof error?.code === "string" ? ` (${error.code})` : ""}`;
+    console.error(`Secret scan could not complete: ${reason}`);
+    console.error(
+      "No result is reported: an incomplete scan is not a clean scan.",
     );
+    process.exit(2);
+  }
   // One finding per (rule, fingerprint, path) is enough to act on, whichever commit added it.
   const unique = new Map();
   for (const f of all) {
@@ -317,8 +474,15 @@ async function main() {
   for (const f of unmatched) console.error("FINDING " + formatFinding(f));
   for (const id of unused)
     console.error(`UNUSED WAIVER ${id.split("|").join(" ")}`);
+  const s = report.skipped;
   console.error(
-    `Secret scan (${history ? "tree and history" : "tree"}): ${unmatched.length} finding(s), ` +
+    `Not scanned: ${s.excluded} excluded by path, ${s.oversize.length} over the size limit, ${s.binary} binary, ` +
+      `${s.symlink} symbolic link, ${s.submodule} submodule, ${s.notRegular} not a regular file.`,
+  );
+  for (const oversize of s.oversize)
+    console.error(`NOT SCANNED (over the size limit) ${oversize}`);
+  console.error(
+    `Secret scan (${history ? "tree and history" : "tree"}): ${report.scanned} file(s) scanned, ${unmatched.length} finding(s), ` +
       `${waivers.size - unused.length} waived, ${unused.length} unused waiver(s). No matched value is printed.`,
   );
   process.exit(unmatched.length > 0 || unused.length > 0 ? 1 : 0);

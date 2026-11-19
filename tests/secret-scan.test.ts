@@ -4,8 +4,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   mkdirSync,
+  chmodSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,13 +25,21 @@ const {
   formatFinding,
   fingerprint,
   maxWaiverDays,
+  ScanError,
 } = scanner as {
   scanLine: (line: string) => { rule: string; fingerprint: string }[];
   scanText: (
     path: string,
     text: string,
   ) => { rule: string; fingerprint: string; path: string; line: number }[];
-  scanTree: (root: string) => { rule: string; path: string }[];
+  scanTree: (
+    root: string,
+    report?: {
+      scanned?: number;
+      skipped?: { oversize: string[]; symlink: number; excluded: number };
+    },
+    io?: Record<string, (...args: never[]) => unknown>,
+  ) => { rule: string; path: string }[];
   scanHistory: (
     root: string,
   ) => Promise<{ rule: string; path: string; commit: string }[]>;
@@ -41,6 +51,7 @@ const {
   formatFinding: (finding: unknown) => string;
   fingerprint: (rule: string, value: string) => string;
   maxWaiverDays: number;
+  ScanError: new (message: string) => Error;
 };
 
 // Every planted secret is assembled at run time, so this file contains no literal that matches a rule
@@ -298,5 +309,274 @@ describe("secret scanner: tree, history and command line", () => {
 
   it("is clean on this repository's tracked files", () => {
     expect(scanTree(resolve(__dirname, ".."))).toEqual([]);
+  });
+});
+
+// ---- failures must never read as a clean scan (owner review of PR #112) -----------------------------------
+const realGit = execFileSync("sh", ["-c", "command -v git"], {
+  encoding: "utf8",
+}).trim();
+
+/** A directory holding a stand-in `git` that behaves as MODE says, and otherwise runs the real one. */
+function fakeGit(name: string, behaviour: string) {
+  const dir = join(scratch, name);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, "git");
+  writeFileSync(
+    file,
+    `#!/bin/sh\n${behaviour.replaceAll("REALGIT", realGit)}\n`,
+  );
+  chmodSync(file, 0o755);
+  return dir;
+}
+const runWith = (cwd: string, path: string, ...args: string[]) =>
+  spawnSync("node", ["scripts/secret-scan.mjs", ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${path}:${process.env.PATH}` },
+  });
+const output = (r: { stdout: string; stderr: string }) => r.stdout + r.stderr;
+const planted2 = planted["github-token"];
+
+function cleanRepo(name: string) {
+  const dir = repo(name);
+  writeFileSync(join(dir, "a.ts"), "export const x = 1;\n");
+  commit(dir, "one");
+  writeFileSync(join(dir, "a.ts"), "export const x = 2;\n");
+  commit(dir, "two");
+  return dir;
+}
+
+describe("secret scanner: failures never read as clean", () => {
+  it("fails when git ls-files exits non-zero, and echoes none of git's output", () => {
+    const dir = cleanRepo("fail-ls");
+    const path = fakeGit(
+      "fake-ls",
+      `case "$1" in ls-files) echo "boom ${planted2}" >&2; exit 3;; esac\nexec REALGIT "$@"`,
+    );
+    const result = runWith(dir, path);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("git ls-files failed (exit status 3)");
+    expect(output(result)).not.toContain(planted2);
+    expect(output(result)).not.toContain("0 finding(s)");
+  });
+
+  it("fails when git cannot be found at all", () => {
+    const dir = cleanRepo("no-git");
+    const result = spawnSync(process.execPath, ["scripts/secret-scan.mjs"], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, PATH: "/nonexistent" },
+    });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("git was not found");
+  });
+
+  it("fails when git ls-files lists nothing, and outside a repository", () => {
+    const empty = repo("empty");
+    expect(() => scanTree(empty)).toThrow(ScanError);
+    expect(runWith(empty, "/nonexistent").status).toBe(2);
+    const outside = join(scratch, "not-a-repo");
+    mkdirSync(join(outside, "scripts"), { recursive: true });
+    copyFileSync(
+      resolve(__dirname, "../scripts/secret-scan.mjs"),
+      join(outside, "scripts/secret-scan.mjs"),
+    );
+    const result = run(outside);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("could not complete");
+  });
+
+  it("fails when git log exits non-zero even after printing a clean-looking history", () => {
+    const dir = cleanRepo("fail-log");
+    const path = fakeGit(
+      "fake-log",
+      `case "$*" in *" log "*|"log "*|*"-c core.quotepath=off log"*) echo "commit 0123456789abcdef"; echo "boom ${planted2}" >&2; exit 4;; esac\nexec REALGIT "$@"`,
+    );
+    const result = runWith(dir, path, "--history");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("git log failed (exit status 4)");
+    expect(output(result)).not.toContain(planted2);
+  });
+
+  it("fails when git log succeeds but returns no commits", () => {
+    const dir = cleanRepo("empty-log");
+    const path = fakeGit(
+      "fake-empty-log",
+      `case "$*" in *"core.quotepath=off log"*) exit 0;; esac\nexec REALGIT "$@"`,
+    );
+    const result = runWith(dir, path, "--history");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("returned no commits");
+  });
+
+  it("fails on a bad ref and on a history with no commits, in the library too", async () => {
+    const dir = cleanRepo("bad-ref");
+    await expect(
+      scanHistory(dir, ["refs/heads/does-not-exist"]),
+    ).rejects.toThrow(ScanError);
+    const unborn = repo("unborn");
+    writeFileSync(join(unborn, "a.ts"), "export const x = 1;\n");
+    git(unborn, "add", "-A");
+    await expect(scanHistory(unborn)).rejects.toThrow(ScanError);
+  });
+
+  it("refuses a shallow clone, whose truncated history proves nothing", () => {
+    const source = cleanRepo("shallow-source");
+    const clone = join(scratch, "shallow-clone");
+    execFileSync(
+      "git",
+      ["clone", "-q", "--depth", "1", `file://${source}`, clone],
+      { stdio: "pipe" },
+    );
+    mkdirSync(join(clone, "scripts"), { recursive: true });
+    copyFileSync(
+      resolve(__dirname, "../scripts/secret-scan.mjs"),
+      join(clone, "scripts/secret-scan.mjs"),
+    );
+    const result = run(clone, "--history");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("shallow clone");
+    expect(run(clone).status).toBe(0); // the tree scan alone does not depend on history
+  });
+
+  it("rejects an unknown argument instead of silently skipping the history scan", () => {
+    const dir = cleanRepo("args");
+    for (const args of [["--histroy"], ["--all"], ["--history", "--al"]]) {
+      const result = run(dir, ...args);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("usage error");
+    }
+  });
+
+  it("names a tracked file that cannot be opened, with its error code and no content", () => {
+    const dir = repo("unreadable");
+    writeFileSync(join(dir, "ok.ts"), "export const x = 1;\n");
+    writeFileSync(join(dir, "locked.ts"), `export const t = "${planted2}";\n`);
+    commit(dir, "files");
+    const failing = {
+      open: (p: string) => {
+        if (p.endsWith("locked.ts"))
+          throw Object.assign(new Error(`EACCES ${planted2}`), {
+            code: "EACCES",
+          });
+        return 3;
+      },
+      fstat: () => ({ isFile: () => true, size: 10 }),
+      read: () => Buffer.from("export const x = 1;\n"),
+      close: () => undefined,
+    };
+    let message = "";
+    try {
+      scanTree(dir, {}, failing as never);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ScanError);
+      message = (error as Error).message;
+    }
+    expect(message).toContain("locked.ts (EACCES)");
+    expect(message).toContain("1 tracked file(s) could not be read");
+    expect(message).not.toContain(planted2);
+  });
+
+  it("treats other read failures (I/O error, read error) the same way", () => {
+    const dir = repo("io-errors");
+    writeFileSync(join(dir, "a.ts"), "export const x = 1;\n");
+    commit(dir, "file");
+    const base = {
+      open: () => 3,
+      fstat: () => ({ isFile: () => true, size: 10 }),
+      read: () => Buffer.from(""),
+      close: () => undefined,
+    };
+    expect(() =>
+      scanTree(dir, {}, {
+        ...base,
+        read: () => {
+          throw Object.assign(new Error("x"), { code: "EIO" });
+        },
+      } as never),
+    ).toThrow(/a\.ts \(EIO\)/);
+    expect(() =>
+      scanTree(dir, {}, {
+        ...base,
+        fstat: () => {
+          throw new Error("no code");
+        },
+      } as never),
+    ).toThrow(/a\.ts \(UNKNOWN\)/);
+  });
+
+  it("fails on a tracked file that is missing from the working tree", () => {
+    const dir = repo("missing");
+    writeFileSync(join(dir, "a.ts"), "export const x = 1;\n");
+    writeFileSync(join(dir, "b.ts"), "export const y = 1;\n");
+    commit(dir, "files");
+    rmSync(join(dir, "b.ts"));
+    expect(() => scanTree(dir)).toThrow(/b\.ts \(ENOENT\)/);
+    const result = run(dir);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("could not complete");
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "fails on a real permission error (not run as root)",
+    () => {
+      const dir = repo("eacces");
+      writeFileSync(
+        join(dir, "locked.ts"),
+        `export const t = "${planted2}";\n`,
+      );
+      commit(dir, "locked");
+      chmodSync(join(dir, "locked.ts"), 0o000);
+      const result = run(dir);
+      chmodSync(join(dir, "locked.ts"), 0o644);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("locked.ts (EACCES)");
+      expect(output(result)).not.toContain(planted2);
+    },
+  );
+
+  it("does not treat deliberate exclusions as failures, and reports them", () => {
+    const dir = repo("deliberate");
+    writeFileSync(join(dir, "ok.ts"), "export const x = 1;\n");
+    writeFileSync(join(dir, "pnpm-lock.yaml"), `integrity: ${planted2}\n`);
+    writeFileSync(join(dir, "big.txt"), "a".repeat(1_600_000));
+    writeFileSync(join(dir, "image.bin"), Buffer.from([0, 1, 2, 3]));
+    symlinkSync("does-not-exist", join(dir, "dangling"));
+    commit(dir, "files");
+    const report: {
+      scanned?: number;
+      skipped?: { oversize: string[]; symlink: number; excluded: number };
+    } = {};
+    expect(scanTree(dir, report)).toEqual([]);
+    expect(report.scanned).toBe(2); // ok.ts and the scanner copy that repo() tracks
+    expect(report.skipped).toMatchObject({
+      oversize: ["big.txt"],
+      symlink: 1,
+      excluded: 1,
+    });
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      "NOT SCANNED (over the size limit) big.txt",
+    );
+    expect(result.stderr).toContain(
+      "1 excluded by path, 1 over the size limit",
+    );
+  });
+
+  it("never prints a secret value in any failure or finding message", () => {
+    const dir = repo("no-leak");
+    writeFileSync(join(dir, "a.ts"), `export const t = "${planted2}";\n`);
+    commit(dir, "leak");
+    rmSync(join(dir, "a.ts"));
+    for (const result of [
+      run(dir),
+      run(dir, "--history"),
+      run(dir, "--nope"),
+    ]) {
+      expect(output(result)).not.toContain(planted2);
+      expect(output(result)).not.toContain(planted2.slice(8, 30));
+    }
   });
 });
