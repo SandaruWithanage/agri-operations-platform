@@ -51,6 +51,7 @@ import {
 import { applicationName } from "@agri/ui";
 import { AuthShell } from "@agri/ui/auth-shell";
 import { AdminShell } from "@agri/ui/admin-shell";
+import { StatusPill } from "@agri/ui/status-pill";
 import { LocaleToggle } from "@agri/ui/locale-toggle";
 import { PilotClient, PilotRequestError } from "@agri/sync-client";
 import { sameFarmerFilters, type FarmerListFilters } from "@agri/validation";
@@ -61,6 +62,8 @@ const words = {
     language: "Language",
     skipToSignIn: "Skip to sign-in",
     skipToContent: "Skip to content",
+    groupRecords: "Farmers and land",
+    groupPrograms: "Projects",
     plannedHeading: "Planned modules",
     plannedTag: "Planned",
     planned: [
@@ -133,6 +136,8 @@ const words = {
     language: "භාෂාව",
     skipToSignIn: "පුරන්න වෙත යන්න",
     skipToContent: "අන්තර්ගතය වෙත යන්න",
+    groupRecords: "ගොවීන් සහ ඉඩම්",
+    groupPrograms: "ව්‍යාපෘති",
     plannedHeading: "සැලසුම් කළ මොඩියුල",
     plannedTag: "සැලසුම්",
     planned: [
@@ -1211,15 +1216,31 @@ function RegistryView({
       }
       items={(
         [
-          ["farmers", "farmers", language === "en" ? "Farmers" : "ගොවීන්"],
-          ["land", "land", landCopy.tab],
-          ["projects", "projects", projectWords[language].tab],
-          ["enrollments", "enrollments", enrollmentWords[language].tab],
+          [
+            "farmers",
+            "farmers",
+            language === "en" ? "Farmers" : "ගොවීන්",
+            copy.groupRecords,
+          ],
+          ["land", "land", landCopy.tab, copy.groupRecords],
+          [
+            "projects",
+            "projects",
+            projectWords[language].tab,
+            copy.groupPrograms,
+          ],
+          [
+            "enrollments",
+            "enrollments",
+            enrollmentWords[language].tab,
+            copy.groupPrograms,
+          ],
         ] as const
-      ).map(([id, icon, label]) => ({
+      ).map(([id, icon, label, group]) => ({
         id,
         icon,
         label,
+        group,
         current: domain === id,
         disabled: authBusy,
         onSelect: () => void load(undefined, [undefined], id),
@@ -1375,7 +1396,17 @@ function RegistryView({
                       <tr key={row.id}>
                         <td>{row.fullName}</td>
                         <td>{row.geographyName}</td>
-                        <td>{status(row.status)}</td>
+                        <td>
+                          <StatusPill
+                            tone={
+                              row.status === "pending-review"
+                                ? "pending"
+                                : row.status
+                            }
+                          >
+                            {status(row.status)}
+                          </StatusPill>
+                        </td>
                         <td>
                           {new Date(row.createdAt).toLocaleDateString(
                             language === "si" ? "si-LK" : "en-GB",

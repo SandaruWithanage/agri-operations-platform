@@ -31,6 +31,8 @@ function Icon(props: { name: ShellIcon }): ReactElement {
 
 export type ShellItem = {
   id: string;
+  /** Section heading this item is listed under. */
+  group: string;
   label: string;
   icon: ShellIcon;
   current: boolean;
@@ -67,22 +69,29 @@ export function AdminShell(props: {
           {props.brandName}
         </p>
         <nav aria-label={props.navLabel}>
-          <ul className="agri-shell__nav">
-            {props.items.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="agri-shell__link"
-                  aria-current={item.current ? "page" : undefined}
-                  disabled={item.disabled}
-                  onClick={item.onSelect}
-                >
-                  <Icon name={item.icon} />
-                  {item.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+          {[...new Set(props.items.map((item) => item.group))].map((group) => (
+            <div key={group} className="agri-shell__group">
+              <p className="agri-shell__group-title">{group}</p>
+              <ul className="agri-shell__nav">
+                {props.items
+                  .filter((item) => item.group === group)
+                  .map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className="agri-shell__link"
+                        aria-current={item.current ? "page" : undefined}
+                        disabled={item.disabled}
+                        onClick={item.onSelect}
+                      >
+                        <Icon name={item.icon} />
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ))}
         </nav>
         <div className="agri-shell__planned">
           <p className="agri-shell__planned-title">{props.plannedHeading}</p>

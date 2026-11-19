@@ -27,6 +27,14 @@ export const colors = {
   textSubtle: "#5f706b",
   warningText: "#a05f17",
   warningBg: "#fff2dc",
+  pillDraftBg: "#f3f4f1",
+  pillDraftText: "#5a625e",
+  pillPendingBg: "#fef3c7",
+  pillPendingText: "#92400e",
+  pillVerifiedBg: "#dcfce7",
+  pillVerifiedText: "#166534",
+  pillInactiveBg: "#f1f5f9",
+  pillInactiveText: "#475569",
   focusOnDark: "#9dc4ff",
 } as const;
 

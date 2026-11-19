@@ -18,6 +18,7 @@ function shell(select = vi.fn()) {
       items={[
         {
           id: "farmers",
+          group: "Records",
           icon: "farmers",
           label: "Farmers",
           current: true,
@@ -25,6 +26,7 @@ function shell(select = vi.fn()) {
         },
         {
           id: "land",
+          group: "Records",
           icon: "land",
           label: "Land",
           current: false,
@@ -63,4 +65,11 @@ it("lists unbuilt modules as plain text, never as buttons or links", () => {
     screen.queryByRole("button", { name: /Reports|Resources/ }),
   ).toBeNull();
   expect(screen.queryByRole("link", { name: /Reports|Resources/ })).toBeNull();
+});
+
+it("lists items under their section headings", () => {
+  shell();
+  const nav = screen.getByRole("navigation", { name: "Records" });
+  expect(within(nav).getByText("Records")).toBeTruthy();
+  expect(within(nav).getAllByRole("list")).toHaveLength(1);
 });

@@ -43,6 +43,14 @@
      #a05f17 passes (4.58:1). */
   --agri-color-warning-text: #a05f17;
   --agri-color-warning-bg: #fff2dc;
+  --agri-color-pill-draft-bg: #f3f4f1;
+  --agri-color-pill-draft-text: #5a625e;
+  --agri-color-pill-pending-bg: #fef3c7;
+  --agri-color-pill-pending-text: #92400e;
+  --agri-color-pill-verified-bg: #dcfce7;
+  --agri-color-pill-verified-text: #166534;
+  --agri-color-pill-inactive-bg: #f1f5f9;
+  --agri-color-pill-inactive-text: #475569;
 
   /* Keyboard focus. The blue is invisible on the dark sidebar (1.83:1), so dark
      surfaces use a light ring (6.87:1). */

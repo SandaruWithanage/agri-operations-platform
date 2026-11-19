@@ -72,6 +72,11 @@ describe("design tokens", () => {
     ["white on forest (sidebar and brand panel)", "surface", "forest"],
     ["muted navigation text on forest", "nav-muted", "forest"],
     ["forest text on pale surface", "forest", "surface-pale"],
+    ["draft pill text", "pill-draft-text", "pill-draft-bg"],
+    ["pending pill text", "pill-pending-text", "pill-pending-bg"],
+    ["verified pill text", "pill-verified-text", "pill-verified-bg"],
+    ["inactive pill text", "pill-inactive-text", "pill-inactive-bg"],
+    ["active nav text on pale surface", "forest", "surface-pale"],
   ];
   it.each(textPairs)("meets 4.5:1 for %s", (_label, fg, bg) => {
     expect(contrast(color(fg), color(bg))).toBeGreaterThanOrEqual(4.5);
