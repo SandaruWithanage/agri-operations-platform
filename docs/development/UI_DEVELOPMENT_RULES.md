@@ -10,6 +10,8 @@ Status: **standing rules from the owner (19 Nov 2026).** They apply to every scr
 
 ## Rule 2. Frosted glass surface language
 
+**One blur layer per hierarchy.** A glass surface inside another glass surface keeps its translucent background but is never backdrop-filtered again (issue 101). `tests/browser/glass-layers.mjs` builds nested surfaces from the real stylesheets in Chromium and fails if any descendant of a filtered surface has its own backdrop filter, at phone and desktop widths and with more contrast requested (where every surface must be solid and unfiltered).
+
 - Shared **glass** tokens and one `.agri-glass` surface class live in `@agri/design-tokens` and `@agri/ui`. Apps never write their own blur.
 - Glass is for chrome and cards (sidebar, top bar, sign-in card, summary cards, dialogs). Dense reading areas, such as tables and long forms, use a high-opacity glass so text stays readable.
 - **Readability beats effect.** Text on glass must keep WCAG AA contrast (4.5:1) measured against the **worst-case** background behind it. The token test computes this and fails if a glass colour is too transparent.
