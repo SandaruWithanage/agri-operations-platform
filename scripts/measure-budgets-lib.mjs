@@ -4,8 +4,10 @@
  * It MEASURES the existing request and resource behaviour of a **disposable local stack**; it changes and activates
  * no limit. Safety is the design, and every guard below is tested:
  *
- * - The target must be loopback over plain http (`localhost`, `127.0.0.1`, `::1`). There is no override. Each
- *   connection is also checked after it is made: if the peer address is not loopback the run stops.
+ * - The target must be a **numeric** loopback address over plain http (`127.0.0.1` or `[::1]`); names such as
+ *   `localhost` are refused, so nothing is ever resolved and nothing can be redirected. There is no override.
+ *   The peer address is also verified the moment a connection opens, and **no byte is sent before that check
+ *   passes**; a non-loopback peer stops the whole run (issue 126).
  * - Paths are fixed per scenario and never taken from the caller, so the harness cannot be aimed at an arbitrary
  *   route; request bodies are synthetic and fixed.
  * - Hard ceilings on requests, concurrency, duration and body size, with no way to raise them.
@@ -13,7 +15,8 @@
  *   refused when NODE_ENV is production. Without them it is a dry run that opens no connection.
  * - Results are counts and timings only: no response body, header, cookie, token or identifier is recorded.
  */
-import { request } from "node:http";
+import { Agent, request } from "node:http";
+import { connect as netConnect } from "node:net";
 import { Buffer } from "node:buffer";
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
@@ -55,7 +58,7 @@ export const scenarios = Object.freeze({
   },
 });
 
-const loopbackNames = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const loopbackNames = new Set(["127.0.0.1", "[::1]"]);
 
 /**
  * Parses and validates a target. Only an http origin on a loopback host is accepted: no credentials in the URL, no
@@ -75,7 +78,11 @@ export function parseTarget(text) {
   if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash)
     return { ok: false, reason: "the target must be an origin only" };
   if (!loopbackNames.has(url.hostname))
-    return { ok: false, reason: "the target host is not loopback" };
+    return {
+      ok: false,
+      reason:
+        "the target must be a numeric loopback address (127.0.0.1 or [::1]); names are never resolved",
+    };
   return {
     ok: true,
     origin: url.origin,
@@ -217,7 +224,49 @@ export function summarise(samples, startedAt, finishedAt) {
   };
 }
 
-function send(plan, index, signal, transport) {
+const numericLoopbackHosts = new Set(["127.0.0.1", "::1"]);
+
+function refuseNameResolution(_host, _options, callback) {
+  callback(new Error("name resolution is not permitted"));
+}
+
+/**
+ * Opens a connection to a numeric loopback address and sends nothing until the connected peer has been verified as
+ * loopback. Writes made earlier by the HTTP client are held, then released after the check; if the check fails they
+ * are discarded and the socket is destroyed, so **no HTTP byte reaches a non-loopback peer**, and a peer that never
+ * answers is still rejected at connection time. Names are never resolved.
+ */
+export function guardedConnection({ host, port }, connect = netConnect) {
+  if (!numericLoopbackHosts.has(host))
+    throw new Error(
+      "only a numeric loopback address may be connected to; names are never resolved",
+    );
+  const socket = connect({ host, port, lookup: refuseNameResolution });
+  const held = [];
+  let verified = false;
+  const realWrite = socket.write.bind(socket);
+  socket.write = (...args) => {
+    if (verified) return realWrite(...args);
+    held.push(args);
+    return true;
+  };
+  socket.once("connect", () => {
+    if (!isLoopbackAddress(socket.remoteAddress)) {
+      held.length = 0;
+      socket.destroy(
+        Object.assign(new Error("non-loopback peer"), {
+          code: "NON_LOOPBACK_PEER",
+        }),
+      );
+      return;
+    }
+    verified = true;
+    for (const args of held.splice(0)) realWrite(...args);
+  });
+  return socket;
+}
+
+function send(plan, index, signal, { transport, connect }) {
   const started = Date.now();
   const body = bodyFor(plan.scenario, index);
   const target = new URL(plan.target);
@@ -227,14 +276,20 @@ function send(plan, index, signal, transport) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(body);
     }
+    // One agent per request (like `agent: false`), but with the guarded connection: Node ignores a
+    // `createConnection` option when an agent is in use, so the guard has to be the agent's own.
+    const agent = new Agent({ keepAlive: false });
+    agent.createConnection = (options) =>
+      guardedConnection({ host: options.host, port: options.port }, connect);
     const req = transport(
       {
         hostname: target.hostname === "[::1]" ? "::1" : target.hostname,
         port: Number(target.port || 80),
+        lookup: refuseNameResolution,
         method: plan.method,
         path: plan.path,
         headers,
-        agent: false,
+        agent,
         signal,
         timeout: ceilings.requestTimeoutMs,
       },
@@ -255,15 +310,19 @@ function send(plan, index, signal, transport) {
     );
     req.on("timeout", () => req.destroy(new Error("timeout")));
     req.on("error", (error) =>
-      resolve({
-        error:
-          error?.name === "AbortError"
-            ? "aborted"
-            : error?.message === "timeout"
-              ? "timeout"
-              : "connection-error",
-        ms: Date.now() - started,
-      }),
+      resolve(
+        error?.code === "NON_LOOPBACK_PEER"
+          ? { error: "non-loopback-peer", fatal: true }
+          : {
+              error:
+                error?.name === "AbortError"
+                  ? "aborted"
+                  : error?.message === "timeout"
+                    ? "timeout"
+                    : "connection-error",
+              ms: Date.now() - started,
+            },
+      ),
     );
     if (body !== undefined) req.write(body);
     req.end();
@@ -271,7 +330,9 @@ function send(plan, index, signal, transport) {
 }
 
 /** Runs a validated, runnable plan. Stops early at the duration ceiling or on a non-loopback peer. */
-export async function runPlan(plan, transport = request) {
+export async function runPlan(plan, options = {}) {
+  const transport = options.transport ?? request;
+  const connect = options.connect ?? netConnect;
   const controller = new globalThis.AbortController();
   const startedAt = Date.now();
   const deadline = setTimeout(() => controller.abort(), plan.durationMs);
@@ -283,12 +344,16 @@ export async function runPlan(plan, transport = request) {
       const index = next;
       if (index >= plan.requests) return;
       next += 1;
-      const sample = await send(plan, index, controller.signal, transport);
+      const sample = await send(plan, index, controller.signal, {
+        transport,
+        connect,
+      });
       if (sample.fatal) {
         fatal = true;
         controller.abort();
         return;
       }
+      if (fatal) return; // in-flight requests aborted by a fatal stop are not results
       samples.push(sample);
     }
   }
