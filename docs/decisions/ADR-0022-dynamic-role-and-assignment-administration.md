@@ -63,6 +63,8 @@ Administrator-source routes only (never exposed by the field BFF): list/read rol
 | P1-03e | Bilingual admin screens.                                                                                                      | after 03d        |
 | P1-26  | Step-up MFA, recovery, emergency elevation, access reviews (quarterly privileged, six-monthly ordinary), device lifecycle UI. | G1, DEC-02       |
 
+**Implementation status (20 Nov 2026):** P1-03a is implemented on a branch as manifest entry 27 (read-only; awaiting merge and independent review). The account `person_id` link was deliberately deferred to P1-03b so the slice does not alter `authn.account`. Nothing else in this table is started.
+
 ### 9. Acceptance tests (mutation-checked where they assert isolation or integrity)
 
 Direct-SQL and API denial by default; missing, forged and spoofed actor/source; wrong organization; no self-grant, no overflow above the grantor's own scope, no approval by the requester, grantee or a duplicate approver; risk class cannot be changed to dodge approval; role version pinning and explicit moves; materialized grants match the role/scope exactly and revoke/expiry make the existing predicates deny immediately; replay and changed-payload conflict; stale version; authorization re-checked after lock waits; audit rolled back with the change; legacy direct grants unchanged; Officer A/B isolation with role-derived grants; wrong-organization foreign keys rejected; English and Sinhala flows, keyboard and late-response cancellation.
