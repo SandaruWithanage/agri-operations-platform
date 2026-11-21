@@ -25,5 +25,6 @@
   "20261117_enrollment_withdraw_admin_only/up.sql",
   "20261117_land_geometry_versions/up.sql",
   "20261117_login_throttle_split_limits/up.sql",
-  "20261120_iam_catalog_foundation/up.sql"
+  "20261120_iam_catalog_foundation/up.sql",
+  "20261121_iam_grant_audit_plumbing/up.sql"
 ]
