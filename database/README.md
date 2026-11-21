@@ -26,7 +26,7 @@ Automatic adoption is refused when `authn`, `authz`, `farm`, `land` or `operatio
 
 ## Recovery and release gates
 
-Do not run draft reference SQL from uploaded documents. Do not add destructive down migrations for identity/farmer records. After a partial migration failure, inspect state under the controlled operator process and use a forward fix. The CLI suppresses PostgreSQL errors because SQL details can include sensitive data. Production release still requires ownership review, backup/restore and upgrade rehearsals, secret provisioning/rotation, deployment network/TLS checks and independent security review. Passing disposable database tests does not certify those operations.
+Do not run draft reference SQL from uploaded documents. Do not add destructive down migrations for identity/farmer records. After a partial migration failure, inspect state under the controlled operator process and use a forward fix. The CLI suppresses PostgreSQL errors because SQL details can include sensitive data. Production release still requires ownership review, backup/restore and upgrade rehearsals, secret provisioning/rotation, deployment network/TLS checks and independent security review. Passing disposable database tests does not certify those operations. See the [synthetic backup and restore rehearsal](../docs/development/DATABASE_RESTORE_REHEARSAL.md) for verified local evidence and the remaining staging checks.
 
 ## PostGIS land identification
 
