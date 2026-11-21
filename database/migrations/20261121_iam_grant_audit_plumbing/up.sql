@@ -54,7 +54,10 @@ BEGIN
   VALUES(TG_TABLE_NAME,TG_OP,(r->>'id')::uuid,(r->>'account_id')::uuid,(r->>'organization_id')::uuid,r->>'permission',r->>'origin',(r->>'binding_id')::uuid,session_user,txid_current());
   RETURN NULL;
 END $$;
+-- P1-03a revoked the owner's standing CREATE on schema iam; ownership transfer needs it only for this statement.
+GRANT CREATE ON SCHEMA iam TO agri_iam_owner;
 ALTER FUNCTION iam.record_grant_change() OWNER TO agri_iam_owner;
+REVOKE CREATE ON SCHEMA iam FROM agri_iam_owner;
 REVOKE ALL ON FUNCTION iam.record_grant_change() FROM PUBLIC;
 CREATE TRIGGER permission_grant_audit AFTER INSERT OR UPDATE OR DELETE ON authz.permission_grant FOR EACH ROW EXECUTE FUNCTION iam.record_grant_change();
 CREATE TRIGGER assignment_audit AFTER INSERT OR UPDATE OR DELETE ON authz.assignment FOR EACH ROW EXECUTE FUNCTION iam.record_grant_change();

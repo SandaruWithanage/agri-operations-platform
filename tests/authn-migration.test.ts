@@ -1887,6 +1887,22 @@ suite("provisional authentication migration on PostgreSQL", () => {
           ])
         ).rows;
 
+      // Least privilege: the runtime identity needs only the iam schema (its functions run as the owner), and the
+      // owner holds no standing CREATE on the schema.
+      const priv = (
+        await client.query(
+          `SELECT has_schema_privilege('agri_iam_runtime','authz','USAGE') AS runtime_authz,
+                  has_function_privilege('agri_iam_runtime','authz.actor()','EXECUTE') AS runtime_actor,
+                  has_schema_privilege('agri_iam_runtime','iam','CREATE') AS runtime_create,
+                  has_schema_privilege('agri_iam_owner','iam','CREATE') AS owner_create`,
+        )
+      ).rows[0];
+      expect(priv).toEqual({
+        runtime_authz: false,
+        runtime_actor: false,
+        runtime_create: false,
+        owner_create: false,
+      });
       // The runtime login has no table access and cannot call functions it was not granted.
       await client.query("SET LOCAL SESSION AUTHORIZATION agri_iam_runtime");
       for (const table of [
@@ -2257,6 +2273,95 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await Promise.all([worker.end(), revoker.end()]);
     }
   }, 15000);
+  it("holds IAM read authority through a transaction and re-checks it after waiting on a concurrent revocation", async () => {
+    const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
+    const role = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b201";
+    const grant = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b202";
+    const secret = Buffer.alloc(32, 42);
+    await client.query(
+      "INSERT INTO iam.role (id,organization_id,name_en) VALUES ($1,$2,'Synthetic concurrent role')",
+      [role, org],
+    );
+    await client.query(
+      "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at) VALUES ($1,$2,$3,'role.read','organization','administrator',now()-interval '1 hour')",
+      [grant, account, org],
+    );
+    const worker = new pg.Client({ connectionString: url });
+    const revoker = new pg.Client({ connectionString: url });
+    await Promise.all([worker.connect(), revoker.connect()]);
+    const pidOf = async (target: pg.Client) =>
+      (await target.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const waitForLock = async (pid: number) => {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const state = await client.query(
+          "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+          [pid],
+        );
+        if (state.rows[0]?.wait_event_type === "Lock") return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+    // Backend ids are read before any statement can block the connection.
+    const workerPid = await pidOf(worker);
+    const revokerPid = await pidOf(revoker);
+    const context = new TransactionActorContext(secret);
+    let pending: Promise<unknown> | undefined;
+    try {
+      await worker.query("SET SESSION AUTHORIZATION agri_iam_runtime");
+      // Part 1: a transaction that read under the grant holds it; the revocation waits, and the next transaction is denied.
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect(
+        (await worker.query("SELECT id FROM iam.list_roles($1,NULL,10)", [org]))
+          .rows,
+      ).toEqual([{ id: role }]);
+      pending = revoker.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [grant],
+      );
+      expect(await waitForLock(revokerPid)).toBe(true);
+      await worker.query("COMMIT");
+      await pending;
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect(
+        (await worker.query("SELECT id FROM iam.list_roles($1,NULL,10)", [org]))
+          .rowCount,
+      ).toBe(0);
+      await worker.query("COMMIT");
+
+      // Part 2: a read that must wait behind an uncommitted revocation re-checks the row and is denied.
+      await client.query(
+        "UPDATE authz.permission_grant SET active=true WHERE id=$1",
+        [grant],
+      );
+      await revoker.query("BEGIN");
+      await revoker.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [grant],
+      );
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      const waiting = worker.query(
+        "SELECT id FROM iam.list_roles($1,NULL,10)",
+        [org],
+      );
+      pending = waiting;
+      expect(await waitForLock(workerPid)).toBe(true);
+      await revoker.query("COMMIT");
+      expect((await waiting).rowCount).toBe(0);
+      await worker.query("COMMIT");
+    } finally {
+      await revoker.query("ROLLBACK");
+      await worker.query("ROLLBACK");
+      if (pending) await Promise.resolve(pending).catch(() => undefined);
+      await Promise.all([worker.end(), revoker.end()]);
+      await client.query("DELETE FROM authz.permission_grant WHERE id=$1", [
+        grant,
+      ]);
+    }
+  }, 20000);
   it("serializes concurrent retries and duplicate-risk checks in PostgreSQL", async () => {
     const geo = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
     const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
