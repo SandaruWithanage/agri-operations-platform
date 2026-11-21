@@ -20,8 +20,9 @@ const adapter: CreationAdapter<
 > = {
   key: "farmer-registration",
   selection: (value) => value.geographyId,
-  read: async (...args) => ({
-    options: (await readRegistrationContext(...args)).geographies,
+  read: async (client, owner, selected, signal) => ({
+    options: (await readRegistrationContext(client, owner, selected, signal))
+      .geographies,
   }),
   request: (farmer) => ({ mutationId: crypto.randomUUID(), farmer }),
   submit: (client, owner, request) =>

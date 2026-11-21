@@ -37,14 +37,14 @@ function makeAdapter(
   return {
     key: "enrollment-withdraw",
     selection: () => source.id,
-    read: async (client, owner, selected, signal) => {
+    read: async (client, owner, selected, signal, pendingRequest) => {
       const identity = await client.sessionIdentity(signal);
       if (
         identity.accountId !== owner.accountId ||
         identity.deviceId !== owner.deviceId
       )
         throw new PilotRequestError(401);
-      // A current read proves the record is still visible and enrolled before the form reopens.
+      // Check current visibility before reopening either a draft or an exact retry.
       const detail = await client.enrollment(source.id, signal),
         after = await client.sessionIdentity(signal);
       signal.throwIfAborted();
@@ -54,9 +54,13 @@ function makeAdapter(
         after.deviceId !== owner.deviceId
       )
         throw new PilotRequestError(401);
+      const possibleReplay =
+        pendingRequest?.enrollmentId === source.id &&
+        detail.enrollment.status === "withdrawn" &&
+        detail.enrollment.version === pendingRequest.expectedVersion + 1;
       if (
         detail.enrollment.id !== source.id ||
-        detail.enrollment.status !== "enrolled" ||
+        (detail.enrollment.status !== "enrolled" && !possibleReplay) ||
         (selected && selected !== source.id)
       )
         throw new PilotRequestError(403);
