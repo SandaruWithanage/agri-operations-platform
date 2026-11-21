@@ -63,3 +63,7 @@ Apply entry 21 before deploying the updated enabled runtime. Separate typed proj
 ## Provisional explicit enrollment (manifest entry 22)
 
 Apply entry 22 before deploying the updated enabled runtime. It adds `operations.enrollment` (FORCE RLS), a private idempotency journal/audit, the `enrollment.withdraw` project-scope action and the fixed `enroll_farmer`/`withdraw_enrollment` functions. Existing grants/assignments and the ten runtime connections are preserved; the new `agri_enrollment_owner` is NOLOGIN and must never be granted to an application login. Rules are provisional pending DEC-04; see [enrollment guide](../docs/development/PROJECT_ENROLLMENT.md).
+
+## IAM catalog foundation (manifest entry 27)
+
+Entry 27 adds the `iam` schema: a permission catalog (unclassified permissions are high risk), staff `person`, `role`, immutable `role_version` and `role_version_permission`, the NOLOGIN `agri_iam_owner` and `agri_iam_runtime` identities and three bounded read functions. It is read-only: there is no mutation path, no materialization into `authz` grants and no seeded data. The runtime identity has no table access and no LOGIN or API connection exists yet; do not create one until the API slice is reviewed. Apply it like any other entry (`pnpm db:migrate:plan`, then `pnpm db:migrate`). The design is [ADR 0022](../docs/decisions/ADR-0022-dynamic-role-and-assignment-administration.md) (PROPOSED, not independently reviewed).

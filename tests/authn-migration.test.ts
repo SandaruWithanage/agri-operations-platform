@@ -331,6 +331,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261120_iam_catalog_foundation/up.sql",
+        "utf8",
+      ),
+    );
 
     const upgradeAudit = (
       await client.query(
@@ -413,13 +419,13 @@ suite("provisional authentication migration on PostgreSQL", () => {
       if (committedForConcurrency) {
         await client.query("ROLLBACK");
         await client.query(
-          "DROP SCHEMA operations, land, farm, authz, authz_crypto, authn CASCADE",
+          "DROP SCHEMA iam, operations, land, farm, authz, authz_crypto, authn CASCADE",
         );
         await client.query(
-          "DROP OWNED BY agri_enrollment_owner,agri_project_scope_owner,agri_project_function_owner,agri_project_runtime,agri_land_function_owner,agri_land_runtime",
+          "DROP OWNED BY agri_iam_owner,agri_iam_runtime,agri_enrollment_owner,agri_project_scope_owner,agri_project_function_owner,agri_project_runtime,agri_land_function_owner,agri_land_runtime",
         );
         await client.query(
-          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8, agri_project_function_owner, agri_project_runtime, agri_test_login_9, agri_project_scope_owner, agri_enrollment_owner",
+          "DROP ROLE IF EXISTS agri_test_untrusted, agri_session_reader, agri_session_executor, agri_mfa_verifier, agri_session_issuer, agri_credential_reader, agri_login_throttle, agri_farmer_runtime, agri_policy_owner, agri_authn_function_owner, agri_test_login_0, agri_test_login_1, agri_test_login_2, agri_test_login_3, agri_test_login_4, agri_test_login_5, agri_test_login_6, agri_test_login_7, agri_device_verifier, agri_device_provisioner, agri_land_function_owner, agri_land_runtime, agri_test_login_8, agri_project_function_owner, agri_project_runtime, agri_test_login_9, agri_project_scope_owner, agri_enrollment_owner, agri_iam_owner, agri_iam_runtime",
         );
       } else await client.query("ROLLBACK");
       await client.end();
@@ -1652,6 +1658,255 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await client.query("ROLLBACK TO SAVEPOINT farmer_policy_check");
     }
   });
+  it("serves the IAM catalog read-only: default deny, exact organization-wide authority, bounded pages and immutable role versions", async () => {
+    const orgA = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b001";
+    const orgB = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b002";
+    const unit = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b003";
+    const roles = [1, 2, 3].map(
+      (n) => `0d3a7c31-5e11-4c60-8f5b-3a1d7be3b01${n}`,
+    );
+    const foreignRole = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b021";
+    const perms = [1, 2].map((n) => `0d3a7c31-5e11-4c60-8f5b-3a1d7be3b03${n}`);
+    const secret = Buffer.alloc(32, 42);
+    const context = new TransactionActorContext(secret);
+    await client.query("SAVEPOINT iam_catalog_check");
+    try {
+      await client.query("INSERT INTO authz.context_key (key) VALUES ($1)", [
+        secret,
+      ]);
+      await client.query(
+        "INSERT INTO farm.organization (id,name) VALUES ($1,'Synthetic IAM A'),($2,'Synthetic IAM B')",
+        [orgA, orgB],
+      );
+      await client.query(
+        "INSERT INTO farm.organizational_unit (id,organization_id,name) VALUES ($1,$2,'IAM unit')",
+        [unit, orgA],
+      );
+      // An unclassified permission is high risk (fail closed).
+      await client.query(
+        "INSERT INTO iam.permission_catalog (permission_id,code,label_en,scope_kind) VALUES ($1,'synthetic.alpha','Alpha','organization')",
+        [perms[0]],
+      );
+      await client.query(
+        "INSERT INTO iam.permission_catalog (permission_id,code,label_en,scope_kind,risk_class) VALUES ($1,'synthetic.beta','Beta','unit_geography','routine')",
+        [perms[1]],
+      );
+      expect(
+        (
+          await client.query(
+            "SELECT risk_class FROM iam.permission_catalog WHERE permission_id=$1",
+            [perms[0]],
+          )
+        ).rows[0].risk_class,
+      ).toBe("high");
+      await expectDenied(
+        "INSERT INTO iam.permission_catalog (code,label_en,scope_kind) VALUES ('Bad Code','x','organization')",
+      );
+      await client.query(
+        "INSERT INTO iam.role (id,organization_id,name_en) VALUES ($1,$4,'Synthetic role 1'),($2,$4,'Synthetic role 2'),($3,$4,'Synthetic role 3'),($5,$6,'Foreign role')",
+        [...roles, orgA, foreignRole, orgB],
+      );
+      await client.query(
+        "INSERT INTO iam.role_version (role_id,organization_id,version) VALUES ($1,$3,1),($1,$3,2),($2,$3,1),($4,$5,1)",
+        [roles[0], roles[1], orgA, foreignRole, orgB],
+      );
+      await client.query(
+        "INSERT INTO iam.role_version_permission (role_id,version,permission_id,coverage) VALUES ($1,2,$2,'organization'),($1,2,$3,'assigned')",
+        [roles[0], perms[1], perms[0]],
+      );
+      const grant = (
+        permission: string,
+        extra = "",
+        source: string | null = "administrator",
+        coverage = "organization",
+        org = orgA,
+      ) =>
+        client.query(
+          `INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at${extra ? ",unit_id" : ""}) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,now()-interval '1 hour'${extra ? ",$6" : ""})`,
+          extra
+            ? [account, org, permission, coverage, source, extra]
+            : [account, org, permission, coverage, source],
+        );
+      const asRuntime = async () => {
+        await client.query("SET LOCAL SESSION AUTHORIZATION agri_iam_runtime");
+        await context.bind(client, { accountId: account, sessionId: session });
+      };
+      const list = async (
+        org = orgA,
+        after: string | null = null,
+        limit = 10,
+      ) =>
+        (
+          await client.query("SELECT * FROM iam.list_roles($1,$2,$3)", [
+            org,
+            after,
+            limit,
+          ])
+        ).rows;
+
+      // Least privilege: the runtime identity needs only the iam schema (its functions run as the owner), and the
+      // owner holds no standing CREATE on the schema.
+      const priv = (
+        await client.query(
+          `SELECT has_schema_privilege('agri_iam_runtime','authz','USAGE') AS runtime_authz,
+                  has_function_privilege('agri_iam_runtime','authz.actor()','EXECUTE') AS runtime_actor,
+                  has_schema_privilege('agri_iam_runtime','iam','CREATE') AS runtime_create,
+                  has_schema_privilege('agri_iam_owner','iam','CREATE') AS owner_create`,
+        )
+      ).rows[0];
+      expect(priv).toEqual({
+        runtime_authz: false,
+        runtime_actor: false,
+        runtime_create: false,
+        owner_create: false,
+      });
+      // The runtime login has no table access and cannot call functions it was not granted.
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_iam_runtime");
+      for (const table of [
+        "permission_catalog",
+        "person",
+        "role",
+        "role_version",
+        "role_version_permission",
+      ])
+        await expectDenied(`SELECT * FROM iam.${table}`, [], "42501");
+      await client.query("RESET SESSION AUTHORIZATION");
+
+      // Default deny: no grant at all, so every read returns nothing (indistinguishable from "not found").
+      await asRuntime();
+      expect(await list()).toHaveLength(0);
+      await client.query("RESET SESSION AUTHORIZATION");
+
+      // Grants that must NOT confer read authority.
+      await grant("role.read", unit, "administrator", "assigned"); // narrower than organization-wide
+      await grant("role.read", "", "field_officer"); // wrong source
+      await grant("role.update"); // wrong permission
+      await grant("role.read", "", "administrator", "organization", orgB); // another organization
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at,expires_at) VALUES (gen_random_uuid(),$1,$2,'role.read','organization','administrator',now()-interval '2 hours',now()-interval '1 hour')",
+        [account, orgA],
+      );
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at,active) VALUES (gen_random_uuid(),$1,$2,'role.read','organization','administrator',now()-interval '1 hour',false)",
+        [account, orgA],
+      );
+      await asRuntime();
+      expect(await list()).toHaveLength(0);
+      // The organization-B grant reads organization B only, never A.
+      const foreign = await list(orgB);
+      expect(foreign.map((r) => r.id)).toEqual([foreignRole]);
+      expect(await list()).toHaveLength(0);
+      await client.query("RESET SESSION AUTHORIZATION");
+
+      // The exact organization-wide administrator grant for organization A.
+      await grant("role.read");
+      await asRuntime();
+      const page1 = await list(orgA, null, 2);
+      expect(page1.map((r) => r.id)).toEqual([roles[0], roles[1]]);
+      expect(page1[0].latest_version).toBe(2);
+      expect(page1[1].latest_version).toBe(1);
+      const page2 = await list(orgA, page1[1].id, 2);
+      expect(page2.map((r) => r.id)).toEqual([roles[2]]);
+      expect(page2[0].latest_version).toBeNull();
+      expect(
+        (await list(orgA, null, 100)).some((r) => r.id === foreignRole),
+      ).toBe(false);
+      for (const bad of [0, 101, -1, null])
+        await expectDenied(
+          "SELECT * FROM iam.list_roles($1,NULL,$2)",
+          [orgA, bad],
+          "22023",
+        );
+      const version = (
+        await client.query("SELECT * FROM iam.get_role_version($1,$2,2)", [
+          orgA,
+          roles[0],
+        ])
+      ).rows;
+      expect(version.map((r) => r.code)).toEqual([
+        "synthetic.alpha",
+        "synthetic.beta",
+      ]);
+      expect(version.map((r) => r.risk_class)).toEqual(["high", "routine"]);
+      // Wrong organization, unknown role and unknown version all look the same: no rows.
+      expect(
+        (
+          await client.query("SELECT * FROM iam.get_role_version($1,$2,2)", [
+            orgB,
+            roles[0],
+          ])
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await client.query("SELECT * FROM iam.get_role_version($1,$2,9)", [
+            orgA,
+            roles[0],
+          ])
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await client.query(
+            "SELECT * FROM iam.get_role_version($1,gen_random_uuid(),2)",
+            [orgA],
+          )
+        ).rowCount,
+      ).toBe(0);
+      const catalog = (
+        await client.query("SELECT * FROM iam.list_permissions($1,NULL,10)", [
+          orgA,
+        ])
+      ).rows;
+      expect(catalog.map((r) => r.code).sort()).toEqual([
+        "synthetic.alpha",
+        "synthetic.beta",
+      ]);
+      expect(
+        catalog.every((r) => r.provisional === true && r.retired === false),
+      ).toBe(true);
+      expect(
+        (
+          await client.query(
+            "SELECT * FROM iam.list_permissions(gen_random_uuid(),NULL,10)",
+          )
+        ).rowCount,
+      ).toBe(0);
+
+      // A forged signature or a spoofed actor reads nothing, even with the grant in place.
+      await client.query("SELECT set_config('agri.signature',$1,true)", [
+        "0".repeat(64),
+      ]);
+      expect(await list()).toHaveLength(0);
+      await context.bind(client, { accountId: account, sessionId: session });
+      await client.query("SELECT set_config('agri.actor',$1,true)", [another]);
+      expect(await list()).toHaveLength(0);
+      await client.query("RESET SESSION AUTHORIZATION");
+
+      // Role versions are immutable and cannot be truncated, even for the superuser.
+      await expectDenied(
+        "UPDATE iam.role_version SET version=version",
+        [],
+        "55000",
+      );
+      await expectDenied("DELETE FROM iam.role_version", [], "55000");
+      await expectDenied(
+        "UPDATE iam.role_version_permission SET coverage='assigned'",
+        [],
+        "55000",
+      );
+      await expectDenied(
+        "DELETE FROM iam.role_version_permission",
+        [],
+        "55000",
+      );
+      await expectDenied("TRUNCATE iam.role_version CASCADE", [], "55000");
+      await expectDenied("TRUNCATE iam.role_version_permission", [], "55000");
+      // No seeded roles, permissions or people exist outside this test.
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT iam_catalog_check");
+    }
+  });
   it("rejects revocation events associated with another account's device", async () => {
     await expectDenied(
       "INSERT INTO authn.revocation_event (id,target_account_id,device_id,kind) VALUES (gen_random_uuid(),$1,$2,'device')",
@@ -1875,6 +2130,95 @@ suite("provisional authentication migration on PostgreSQL", () => {
       await Promise.all([worker.end(), revoker.end()]);
     }
   }, 15000);
+  it("holds IAM read authority through a transaction and re-checks it after waiting on a concurrent revocation", async () => {
+    const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
+    const role = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b201";
+    const grant = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b202";
+    const secret = Buffer.alloc(32, 42);
+    await client.query(
+      "INSERT INTO iam.role (id,organization_id,name_en) VALUES ($1,$2,'Synthetic concurrent role')",
+      [role, org],
+    );
+    await client.query(
+      "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at) VALUES ($1,$2,$3,'role.read','organization','administrator',now()-interval '1 hour')",
+      [grant, account, org],
+    );
+    const worker = new pg.Client({ connectionString: url });
+    const revoker = new pg.Client({ connectionString: url });
+    await Promise.all([worker.connect(), revoker.connect()]);
+    const pidOf = async (target: pg.Client) =>
+      (await target.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const waitForLock = async (pid: number) => {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const state = await client.query(
+          "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+          [pid],
+        );
+        if (state.rows[0]?.wait_event_type === "Lock") return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+    // Backend ids are read before any statement can block the connection.
+    const workerPid = await pidOf(worker);
+    const revokerPid = await pidOf(revoker);
+    const context = new TransactionActorContext(secret);
+    let pending: Promise<unknown> | undefined;
+    try {
+      await worker.query("SET SESSION AUTHORIZATION agri_iam_runtime");
+      // Part 1: a transaction that read under the grant holds it; the revocation waits, and the next transaction is denied.
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect(
+        (await worker.query("SELECT id FROM iam.list_roles($1,NULL,10)", [org]))
+          .rows,
+      ).toEqual([{ id: role }]);
+      pending = revoker.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [grant],
+      );
+      expect(await waitForLock(revokerPid)).toBe(true);
+      await worker.query("COMMIT");
+      await pending;
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      expect(
+        (await worker.query("SELECT id FROM iam.list_roles($1,NULL,10)", [org]))
+          .rowCount,
+      ).toBe(0);
+      await worker.query("COMMIT");
+
+      // Part 2: a read that must wait behind an uncommitted revocation re-checks the row and is denied.
+      await client.query(
+        "UPDATE authz.permission_grant SET active=true WHERE id=$1",
+        [grant],
+      );
+      await revoker.query("BEGIN");
+      await revoker.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [grant],
+      );
+      await worker.query("BEGIN");
+      await context.bind(worker, { accountId: account, sessionId: session });
+      const waiting = worker.query(
+        "SELECT id FROM iam.list_roles($1,NULL,10)",
+        [org],
+      );
+      pending = waiting;
+      expect(await waitForLock(workerPid)).toBe(true);
+      await revoker.query("COMMIT");
+      expect((await waiting).rowCount).toBe(0);
+      await worker.query("COMMIT");
+    } finally {
+      await revoker.query("ROLLBACK");
+      await worker.query("ROLLBACK");
+      if (pending) await Promise.resolve(pending).catch(() => undefined);
+      await Promise.all([worker.end(), revoker.end()]);
+      await client.query("DELETE FROM authz.permission_grant WHERE id=$1", [
+        grant,
+      ]);
+    }
+  }, 20000);
   it("serializes concurrent retries and duplicate-risk checks in PostgreSQL", async () => {
     const geo = "808b5df8-5c7b-4f51-9b9f-dc0424ed60c9";
     const org = "89e38d6a-ec4a-4be1-b231-fae3afe5cb18";
