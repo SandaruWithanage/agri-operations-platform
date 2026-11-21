@@ -50,6 +50,21 @@ Fixed key order; `routeClass`, `reason`, `account`, `client`, `device`, `detail`
 
 `auth.login.failed` and `auth.login.throttled` (reason codes that do not reveal whether an account exists), `auth.mfa.failed`, `auth.device.rejected`, `auth.session.revoked`, `auth.device.revoked`, `api.overload.shed`, `db.statement.timeout`, `db.pool.exhausted`, `data.read.volume`, and the capabilities events in the contract. Sign-in and API events touch the authentication path and the API build, so they are a separate, separately reviewed slice (SEC-A2b).
 
+## Production requirement: `SECURITY_EVENT_HASH_KEY`
+
+Where client or account correlation is needed (spraying across accounts, one client against many accounts, repeat offenders, incident investigation), a **securely managed** `SECURITY_EVENT_HASH_KEY` is a production requirement. Without it the events still carry the event, route class and reason, but no identifier, so the same source cannot be recognised across events. That is a safe degradation, not a working detection setup. Status: **requirement documented; key custody is not decided** (it follows the hosting decision, OPS-04).
+
+Requirements for the key:
+
+- At least 32 characters from a cryptographically secure random generator (for example 32 random bytes, encoded). A shorter or absent value is ignored and identifiers are omitted.
+- Held in a managed secret store or the platform's secret environment, injected at process start, readable only by the processes that emit events and by the people who administer them. **One value per environment**; never shared with a development, test or pilot environment, and never reused as another secret (for example the BFF internal key).
+- Never in the repository, in a committed `.env`, in a pull request, ticket or chat, in a prompt, in a log line or in a configuration error. The code never prints it (tested), and the SEC-A9 scanner is a backstop, not the control.
+- **Rotation** replaces the key and deliberately breaks correlation across the change: identifiers hashed under the old key no longer match those under the new one. Record the rotation time in the operational log so an investigation knows where the boundary is. There is no overlapping-key support. Rotate on any suspected exposure and on a schedule the operator sets.
+- **Exposure:** the hashes are not reversible, but values with little entropy (an address, a short login name) could be tested against a leaked key. Treat stored events from the exposure period as potentially re-identifiable by anyone holding both the key and the logs, rotate, and handle it as a security incident (the incident owner is pending assignment, OWNER-S5).
+- Access to the log stream that holds the hashed identifiers is restricted in the same way as for the key, because the two together are the sensitive combination.
+
+What is deliberately **not** done here: the start-up check (SEC-A1) does not require this variable, so a production start without it succeeds and logs no identifiers. Making the key mandatory in production is a possible follow-up for the owner to decide; it would change start-up behaviour and is not part of this change. Nothing here claims that a key is deployed, that custody is solved or that the events are production-proven.
+
 ## Operating notes
 
 - **Collection:** one JSON line per event on standard output. The platform's log collector, retention and access control are part of the hosting decision (OPS-04, not made). Treat the stream as sensitive-by-association: it contains hashed identifiers and abuse signals, so restrict who can read it.
