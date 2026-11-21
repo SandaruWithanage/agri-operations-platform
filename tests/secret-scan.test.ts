@@ -258,6 +258,32 @@ describe("secret scanner: tree, history and command line", () => {
     expect(result.stderr).toContain("0 finding(s)");
   });
 
+  it("reports local refs and distinct commits for all-ref history, without printing ref names", () => {
+    const dir = repo("history-coverage");
+    writeFileSync(join(dir, "tracked.txt"), "first\n");
+    commit(dir, "first");
+    execFileSync("git", ["tag", "synthetic-coverage-tag"], { cwd: dir });
+    execFileSync("git", ["switch", "-c", "synthetic-coverage-branch"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    writeFileSync(join(dir, "tracked.txt"), "second\n");
+    commit(dir, "second");
+    execFileSync("git", ["switch", "--detach", "HEAD~"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    const head = run(dir, "--history");
+    expect(head.status).toBe(0);
+    expect(head.stderr).toContain("1 commit(s) reached from HEAD only");
+    const all = run(dir, "--history", "--all");
+    expect(all.status).toBe(0);
+    expect(all.stderr).toContain(
+      "2 commit(s) reached from 3 local ref(s) plus HEAD",
+    );
+    expect(all.stdout + all.stderr).not.toContain("synthetic-coverage-");
+  });
+
   it("exits 1 on a finding, prints rule, path, line and fingerprint, and never the value", () => {
     const dir = repo("finding");
     const secret = planted["github-token"];
