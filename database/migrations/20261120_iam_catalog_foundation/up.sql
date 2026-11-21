@@ -10,8 +10,8 @@ CREATE ROLE agri_iam_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
 CREATE ROLE agri_iam_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
 GRANT USAGE ON SCHEMA iam,authz TO agri_iam_owner;
 GRANT USAGE ON SCHEMA farm TO agri_iam_owner;
-GRANT USAGE ON SCHEMA iam,authz TO agri_iam_runtime;
-GRANT EXECUTE ON FUNCTION authz.actor() TO agri_iam_owner,agri_iam_runtime;
+GRANT USAGE ON SCHEMA iam TO agri_iam_runtime;
+GRANT EXECUTE ON FUNCTION authz.actor() TO agri_iam_owner;
 GRANT SELECT ON authz.permission_grant TO agri_iam_owner;
 GRANT UPDATE(active) ON authz.permission_grant TO agri_iam_owner; -- row-share locks, as for the project/enrollment owners
 GRANT SELECT(id) ON farm.organization TO agri_iam_owner;
@@ -161,3 +161,7 @@ END $$;
 ALTER FUNCTION iam.list_permissions(uuid,uuid,integer) OWNER TO agri_iam_owner;
 REVOKE ALL ON FUNCTION iam.list_permissions(uuid,uuid,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION iam.list_permissions(uuid,uuid,integer) TO agri_iam_runtime;
+
+-- The owner needed CREATE on the schema only to take ownership of the functions above. Drop the standing privilege:
+-- a later slice that must create objects grants it again explicitly, in its own reviewed migration.
+REVOKE CREATE ON SCHEMA iam FROM agri_iam_owner;
