@@ -425,6 +425,28 @@ describe("secret scanner: failures never read as clean", () => {
     expect(output(result)).not.toContain(planted2);
   });
 
+  it("reports no coverage when a ref moves during an all-ref scan", () => {
+    const dir = cleanRepo("moving-ref");
+    git(dir, "branch", "synthetic-moving-ref", "HEAD~");
+    const path = fakeGit(
+      "fake-moving-ref",
+      `case "$*" in
+        *"core.quotepath=off log"*)
+          REALGIT "$@" || exit $?
+          exec REALGIT branch -f synthetic-moving-ref HEAD
+          ;;
+      esac
+      exec REALGIT "$@"`,
+    );
+    const result = runWith(dir, path, "--history", "--all");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "local refs changed during the history scan",
+    );
+    expect(output(result)).not.toContain("History coverage:");
+    expect(output(result)).not.toContain("synthetic-moving-ref");
+  });
+
   it("fails when git log succeeds but returns no commits", () => {
     const dir = cleanRepo("empty-log");
     const path = fakeGit(
