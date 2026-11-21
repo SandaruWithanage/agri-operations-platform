@@ -5,7 +5,8 @@ Reviewed 21 November 2026 against main at `2f98c7b`. Use the [living handover](P
 ## P0 — Start now
 
 - [x] Add a two-account enrollment regression through the authenticated BFF, NestJS and PostgreSQL. Check scoped create, list and detail, cross-scope denial, and revocation during an active session. PRJ-04.
-- [ ] Exercise the shipped enrollment UI in Chromium, including account changes, denial and stale response cleanup. Use the existing enrollment components and APIs. PRJ-03/04.
+- [x] Exercise the shipped enrollment directory in Chromium, including detail denial, late response cleanup and a second account after sign-out. PRJ-04D.
+- [ ] Verify enrollment creation, policy editing and withdrawal through the shipped bilingual admin forms, including fixed retries and recovery after denial or an uncertain response. PRJ-03/04.
 - [ ] Move the independent AppSec/PostgreSQL review forward. Review the read-only IAM catalog in [#130](https://github.com/SandaruWithanage/agri-operations-platform/pull/130) before its stacked audit foundation in [#131](https://github.com/SandaruWithanage/agri-operations-platform/pull/131). Track the independent disposition of the security event fix separately in [#120](https://github.com/SandaruWithanage/agri-operations-platform/pull/120). ACC-01, IAM-01.
 - [ ] Resolve [issue #64](https://github.com/SandaruWithanage/agri-operations-platform/issues/64). Confirm the hosting and proxy topology, obtain authorization for disposable-stack measurements, validate shared-NAT and proxy handling, and review the resulting login policy and limits before rollout. SEC-04, OPS-04.
 - [ ] Record the decisions needed for each dependent workflow, starting with DEC-02 permissions and delegation, DEC-03 land relationships, DEC-04 enrollment, DEC-06 data retention, DEC-07 devices and recovery, and DEC-08 hosting and operating ownership. [Decision register](../requirements/OPEN_DECISIONS.md).

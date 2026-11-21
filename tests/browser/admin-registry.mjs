@@ -164,6 +164,27 @@ try {
     version: 1,
     identificationOnly: true,
   }));
+  const secondAccount = "bd56fa40-6d79-4ba7-be14-c31c5b62bd71";
+  const firstEnrollment = {
+    id: "8dc1c7c8-2f83-4c2f-a256-baede9a779ad",
+    organizationId: catalogOrganizationId,
+    projectId: "86f54e5a-3830-4115-b295-ca57ee945eb7",
+    farmerId: ids[0],
+    status: "enrolled",
+    version: 1,
+    enrolledAt: rows[0].createdAt,
+    withdrawnAt: null,
+  };
+  const secondEnrollment = {
+    ...firstEnrollment,
+    id: "76458ad6-40f1-44ce-883d-e83c7e83b14d",
+    projectId: "4aba037e-65ca-4953-a516-69b5e4244bbd",
+    farmerId: ids[1],
+  };
+  let enrollmentAccount = accountId;
+  let enrollmentDetailMode = "allowed";
+  const releaseDetail = Promise.withResolvers();
+  const detailSettled = Promise.withResolvers();
   await context.route("**/api/pilot/**", async (route) => {
     const url = new URL(route.request().url()),
       path = url.pathname.replace("/api/pilot/", "");
@@ -177,7 +198,7 @@ try {
     if (!authorized) return reply({ error: "Authentication required" }, 401);
     if (path === "registration/context")
       return reply({
-        accountId,
+        accountId: enrollmentAccount,
         deviceId,
         deviceKeyFingerprint: "a".repeat(64),
         verifiedAt: Date.now(),
@@ -348,9 +369,35 @@ try {
         land: landRows.find((row) => row.id === url.searchParams.get("id")),
       });
     }
+    if (path === "enrollments") {
+      const own =
+        enrollmentAccount === accountId ? firstEnrollment : secondEnrollment;
+      return reply({
+        accountId: enrollmentAccount,
+        items: [own],
+        nextCursor: null,
+      });
+    }
+    if (path === "enrollments/detail") {
+      assert.equal(url.searchParams.get("id"), firstEnrollment.id);
+      if (enrollmentDetailMode === "denied")
+        return reply({ error: "Not available" }, 404);
+      if (enrollmentDetailMode === "delayed") {
+        await releaseDetail.promise;
+        try {
+          await reply({ accountId, enrollment: firstEnrollment });
+        } finally {
+          detailSettled.resolve();
+        }
+        return;
+      }
+      return reply({ accountId, enrollment: firstEnrollment });
+    }
+    if (path === "farmers" && enrollmentAccount === secondAccount)
+      return reply({ accountId: secondAccount, items: [], nextCursor: null });
     if (path === "auth/csrf")
       return reply({
-        accountId,
+        accountId: enrollmentAccount,
         deviceId,
         csrfToken: `${"B".repeat(43)}.${"C".repeat(43)}`,
       });
@@ -1248,13 +1295,66 @@ try {
   );
   await page.getByRole("button", { name: "Farmers", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
-  authorized = false;
+  await page.getByRole("button", { name: "Enrollments", exact: true }).click();
+  const firstEnrollmentButton = page.getByRole("button", {
+    name: `View enrollment: ${firstEnrollment.id}`,
+    exact: true,
+  });
+  await firstEnrollmentButton.click();
+  await page.getByRole("heading", { name: "Enrolled", exact: true }).waitFor();
   await page
-    .getByRole("button", {
-      name: `View record: ${rows[0].fullName}`,
-      exact: true,
-    })
+    .getByRole("button", { name: "Close enrollment", exact: true })
     .click();
+  enrollmentDetailMode = "denied";
+  await firstEnrollmentButton.click();
+  await page
+    .getByText(
+      "This enrollment is not available within your current permissions.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(
+    await page.getByRole("heading", { name: "Enrolled", exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Enrollments", exact: true }).click();
+  enrollmentDetailMode = "delayed";
+  await Promise.all([
+    page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/enrollments/detail"),
+    ),
+    firstEnrollmentButton.click(),
+  ]);
+  try {
+    await page.getByRole("button", { name: "Farmers", exact: true }).click();
+    await page.getByText(rows[0].fullName, { exact: true }).waitFor();
+    authorized = false;
+    await page
+      .getByRole("button", {
+        name: `View record: ${rows[0].fullName}`,
+        exact: true,
+      })
+      .click();
+    await page.getByLabel("Password", { exact: true }).waitFor();
+  } finally {
+    releaseDetail.resolve();
+    await detailSettled.promise;
+  }
+  assert.equal(
+    await page.getByText(firstEnrollment.projectId, { exact: true }).count(),
+    0,
+  );
+  authorized = true;
+  enrollmentAccount = secondAccount;
+  await page.reload();
+  await page.getByRole("button", { name: "Enrollments", exact: true }).click();
+  await page.getByText(secondEnrollment.projectId, { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText(firstEnrollment.projectId, { exact: true }).count(),
+    0,
+  );
+  authorized = false;
+  await page.reload();
   await page.getByLabel("Password", { exact: true }).waitFor();
   for (const row of rows)
     assert.equal(
@@ -1291,7 +1391,7 @@ try {
   await page.waitForFunction(() => document.documentElement.lang === "en");
   await preferenceTab.close();
   console.log(
-    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, project catalog creation/versioned editing and administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup and no browser farmer persistence.",
+    "Chromium passed: compiled API startup, admin review queue/bookmark recovery, project catalog creation/versioned editing and administrator/land GPS registration, verification and correction/lost-acknowledgement/tab-draft recovery and farmer/land pagination/detail/history, bilingual and cross-tab locale controls, audit/scope/session rejection cleanup, enrollment denial and account isolation, and no browser farmer persistence.",
   );
 } finally {
   if (browser) await browser.close();
