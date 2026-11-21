@@ -41,6 +41,7 @@ export type CreationAdapter<W, R, S> = {
     owner: CreationOwner,
     selection: string | undefined,
     signal: AbortSignal,
+    pendingRequest: S | null,
   ) => Promise<{ options: CreationOption[] }>;
   request: (record: R) => S;
   submit: (
@@ -167,6 +168,7 @@ function RegistrationForm<W, R, S>({
         draft,
         working.current ? adapter.selection(working.current) : undefined,
         signal,
+        submitted.current,
       );
       signal.throwIfAborted();
       if (!validOperation(epoch) || lockedRef.current)

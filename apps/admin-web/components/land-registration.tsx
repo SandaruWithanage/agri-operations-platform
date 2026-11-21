@@ -12,8 +12,9 @@ import { landRegistrationWords } from "./land-registration-words";
 const adapter: CreationAdapter<WorkingLand, LandRecord, LandRegistration> = {
   key: "land-registration",
   selection: (value) => value.geographyId,
-  read: async (...args) => ({
-    options: (await readLandCreationContext(...args)).geographies,
+  read: async (client, owner, selected, signal) => ({
+    options: (await readLandCreationContext(client, owner, selected, signal))
+      .geographies,
   }),
   request: (record) => ({ ...record, mutationId: crypto.randomUUID() }),
   submit: (client, owner, request) =>

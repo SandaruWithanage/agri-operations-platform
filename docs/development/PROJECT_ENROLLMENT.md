@@ -6,7 +6,7 @@ Migration **22**, `20261116_project_enrollment/up.sql`, adds the first explicit 
 
 1. Rehearse/apply all manifest migrations through entry 22 with the [controlled runner](../../database/README.md) before deploying the updated enabled API. Existing grants, assignments, projects and farmers are preserved; the permission CHECK constraints only widen.
 2. Keep the same ten isolated runtime LOGINs. `agri_enrollment_owner` is **NOLOGIN**; never grant its membership to an application login. Startup rejects owner membership, direct `operations.enrollment` writes, journal/audit access and a missing execute grant.
-3. Provision scopes only through the reviewed privileged process. For each actor and project: `enrollment.read` (null source), `enrollment.create` and `enrollment.withdraw` (trusted `administrator` or `field_officer` source) plus a matching project assignment ([scope guide](PROJECT_SCOPES.md)), **and** a current `farmer.read` grant covering the farmer's geography. Nothing is seeded.
+3. Provision scopes only through the reviewed privileged process. For each actor and project: `enrollment.read` (null source), `enrollment.create` (trusted application source) and `enrollment.withdraw` (trusted `administrator` source) plus a matching project assignment ([scope guide](PROJECT_SCOPES.md)), **and** a current `farmer.read` grant covering the farmer's geography. Nothing is seeded.
 
 ## Behaviour
 
@@ -33,3 +33,5 @@ HTTP mapping: 403 denied, 409 duplicate/idempotency/version/provisional-eligibil
 ## Withdrawal is administrator-only (ENR-AUTH-01)
 
 Under the provisional owner policy (DEC-12, not client-approved), only the administrator source may withdraw. PostgreSQL refuses any other source in `operations.enrollment_permitted`, new field-officer-source `enrollment.withdraw` grants are rejected by a constraint, and the field-officer BFF does not expose the withdrawal or policy-administration routes. The administrator screens are unaffected.
+
+After an uncertain withdrawal, keep the tab open. If the draft locks, reopen it with the original signed-in account and approved device. When the current record is still readable and has moved to the possible result version, the form can retry its existing withdrawal request. PostgreSQL checks current read and withdrawal scope and the original mutation before acknowledging a replay. Another actor's withdrawal remains a conflict. An unsubmitted draft cannot reopen a withdrawn record.

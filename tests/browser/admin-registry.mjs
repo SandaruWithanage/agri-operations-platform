@@ -181,6 +181,10 @@ try {
     projectId: "4aba037e-65ca-4953-a516-69b5e4244bbd",
     farmerId: ids[1],
   };
+  let createdEnrollment;
+  let policy;
+  let policyDenied = false;
+  const enrollmentWrites = { policy: [], create: [], withdraw: [] };
   let enrollmentAccount = accountId;
   let enrollmentDetailMode = "allowed";
   const releaseDetail = Promise.withResolvers();
@@ -369,6 +373,85 @@ try {
         land: landRows.find((row) => row.id === url.searchParams.get("id")),
       });
     }
+    if (path === "enrollment-policies") {
+      if (policyDenied) return reply({ error: "Not available" }, 404);
+      assert.equal(url.searchParams.get("projectId"), projectRows[0].id);
+      return reply({
+        accountId,
+        projectId: projectRows[0].id,
+        policy: policy ?? null,
+      });
+    }
+    if (path === "enrollment-policies/set") {
+      const input = route.request().postDataJSON();
+      enrollmentWrites.policy.push(input);
+      assert.equal(input.projectId, projectRows[0].id);
+      assert.equal(input.expectedVersion, 0);
+      assert.equal(input.enabled, true);
+      assert.deepEqual(input.eligibleFarmerStatuses, [
+        "pending-review",
+        "verified",
+      ]);
+      if (enrollmentWrites.policy.length === 1) {
+        policy = {
+          projectId: input.projectId,
+          enabled: true,
+          eligibleFarmerStatuses: input.eligibleFarmerStatuses,
+          version: 1,
+        };
+        return reply({ error: "Synthetic lost policy acknowledgement" }, 503);
+      }
+      assert.deepEqual(input, enrollmentWrites.policy[0]);
+      return reply({ projectId: input.projectId, version: 1, replayed: true });
+    }
+    if (path === "enrollments/enroll") {
+      const input = route.request().postDataJSON();
+      enrollmentWrites.create.push(input);
+      assert.equal(input.projectId, projectRows[0].id);
+      assert.equal(input.farmerId, rows[0].id);
+      if (enrollmentWrites.create.length === 1) {
+        createdEnrollment = {
+          ...firstEnrollment,
+          id: input.enrollmentId,
+          projectId: input.projectId,
+          farmerId: input.farmerId,
+        };
+        return reply(
+          { error: "Synthetic lost enrollment acknowledgement" },
+          503,
+        );
+      }
+      assert.deepEqual(input, enrollmentWrites.create[0]);
+      return reply({
+        enrollmentId: input.enrollmentId,
+        version: 1,
+        replayed: true,
+      });
+    }
+    if (path === "enrollments/withdraw") {
+      const input = route.request().postDataJSON();
+      enrollmentWrites.withdraw.push(input);
+      assert.equal(input.enrollmentId, createdEnrollment.id);
+      assert.equal(input.expectedVersion, 1);
+      if (enrollmentWrites.withdraw.length === 1) {
+        createdEnrollment = {
+          ...createdEnrollment,
+          status: "withdrawn",
+          version: 2,
+          withdrawnAt: rows[0].createdAt,
+        };
+        return reply(
+          { error: "Synthetic lost withdrawal acknowledgement" },
+          503,
+        );
+      }
+      assert.deepEqual(input, enrollmentWrites.withdraw[0]);
+      return reply({
+        enrollmentId: input.enrollmentId,
+        version: 2,
+        replayed: true,
+      });
+    }
     if (path === "enrollments") {
       const own =
         enrollmentAccount === accountId ? firstEnrollment : secondEnrollment;
@@ -379,6 +462,11 @@ try {
       });
     }
     if (path === "enrollments/detail") {
+      if (
+        createdEnrollment &&
+        url.searchParams.get("id") === createdEnrollment.id
+      )
+        return reply({ accountId, enrollment: createdEnrollment });
       assert.equal(url.searchParams.get("id"), firstEnrollment.id);
       if (enrollmentDetailMode === "denied")
         return reply({ error: "Not available" }, 404);
@@ -1292,6 +1380,128 @@ try {
   assert.equal(
     await page.getByLabel("Edited project name", { exact: true }).count(),
     0,
+  );
+  await page
+    .getByRole("button", { name: "Manage enrollment policy", exact: true })
+    .click();
+  const policyForm = page.getByRole("form", {
+    name: "Online enrollment policy",
+  });
+  await policyForm.getByLabel("Allow enrollment in this project").check();
+  await policyForm.getByLabel("Pending review", { exact: true }).check();
+  await policyForm
+    .getByLabel("I reviewed the enabled setting and the selected statuses.")
+    .check();
+  const savePolicy = policyForm.getByRole("button", {
+    name: "Save enrollment policy",
+    exact: true,
+  });
+  await savePolicy.click();
+  await page
+    .getByText("Could not confirm the policy change. Retry the same request.", {
+      exact: true,
+    })
+    .waitFor();
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  policyDenied = true;
+  const reopenPolicy = page.getByRole("button", {
+    name: "Check access and reopen enrollment policy",
+    exact: true,
+  });
+  await reopenPolicy.click();
+  await page
+    .getByText(
+      "Current policy access could not be confirmed. Values remain hidden. Check your sign-in, approved device, connection and the enrollment-policy administrator permission.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(await policyForm.count(), 0);
+  assert.equal(enrollmentWrites.policy.length, 1);
+  policyDenied = false;
+  await reopenPolicy.click();
+  assert.equal(
+    await policyForm
+      .getByLabel("Allow enrollment in this project")
+      .isDisabled(),
+    true,
+  );
+  await savePolicy.click();
+  await policyForm.waitFor({ state: "detached" });
+  await page
+    .getByRole("heading", { name: projectRows[0].name, exact: true })
+    .waitFor();
+
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: `View record: ${rows[0].fullName}`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Enroll in a project", exact: true })
+    .click();
+  await page.getByRole("button", { name: "සිංහල", exact: true }).click();
+  await page.getByRole("form", { name: "මාර්ගගත ගොවි ඇතුළත් කිරීම" }).waitFor();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  const createForm = page.getByRole("form", {
+    name: "Online farmer enrollment",
+  });
+  await createForm
+    .getByLabel("Project", { exact: true })
+    .selectOption(projectRows[0].id);
+  await createForm.getByLabel("I reviewed the farmer and the project.").check();
+  const enroll = createForm.getByRole("button", {
+    name: "Enroll farmer",
+    exact: true,
+  });
+  await enroll.click();
+  await page
+    .getByText("Could not confirm the enrollment. Retry the same request.", {
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(
+    await createForm.getByLabel("Project", { exact: true }).isDisabled(),
+    true,
+  );
+  await enroll.click();
+  await page.getByRole("heading", { name: "Enrolled", exact: true }).waitFor();
+
+  await page
+    .getByRole("button", { name: "Withdraw enrollment", exact: true })
+    .click();
+  const withdrawForm = page.getByRole("form", {
+    name: "Online enrollment withdrawal",
+  });
+  await withdrawForm
+    .getByLabel("I reviewed this enrollment and want to withdraw it.")
+    .check();
+  const withdraw = withdrawForm.getByRole("button", {
+    name: "Withdraw enrollment",
+    exact: true,
+  });
+  await withdraw.click();
+  await page
+    .getByText("Could not confirm the withdrawal. Retry the same request.", {
+      exact: true,
+    })
+    .waitFor();
+  await page.getByRole("button", { name: "Farmers", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Enrollment withdrawal locked", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", {
+      name: "Check access and reopen enrollment withdrawal",
+      exact: true,
+    })
+    .click();
+  await withdraw.click();
+  await page.getByRole("heading", { name: "Withdrawn", exact: true }).waitFor();
+  assert.deepEqual(
+    Object.values(enrollmentWrites).map((writes) => writes.length),
+    [2, 2, 2],
   );
   await page.getByRole("button", { name: "Farmers", exact: true }).click();
   await page.getByText(rows[0].fullName, { exact: true }).waitFor();
