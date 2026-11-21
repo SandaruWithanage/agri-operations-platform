@@ -258,6 +258,32 @@ describe("secret scanner: tree, history and command line", () => {
     expect(result.stderr).toContain("0 finding(s)");
   });
 
+  it("reports local refs and distinct commits for all-ref history, without printing ref names", () => {
+    const dir = repo("history-coverage");
+    writeFileSync(join(dir, "tracked.txt"), "first\n");
+    commit(dir, "first");
+    execFileSync("git", ["tag", "synthetic-coverage-tag"], { cwd: dir });
+    execFileSync("git", ["switch", "-c", "synthetic-coverage-branch"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    writeFileSync(join(dir, "tracked.txt"), "second\n");
+    commit(dir, "second");
+    execFileSync("git", ["switch", "--detach", "HEAD~"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    const head = run(dir, "--history");
+    expect(head.status).toBe(0);
+    expect(head.stderr).toContain("1 commit(s) reached from HEAD only");
+    const all = run(dir, "--history", "--all");
+    expect(all.status).toBe(0);
+    expect(all.stderr).toContain(
+      "2 commit(s) reached from 3 local ref(s) plus HEAD",
+    );
+    expect(all.stdout + all.stderr).not.toContain("synthetic-coverage-");
+  });
+
   it("exits 1 on a finding, prints rule, path, line and fingerprint, and never the value", () => {
     const dir = repo("finding");
     const secret = planted["github-token"];
@@ -397,6 +423,28 @@ describe("secret scanner: failures never read as clean", () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("git log failed (exit status 4)");
     expect(output(result)).not.toContain(planted2);
+  });
+
+  it("reports no coverage when a ref moves during an all-ref scan", () => {
+    const dir = cleanRepo("moving-ref");
+    git(dir, "branch", "synthetic-moving-ref", "HEAD~");
+    const path = fakeGit(
+      "fake-moving-ref",
+      `case "$*" in
+        *"core.quotepath=off log"*)
+          REALGIT "$@" || exit $?
+          exec REALGIT branch -f synthetic-moving-ref HEAD
+          ;;
+      esac
+      exec REALGIT "$@"`,
+    );
+    const result = runWith(dir, path, "--history", "--all");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "local refs changed during the history scan",
+    );
+    expect(output(result)).not.toContain("History coverage:");
+    expect(output(result)).not.toContain("synthetic-moving-ref");
   });
 
   it("fails when git log succeeds but returns no commits", () => {

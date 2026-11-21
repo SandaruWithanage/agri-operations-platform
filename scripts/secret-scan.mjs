@@ -330,7 +330,7 @@ export function scanTree(root, report = {}, io = defaultIo) {
  * Fails with a ScanError, never a clean result, when git cannot run, exits non-zero, is killed, prints no commits
  * at all, or the clone is shallow (a history scan of a truncated history proves nothing).
  */
-export async function scanHistory(root, refs = ["HEAD"]) {
+export async function scanHistory(root, refs = ["HEAD"], report = {}) {
   const shallow = gitOutput(root, ["rev-parse", "--is-shallow-repository"])
     .toString()
     .trim();
@@ -341,6 +341,11 @@ export async function scanHistory(root, refs = ["HEAD"]) {
   if (shallow !== "false")
     throw new ScanError("could not determine whether the history is complete");
 
+  const allRefs = refs.length === 1 && refs[0] === "--all";
+  const listRefs = () =>
+    gitOutput(root, ["for-each-ref", "--format=%(objectname) %(refname)"]);
+  const inventory = allRefs ? listRefs() : null;
+  const head = allRefs ? gitOutput(root, ["rev-parse", "HEAD"]) : null;
   const findings = [];
   const child = spawn(
     "git",
@@ -392,6 +397,17 @@ export async function scanHistory(root, refs = ["HEAD"]) {
   if (code !== 0) throw new ScanError(`git log failed (exit status ${code})`);
   if (commits === 0)
     throw new ScanError("git log returned no commits, so nothing was scanned");
+  if (
+    inventory &&
+    (!inventory.equals(listRefs()) ||
+      !head.equals(gitOutput(root, ["rev-parse", "HEAD"])))
+  )
+    throw new ScanError(
+      "local refs changed during the history scan; run again",
+    );
+  report.commits = commits;
+  if (inventory)
+    report.refs = inventory.toString().split("\n").filter(Boolean).length;
   return findings;
 }
 
@@ -442,6 +458,7 @@ async function main() {
     process.exit(2);
   }
   const report = {};
+  const historyReport = {};
   let all;
   try {
     all = scanTree(root, report);
@@ -450,6 +467,7 @@ async function main() {
         ...(await scanHistory(
           root,
           args.includes("--all") ? ["--all"] : ["HEAD"],
+          historyReport,
         )),
       );
   } catch (error) {
@@ -481,6 +499,15 @@ async function main() {
   );
   for (const oversize of s.oversize)
     console.error(`NOT SCANNED (over the size limit) ${oversize}`);
+  if (history) {
+    const scope =
+      historyReport.refs === undefined
+        ? "HEAD only"
+        : `${historyReport.refs} local ref(s) plus HEAD`;
+    console.error(
+      `History coverage: ${historyReport.commits} commit(s) reached from ${scope}.`,
+    );
+  }
   console.error(
     `Secret scan (${history ? "tree and history" : "tree"}): ${report.scanned} file(s) scanned, ${unmatched.length} finding(s), ` +
       `${waivers.size - unused.length} waived, ${unused.length} unused waiver(s). No matched value is printed.`,
