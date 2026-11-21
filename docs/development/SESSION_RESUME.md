@@ -1,63 +1,87 @@
-# Session resume point
+# Session resume point and handoff
 
-**Purpose:** where work stood when a session paused, so the next session (or a scheduled resume) continues without re-deriving it. Read [AGENTS.md](../../AGENTS.md) first. **This file is a snapshot, not a source of truth, and it grants no approval.** Merges, privileged changes and production-affecting security changes need the owner's own explicit approval. **Before acting, re-check every head, CI state, merge state and open issue live on GitHub**; if anything here disagrees with GitHub, GitHub wins and this file is updated.
+**Purpose:** where work stood when a session paused, so the next agent (or a scheduled resume) continues without re-deriving it. Read [AGENTS.md](../../AGENTS.md), then [PROJECT_CONTEXT](../PROJECT_CONTEXT.md) and the [project handover](PROJECT_HANDOVER.md) (the stable task register). **This file is a snapshot, not a source of truth, and it grants no approval.** Merges, privileged changes and production-affecting security changes need the owner's own explicit approval. **Before acting, re-check every head, CI state, merge state and open issue live on GitHub**; if anything here disagrees with GitHub, GitHub wins and this file is updated.
 
-**Snapshot taken:** 20 Nov 2026, `main` at `ce7b84f`. **Never store a secret, key, token or personal data here.**
+**Snapshot taken:** 21 Nov 2026, `main` at `2f98c7b`. **Never store a secret, key, token or personal data here.** The platform is **not production ready**: Gate G1, independent AppSec/PostgreSQL review (no reviewer assigned), hosting (OPS-04), incident ownership, real-device testing, client acceptance and DEC-02 are all open.
 
-## Merged so far (on owner approval)
+## 1. What this is
 
-#108 (SEC-A1 start-up refusal), #109 (capabilities contract rev 2, still PROPOSED), #110 (owner security decisions S1 to S13), #111 (SEC-A2 security events), #121 (nested glass filters; closed issue #101), #122 (SEC-A4 budgets design, PROPOSED), #124 (conflict-marker guard in the structure check), **#127 (scoped override `@prisma/config>effect` 3.22.4 for the high-severity advisory GHSA-7589-6fvf-x4pw; a fix, not an exemption; merged on the owner's explicit authorization at `bb075a5` as `0bdac7a`)**; **#112 (SEC-A9 secret scanning, owner-merged from head `7bfe990` as `233bcc8`); #125 (SEC-A4 measurement harness, owner-merged from head `11eb0d0`; closed issue #126); #119 (this file and the continuity rule).**
+**GoviAxis** (owner-supplied name, still awaiting official confirmation in #116; the code still says the working name) is an agricultural operations platform: a pnpm/Turborepo monorepo with two Next.js apps (admin web and an offline-capable field PWA), same-origin BFFs, a NestJS API and PostgreSQL/PostGIS that owns authority (ABAC, FORCE RLS, audit). Phase 1 scope: IAM/ABAC and core database; farmer and land registration; officer responsibilities; project enrollment; simple GPS pins; resource records; offline synchronization. Out of scope: farmer portal (Phase 2), harvest procurement, transport, financial settlement, insurance, advanced surveying, new workflow engines. GPS points are identification only, never legal boundaries or verified acreage.
 
-## Open pull requests (last-seen heads)
+## 2. What exists (delivered, on `main`)
 
-| PR   | Subject                                                                         | Last head  | What it needs                                                                                                                                                         |
-| ---- | ------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #114 | SEC-A2 hash-key production requirement (docs)                                   | `0dc6d05`  | Conflict with main in shared docs tables; docs-only normal review                                                                                                     |
-| #115 | SEC-A3 provider-neutral edge and origin ADR (PROPOSED, docs)                    | `815a400`  | Conflict with main; keep PROPOSED; docs-only normal review                                                                                                            |
-| #116 | GoviAxis product name in UI, titles and docs                                    | `6dc436e`  | **Explicit owner confirmation that GoviAxis is the final product name** (no trademark or domain availability is verified); then a conflict sync                       |
-| #117 | Stitch MCP declaration in `.mcp.json` (no key committed)                        | `41695db`  | Review of configuration and secret handling; conflict sync; the owner sets `STITCH_API_KEY` in the environment settings and rotates the key that was pasted into chat |
-| #118 | Stitch UI/UX review (docs)                                                      | `fd78ac8`  | Conflict with main; docs-only normal review                                                                                                                           |
-| #120 | SEC-A2 fix: pending security-event counts reach the log (issue 113)             | `da07ac6`  | **Held** for an independent qualified AppSec review of the flush implementation and its failure-handling tests; internal review and green CI do not satisfy it        |
-| #123 | Username and password login proposal and authentication policy (docs, PROPOSED) | `f4ef35e`  | Stays separate; **server-side MFA unchanged** until the policy is approved, independently reviewed, implemented and tested; conflict sync                             |
-| #128 | Record the GitHub-hosted all-ref secret audit result (docs)                     | see GitHub | Docs-only normal review. Records run 44681069474 (success, 0 findings, both scan steps executed) and the limit that the ref count is not printed                      |
+Full detail and evidence are in the handover register (section 3 of [PROJECT_HANDOVER.md](PROJECT_HANDOVER.md)); in short:
 
-Syncing the docs-only PRs with `main` should be done **one at a time, after #112 is merged**, with fresh CI after each, and the conflict-marker guard run on each resolved tree before pushing. The shared handover, audit and review-log tables are the usual conflict points.
+- **Foundation and security runtime:** monorepo, shared packages (`@agri/ui`, design tokens, validation, i18n, sync), Argon2id password, encrypted MFA, PostgreSQL sessions, cookie BFF with CSRF, short-lived JWTs, signed per-transaction actor context, approved-browser-key device proof, ten restricted LOGIN identities.
+- **Farmer workflows:** minimal registration (field and admin), registry and detail, review queue, verification, bounded correction, receipts, audit view, duplicate-risk flagging, encrypted offline drafts and sync (Dexie), archive recovery.
+- **Land:** reported PostGIS identification with online GPS capture, scoped directory, provisional polygon store (awaiting review).
+- **Projects:** catalog, versioned editing, provisional explicit enrollment with policy administration and bilingual admin screens.
+- **UI:** one frosted-glass language with fallbacks, shared tokens, field home task order, UI development rules (shared components first, permission-code driven actions; a hidden button is never a security check).
+- **Security programme (SEC-AUDIT-01):** start-up refusal (SEC-A1), privacy-safe security events (SEC-A2), CI secret scanning with an all-ref audit (SEC-A9), conflict-marker guard in the structure check, request-budget design and a safe loopback measurement harness (SEC-A4, **no measurement has ever been run**), dependency override for GHSA-7589-6fvf-x4pw.
+- **Merged on owner approval so far:** #108, #109, #110, #111, #112, #114, #119, #121, #122, #124, #125, #127, #128, #129 (plus earlier work).
 
-## Post-merge facts worth keeping
+## 3. Open pull requests (last-seen heads; re-check live)
 
-- The GitHub-hosted all-ref secret audit ran on `233bcc8` (manual dispatch, run 44681069474): both steps executed, 458 files, 0 findings, 0 waived. The scanner does not print how many refs it covered, so that count is not recorded (small follow-up: print it).
-- The measurement harness is on `main`. It accepts only numeric loopback targets, refuses names, and sends no byte before the peer is verified; **no measurement has been run**, and a real run needs the owner's written authorization reference.
-- `main`'s dependency audit passes with only the owner-approved picomatch exemption (re-check by 15 Dec 2026).
+| PR   | Subject                                                                | Head      | State and what it needs                                                                                                                                |
+| ---- | ---------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #115 | SEC-A3 edge and origin ADR (PROPOSED, docs)                            | `e9aa0de` | Synced with main, mergeable, CI green. Owner decides the merge. Keep PROPOSED.                                                                         |
+| #118 | Stitch UI/UX review (docs)                                             | `59e5cb6` | Synced with main, mergeable, CI green. Owner decides the merge.                                                                                        |
+| #116 | GoviAxis product name in UI, titles and docs                           | `6dc436e` | **Held for explicit owner confirmation of the name** (no trademark or domain availability is verified); then a conflict sync.                          |
+| #117 | Stitch MCP declaration in `.mcp.json` (no key committed)               | `41695db` | Owner must set `STITCH_API_KEY` and **rotate the key that was pasted into a chat**; conflict sync needed.                                              |
+| #120 | SEC-A2 fix: pending event counts reach the log (issue #113)            | `da07ac6` | **On hold** for an independent qualified AppSec review; green CI and internal review do not satisfy it.                                                |
+| #123 | Username/password login and authentication policy (docs, PROPOSED)     | `f4ef35e` | Stays separate; **server-side MFA unchanged** until the policy is approved, independently reviewed, implemented and tested; conflict sync needed.      |
+| #130 | IAM-01 P1-03a read-only role/permission catalog (schema; migration 27) | `bb59971` | **Open for Gate G1 independent review**; will not merge before it and the owner's explicit authorization. Review package is in the PR (see section 5). |
+| #131 | IAM-01 P1-03b1 grant `origin` columns and append-only grant audit (28) | `9990a55` | **Stacked on #130** (base is the #130 branch); no writer; same review gate; retarget after #130 lands.                                                 |
 
-## Dependency advisories can break every PR's CI
+Syncing a docs PR with `main`: do it one at a time, fresh CI after each, run `node scripts/check-structure.mjs` on the resolved tree, and keep every legitimate entry in the shared handover, audit and review-log tables (the usual conflict points).
 
-A newly published advisory can fail the audit step of every PR at once, because the gate reads the live advisory database (this happened on 20 Nov 2026 with `effect`, fixed by #127). First check whether `main` fails the same way; fix with a reviewed dependency change; **never skip the gate, never add an exemption without the owner's decision, and never commit the `auditConfig` block that `pnpm audit --ignore` writes into `pnpm-workspace.yaml`**. See `DEPENDENCY_POLICY.md`.
+## 4. Open issues
 
-## Open issues
+**#64** shared BFF login throttling and client attribution: a **deployment blocker**, not done. **#71** admin and field UX redesign umbrella (Stitch-based, small reviewed PRs). **#113** security-event counts: closes only when #120 merges after independent review.
 
-- **#64** shared BFF login throttling: stays open; the topology, client attribution and lockout-abuse work is not done (deployment blocker).
-- **#71** admin and field UX redesign umbrella: stays open; the Stitch-based work continues.
-- **#113** security-event counts: closes when #120 merges, after independent review.
-- **#126** measurement harness loopback safety: **closed** by #125 (verified fix merged).
+## 5. IAM-01 (organization and permission administration) state
 
-## Next steps, in order
+Design: [ADR 0022](../decisions/ADR-0022-dynamic-role-and-assignment-administration.md) (PROPOSED). Slices: P1-03a (#130, read-only catalog, role versions, scoped reads), P1-03b1 (#131, plumbing only). **Owner direction 21 Nov 2026:** keep #130 open for independent review; for P1-03b onward do **design, threat analysis and synthetic test planning only**. Privileged role mutations, materialized grants, access approvals and account-permission changes stay **inactive** until DEC-02 and the security gates are resolved. Read these first:
 
-1. Review and merge the docs-only PRs one at a time (#114, #115, #118, #128), each synced with `main` first, with fresh CI and the conflict-marker guard run on the resolved tree before pushing. The owner decides each merge.
-2. Small follow-up: make the secret scanner print how many refs it covered, so an audit result states its own coverage.
-3. Keep #116, #120 and #123 held as above.
-4. SEC-A5 login-protection design on decision D3 option B (design only); benchmark PostgreSQL authorization and query limits on a disposable stack before any SEC-A6 migration; Stitch-based UI changes from `STITCH_UI_UX_REVIEW.md`, each a small reviewed PR, after the owner's decisions there.
-5. No measurement has been run; the harness may be used only on a disposable local stack with the owner's written authorization reference.
+- [Independent-review package for #130](../security/IAM_P1_03A_INDEPENDENT_REVIEW_PACKAGE.md) (as-built privilege inventory; the `UPDATE(active)` question; lock and concurrent-revocation evidence; 17 mutation checks; what is not claimed).
+- [P1-03b design, threat analysis and synthetic test plan](../security/IAM_P1_03B_DESIGN_THREAT_AND_TEST_PLAN.md) (gating conditions, slicing b2/b3/c, 14 threats, 20 test cases). It proposes a link table instead of a column on `authn.account`; that needs owner agreement.
 
-## Do not
+## 6. What is left, and where to begin
 
-- Merge anything without the owner's explicit approval; green CI alone is never authorization. A recommendation in a review message is not an approval unless it says so.
-- Start privileged IAM schema changes, capabilities C1, C2 or C3, any removal or weakening of server-side MFA, or any deployment needing unresolved approval.
-- Activate any unmeasured limit, or run load or penetration tests against live infrastructure.
-- Record DEC-02 Q1 to Q12 as confirmed without the owner's word "confirm".
-- Claim Gate G1, independent review, hosting validation, real-device testing, client approval or production security acceptance.
-- Use or store the Stitch key that was pasted into a chat; it is exposed and must be rotated.
-- Commit a conflict-resolved file without running `node scripts/check-structure.mjs` and scanning for markers.
+**Owner priority (21 Nov 2026):** after the review and hold tasks, prioritize integrated organization/permission administration and complete farmer, land and project workflows. **Stop adding unrelated documentation.**
 
-## Open owner items
+Start here, in order:
 
-Final merge authorization for #112; confirmation of the GoviAxis name; choice of authentication policy option and its values; an independent AppSec and PostgreSQL reviewer (none assigned); hosting (OPS-04); incident and alert ownership; approved organisation naming for the sign-in and field screens; scope of the loan, harvest, survey and import/export screens in Stitch; native-speaker review of Sinhala text; DEC-02 Q1 to Q12 "confirm" plus open points A and B; the next session start time for scheduled resumes; ADR 0022 addendum approval.
+1. Re-check GitHub (heads, CI, merges, issues, comments). Update this file if it disagrees.
+2. Work that needs **no privileged IAM change**: read [PROJECT_HANDOVER.md](PROJECT_HANDOVER.md) section 5 and the `Pending`/`Partial` items; pick the next vertical gap in the farmer, land and project workflows that does not depend on IAM-01 writes (for example completing enrollment UX against the existing provisional API, durable online drafts REC-02, offline land/GPS OFF-03 design review, the LAND-02 relationship decisions as design) and **say what you chose before building it**.
+3. Items that are **blocked** (do not start): IAM-02/03, FAR-04/05, LAND-02 implementation, OPS-02, RES-01, PRJ-03/04 completion, REC-03, SEC-03 (all depend on IAM-01 writes, DEC-02 or client decisions); OPS-04/05 and ACC-01..03 (hosting, reviewers, devices, client).
+4. Small follow-up: make the secret scanner print how many refs it covered (a code PR needing explicit merge approval).
+5. SEC-A5 login-protection design (decision D3 option B, design only); benchmark PostgreSQL limits on a disposable stack before any SEC-A6 migration (needs the owner's written authorization reference).
+
+## 7. Working method that this repository enforces
+
+- **Every merge needs the owner's explicit approval of a named head.** CI green is not authorization. A recommendation in a message is not an approval unless it says so. Never push to `main`, force-push or merge on your own.
+- **Living docs in the same PR:** handover completion-log row and task status, review-log row (replace `#PR` with the real number after opening the PR), setup/domain guides, open decisions. No completion percentages.
+- **Test evidence:** state what ran, where (local, CI, disposable stack) and what it does not prove. Mutation-check isolation and integrity tests: remove the guard and the test must fail. Report failures and flakiness plainly.
+- **Local database tests** (`tests/authn-migration.test.ts`, one large suite that applies the migrations in a hard-coded list and drops the schemas at the end; skipped without `DATABASE_TEST_URL`; CI provides a PostGIS service): PostgreSQL 16 and PostGIS are installed; `initdb` must run as the `postgres` user in a directory that user can reach (for example under `/var/tmp`), not under the scratchpad. **Do not pre-create the `postgis` or `pgcrypto` extensions** (the migrations create them). Roles are cluster-wide, so **wipe and re-init the cluster between runs**. A new migration needs three edits: the manifest, the suite's migration list and its teardown role/schema lists, and the count in `tests/native-migrations.test.ts`. Tear the disposable cluster down afterwards. Synthetic data only.
+- **Node and typecheck:** the repo targets Node 26; the sandbox has Node 22 (a warning, tests still run). The repo-wide `pnpm typecheck` fails locally with `Exec format error` for two packages; each package passes on its own and CI runs it.
+- **GitHub:** use the GitHub MCP tools (no `gh` for PRs); `gh api search/...` only for search. Do not comment on GitHub unless asked.
+
+## 8. Pitfalls already hit (do not repeat)
+
+- Prettier turns conflict markers inside tables into table rows; **always** run `node scripts/check-structure.mjs` and a marker scan before committing a resolved file, and chain resolution steps with `&&` so a failed step stops the rest.
+- Edit scripts must tolerate Prettier's table re-padding; assert that exactly one match exists.
+- A newly published dependency advisory can fail the audit gate of every PR at once: check whether `main` fails the same way, fix through a reviewed dependency change, never skip the gate. `pnpm audit --ignore` writes an `auditConfig` block into `pnpm-workspace.yaml`; never commit it.
+- Never ask a database connection for its backend id while it is blocked on a lock (read ids first). A test that asserts a refusal can hide a leaked privilege behind RLS; assert privileges directly.
+- The sandbox classifier blocks `git reset --hard`; use `git checkout -B <branch> origin/<branch>` instead.
+- The Stitch key pasted into a chat is exposed and must be rotated; do not use or store it. `chatgpt.com` is not reachable from the sandbox.
+
+## 9. Do not
+
+- Merge anything without the owner's explicit approval; start privileged IAM mutations, materialized grants, approvals or account-permission changes; start capabilities C1, C2 or C3; remove or weaken server-side MFA; activate any unmeasured limit; run load or penetration tests against live infrastructure.
+- Record DEC-02 Q1 to Q12 as confirmed without the owner's word "confirm". Claim Gate G1, independent review, hosting validation, real-device testing, client approval or production security acceptance.
+- Weaken authentication, authorization or audit requirements to speed up development.
+
+## 10. Open owner items
+
+DEC-02 Q1 to Q12 and points A/B; the client permission matrix; an independent AppSec and PostgreSQL reviewer (none assigned); the `UPDATE(active)` decision and the person-link-table agreement; GoviAxis confirmation (#116); authentication policy option and values (#123); hosting (OPS-04); incident and alert ownership (OWNER-S5); approved organisation naming for sign-in screens; scope of the Stitch loan, harvest, survey and import/export screens; Sinhala native-speaker review; ADR 0022 addendum approval; rotation of the exposed Stitch key; and the next session start time for scheduled resumes (AGENTS.md session-continuity rule).
