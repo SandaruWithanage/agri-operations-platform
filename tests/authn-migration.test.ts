@@ -1,3 +1,4 @@
+import { verifyEnrollmentBffIsolation } from "./support/enrollment-bff-isolation";
 import { verifyProjectCatalog } from "./support/project-integration";
 import { ReadinessController } from "../apps/api/src/readiness.controller";
 import { verifyCorrectionReceipt } from "./support/correction-receipt-integration";
@@ -3334,6 +3335,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
       await expect(runtime.authenticate(token.accessToken)).rejects.toThrow();
       await expect(runtime.token(opaque)).rejects.toThrow();
+      await verifyEnrollmentBffIsolation(
+        client,
+        [identity.accountId, another],
+        origin,
+        adminHandler,
+      );
     } finally {
       await app?.close();
       await runtime.close();
