@@ -63,7 +63,7 @@ Administrator-source routes only (never exposed by the field BFF): list/read rol
 | P1-03e | Bilingual admin screens.                                                                                                      | after 03d        |
 | P1-26  | Step-up MFA, recovery, emergency elevation, access reviews (quarterly privileged, six-monthly ordinary), device lifecycle UI. | G1, DEC-02       |
 
-**Implementation status (20 Nov 2026):** P1-03a is implemented on a branch as manifest entry 27 (read-only; awaiting merge and independent review). The account `person_id` link was deliberately deferred to P1-03b so the slice does not alter `authn.account`. Nothing else in this table is started.
+**Implementation status (20 Nov 2026):** P1-03a is implemented on a branch as manifest entry 27 (read-only; awaiting merge and independent review). The account `person_id` link was deliberately deferred to P1-03b so the slice does not alter `authn.account`. P1-03b is split: **P1-03b1** (the `origin`/`binding_id` columns and the append-only grant-change audit required by section 11 rows 6 to 8) is implemented on a stacked branch as manifest entry 28; role creation, versions, binding, materialization and the delegation ceiling (**P1-03b2/b3**) are not started. Nothing else in this table is started.
 
 ### 9. Acceptance tests (mutation-checked where they assert isolation or integrity)
 

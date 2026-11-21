@@ -67,3 +67,7 @@ Apply entry 22 before deploying the updated enabled runtime. It adds `operations
 ## IAM catalog foundation (manifest entry 27)
 
 Entry 27 adds the `iam` schema: a permission catalog (unclassified permissions are high risk), staff `person`, `role`, immutable `role_version` and `role_version_permission`, the NOLOGIN `agri_iam_owner` and `agri_iam_runtime` identities and three bounded read functions. It is read-only: there is no mutation path, no materialization into `authz` grants and no seeded data. The runtime identity has no table access and no LOGIN or API connection exists yet; do not create one until the API slice is reviewed. Apply it like any other entry (`pnpm db:migrate:plan`, then `pnpm db:migrate`). The design is [ADR 0022](../docs/decisions/ADR-0022-dynamic-role-and-assignment-administration.md) (PROPOSED, not independently reviewed).
+
+## Grant audit plumbing (manifest entry 28)
+
+Entry 28 depends on entry 27. It adds `origin` (default `direct`) and `binding_id` to `authz.permission_grant`, `authz.assignment`, `authz.project_permission_grant` and `authz.project_assignment` and an append-only `iam.grant_change_audit` written by a trigger on every INSERT, UPDATE and DELETE of those tables, including operator changes. It adds no writer and changes no authorization decision. The audit holds identifiers, the permission code and the database user only. Operators with superuser access can still alter the database; that stays a process control (custody, DEC-08).

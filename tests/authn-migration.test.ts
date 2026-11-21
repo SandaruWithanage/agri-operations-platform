@@ -337,6 +337,12 @@ suite("provisional authentication migration on PostgreSQL", () => {
         "utf8",
       ),
     );
+    await client.query(
+      readFileSync(
+        "database/migrations/20261121_iam_grant_audit_plumbing/up.sql",
+        "utf8",
+      ),
+    );
 
     const upgradeAudit = (
       await client.query(
@@ -1656,6 +1662,143 @@ suite("provisional authentication migration on PostgreSQL", () => {
       );
     } finally {
       await client.query("ROLLBACK TO SAVEPOINT farmer_policy_check");
+    }
+  });
+  it("audits every grant change append-only and keeps grant origin and binding consistent", async () => {
+    const org = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b101";
+    const unit = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b102";
+    const grantId = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b103";
+    const assignmentId = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b104";
+    const binding = "0d3a7c31-5e11-4c60-8f5b-3a1d7be3b105";
+    await client.query("SAVEPOINT iam_grant_audit_check");
+    try {
+      // All four tables carry exactly one AFTER ROW INSERT/UPDATE/DELETE audit trigger (tgtype 29).
+      const triggers = (
+        await client.query(
+          `SELECT c.relname, t.tgtype FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+           WHERE n.nspname='authz' AND t.tgfoid='iam.record_grant_change'::regproc AND NOT t.tgisinternal ORDER BY 1`,
+        )
+      ).rows;
+      expect(triggers.map((r) => r.relname)).toEqual([
+        "assignment",
+        "permission_grant",
+        "project_assignment",
+        "project_permission_grant",
+      ]);
+      expect(triggers.every((r) => r.tgtype === 29)).toBe(true);
+
+      await client.query(
+        "INSERT INTO farm.organization (id,name) VALUES ($1,'Synthetic grant audit')",
+        [org],
+      );
+      await client.query(
+        "INSERT INTO farm.organizational_unit (id,organization_id,name) VALUES ($1,$2,'Audit unit')",
+        [unit, org],
+      );
+      await client.query(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,registration_source,starts_at) VALUES ($1,$2,$3,'role.read','organization','administrator',now()-interval '1 hour')",
+        [grantId, account, org],
+      );
+      await client.query(
+        "UPDATE authz.permission_grant SET active=false WHERE id=$1",
+        [grantId],
+      );
+      await client.query("DELETE FROM authz.permission_grant WHERE id=$1", [
+        grantId,
+      ]);
+      await client.query(
+        "INSERT INTO authz.assignment (id,account_id,organization_id,unit_id,starts_at) VALUES ($1,$2,$3,$4,now()-interval '1 hour')",
+        [assignmentId, account, org, unit],
+      );
+      const grantRows = (
+        await client.query(
+          "SELECT * FROM iam.grant_change_audit WHERE row_id=$1 ORDER BY occurred_at,operation DESC",
+          [grantId],
+        )
+      ).rows;
+      expect(grantRows.map((r) => r.operation).sort()).toEqual([
+        "DELETE",
+        "INSERT",
+        "UPDATE",
+      ]);
+      for (const row of grantRows) {
+        expect(row).toMatchObject({
+          table_name: "permission_grant",
+          account_id: account,
+          organization_id: org,
+          permission: "role.read",
+          origin: "direct",
+          binding_id: null,
+          db_user: (await client.query("SELECT session_user AS u")).rows[0].u,
+        });
+        expect(Number(row.transaction_id)).toBeGreaterThan(0);
+      }
+      const assignmentRows = (
+        await client.query(
+          "SELECT * FROM iam.grant_change_audit WHERE row_id=$1",
+          [assignmentId],
+        )
+      ).rows;
+      expect(assignmentRows).toHaveLength(1);
+      expect(assignmentRows[0]).toMatchObject({
+        table_name: "assignment",
+        operation: "INSERT",
+        permission: null,
+        origin: "direct",
+      });
+
+      // Origin and binding must agree; existing rows default to direct.
+      await expectDenied(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,starts_at,origin) VALUES (gen_random_uuid(),$1,$2,'role.read','organization',now(),'role_binding')",
+        [account, org],
+      );
+      await expectDenied(
+        "INSERT INTO authz.permission_grant (id,account_id,organization_id,permission,coverage,starts_at,binding_id) VALUES (gen_random_uuid(),$1,$2,'role.read','organization',now(),$3)",
+        [account, org, binding],
+      );
+      await expectDenied(
+        "UPDATE authz.assignment SET origin='role_binding' WHERE id=$1",
+        [assignmentId],
+      );
+      await client.query(
+        "UPDATE authz.assignment SET origin='role_binding',binding_id=$2 WHERE id=$1",
+        [assignmentId, binding],
+      );
+      expect(
+        (
+          await client.query(
+            "SELECT origin,binding_id FROM iam.grant_change_audit WHERE row_id=$1 AND operation='UPDATE'",
+            [assignmentId],
+          )
+        ).rows,
+      ).toEqual([{ origin: "role_binding", binding_id: binding }]);
+
+      // The audit is append-only for everyone and unreachable for the runtime identity.
+      await expectDenied(
+        "UPDATE iam.grant_change_audit SET origin=origin",
+        [],
+        "55000",
+      );
+      await expectDenied("DELETE FROM iam.grant_change_audit", [], "55000");
+      await expectDenied("TRUNCATE iam.grant_change_audit", [], "55000");
+      await client.query("SET LOCAL SESSION AUTHORIZATION agri_iam_runtime");
+      await expectDenied("SELECT * FROM iam.grant_change_audit", [], "42501");
+      await expectDenied(
+        "INSERT INTO iam.grant_change_audit(table_name,operation,row_id,db_user,transaction_id) VALUES ('assignment','INSERT',gen_random_uuid(),'x',1)",
+        [],
+        "42501",
+      );
+      await client.query("RESET SESSION AUTHORIZATION");
+      // Defence in depth: the runtime identity holds no privilege on the audit at all (not only RLS refusal).
+      const privileges = (
+        await client.query(
+          `SELECT p, has_table_privilege('agri_iam_runtime','iam.grant_change_audit',p) AS held
+           FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE']) AS p`,
+        )
+      ).rows;
+      expect(privileges.filter((r) => r.held)).toEqual([]);
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT iam_grant_audit_check");
     }
   });
   it("serves the IAM catalog read-only: default deny, exact organization-wide authority, bounded pages and immutable role versions", async () => {
